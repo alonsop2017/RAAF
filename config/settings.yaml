@@ -1,0 +1,72 @@
+# Global Settings - Resume Assessment Automation Framework
+# Archtekt Consulting Inc.
+
+# Default assessment settings (can be overridden per requisition)
+assessment:
+  default_max_score: 100
+  default_thresholds:
+    strong_recommend: 85
+    recommend: 70
+    conditional: 55
+
+# Job stability scoring weights
+stability:
+  weights:
+    four_plus_years: 10
+    three_to_four_years: 8
+    two_to_three_years: 6
+    eighteen_months_to_two_years: 4
+    one_to_eighteen_months: 2
+    less_than_one_year: 0
+
+# Report formatting settings
+report:
+  font_family: Arial
+  body_font_size: 11
+  heading_font_size: 14
+  margins_inches: 1.0
+  header_shading: "D5E8F0"
+
+# Output formatting
+output:
+  date_format: "%Y-%m-%d"
+  filename_date_format: "%y%m%d"
+
+# Path patterns (use {client} and {req} placeholders)
+paths:
+  client_root: "clients/{client}"
+  requisition_root: "clients/{client}/requisitions/{req}"
+  archive_root: "archive/{client}"
+  log_root: "logs/{client}"
+
+# Context persistence
+context:
+  file: ".current_context.yaml"
+  auto_save: true
+
+# PCRecruiter integration settings
+pcr:
+  api_base_url: "https://www2.pcrecruiter.net/rest/api"
+  api_version: "v2"
+  session_timeout_minutes: 60
+  sync_interval_minutes: 15
+  default_pipeline_statuses:
+    new: "New Applicant"
+    assessed: "Assessed"
+    interview: "Interview Scheduled"
+    hold: "On Hold"
+    rejected: "Not Selected"
+    hired: "Hired"
+
+# Batch processing settings
+batch:
+  max_candidates_per_batch: 50
+  auto_create_batch: true
+  batch_naming_pattern: "batch_{date}_{n}"
+
+# Logging settings
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  rotate_size_mb: 10
+  backup_count: 5

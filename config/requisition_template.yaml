@@ -1,0 +1,66 @@
+# Requisition Configuration Template
+# Copy this file to clients/[client_code]/requisitions/[req_id]/requisition.yaml
+
+requisition_id: ""  # Format: REQ-YYYY-NNN-ROLE
+client_code: ""
+created_date: YYYY-MM-DD
+status: active  # active, on_hold, filled, cancelled
+
+job:
+  title: ""
+  department: ""
+  location: ""  # e.g., "Toronto, ON (Hybrid)"
+  salary_range:
+    min: 0
+    max: 0
+    currency: CAD
+  employment_type: full_time  # full_time, contract, part_time
+  commission_rate: 0.20  # Override client default if needed
+
+requirements:
+  experience_years_min: 0
+  education: ""  # e.g., "Bachelor's degree required"
+  industry_preference: ""  # e.g., "SaaS/Technology"
+  special_requirements: []
+  # Example:
+  # - "Must have Salesforce experience"
+  # - "Bilingual (English/French) preferred"
+
+assessment:
+  framework_template: ""  # e.g., saas_csm, saas_ae, construction_pm, base
+  framework_version: "1.0"
+  max_score: 100
+  thresholds:
+    strong_recommend: 85
+    recommend: 70
+    conditional: 55
+  # Override default category weights if needed
+  weight_overrides: {}
+  # Example:
+  # technical_competencies: 25  # Increased for technical role
+  # cultural_fit: 5             # Decreased
+
+contacts:
+  hiring_manager: ""  # e.g., "Jane Smith, VP Customer Success"
+  hr_contact: ""  # e.g., "Bob Johnson, Talent Acquisition"
+
+# PCRecruiter integration (if applicable)
+pcr_integration:
+  job_id: ""  # PCR Job/Position ID
+  job_code: ""  # e.g., "INDML" for Indeed
+  pipeline_id: ""
+  last_sync: ""
+
+# Tracking
+batches_processed: []
+# Example:
+# - batch_20251226_1
+# - batch_20251227_1
+
+total_candidates_assessed: 0
+last_assessment_date: ""
+report_status: pending  # pending, draft, final
+
+notes: |
+  # Add any requisition-specific notes here
+  # Document client preferences, special considerations, etc.

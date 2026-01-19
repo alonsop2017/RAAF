@@ -1,0 +1,47 @@
+# PCRecruiter credentials (NEVER commit)
+config/pcr_credentials.yaml
+
+# Context file
+.current_context.yaml
+
+# Log files
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# Node.js
+node_modules/
+npm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Archive backups (keep archive/ but ignore backup zips in root)
+*.tar.gz
+*.zip
+!templates/**/*.zip
+
+# Draft reports (optional - uncomment if you want to ignore drafts)
+# clients/*/requisitions/*/reports/drafts/

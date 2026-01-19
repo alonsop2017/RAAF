@@ -1,0 +1,43 @@
+# Client Configuration Template
+# Copy this file to clients/[client_code]/client_info.yaml
+
+client_code: ""  # lowercase, no spaces (e.g., techco, buildcorp)
+company_name: ""
+industry: ""
+relationship_start: YYYY-MM-DD
+status: active  # active, inactive, prospect
+
+contacts:
+  primary:
+    name: ""
+    title: ""
+    email: ""
+    phone: ""
+  billing:
+    name: ""
+    email: ""
+
+billing:
+  default_commission_rate: 0.20  # 20% of annual salary
+  payment_terms: "Net 30"
+  guarantee_period_days: 90
+
+preferences:
+  report_format: docx  # docx, pdf
+  delivery_method: email  # email, portal, pickup
+  include_rejected_candidates: false  # Include DNR candidates in reports
+
+# PCRecruiter integration (if applicable)
+pcr_integration:
+  enabled: false
+  company:
+    company_id: ""  # PCR Company ID
+    company_name: ""
+
+active_requisitions: []
+# Example:
+# - REQ-2025-001-CSM
+# - REQ-2025-002-AE
+
+notes: |
+  # Add any client-specific notes here
