@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Clients{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="flex flex-between flex-center">
+        <div>
+            <h1>Clients</h1>
+            <p class="subtitle">Manage your client relationships</p>
+        </div>
+        <a href="/clients/new" class="btn btn-primary">New Client</a>
+    </div>
+</div>
+
+{% if clients %}
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Client</th>
+                    <th>Industry</th>
+                    <th>Status</th>
+                    <th>Requisitions</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for client in clients %}
+                <tr>
+                    <td>
+                        <a href="/clients/{{ client.code }}" style="font-weight: 500; color: var(--primary-color); text-decoration: none;">
+                            {{ client.name }}
+                        </a>
+                        <div class="text-muted" style="font-size: 0.875rem;">{{ client.code }}</div>
+                    </td>
+                    <td>{{ client.industry or 'N/A' }}</td>
+                    <td><span class="badge status-{{ client.status }}">{{ client.status }}</span></td>
+                    <td>{{ client.requisition_count }}</td>
+                    <td>
+                        <div class="action-buttons">
+                            <a href="/clients/{{ client.code }}" class="btn btn-sm btn-outline">View</a>
+                            <a href="/clients/{{ client.code }}/edit" class="btn btn-sm btn-outline">Edit</a>
+                            <a href="/requisitions/new?client_code={{ client.code }}" class="btn btn-sm btn-primary">Add Req</a>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body">
+        <div class="empty-state">
+            <h3>No Clients Yet</h3>
+            <p>Create your first client to get started.</p>
+            <a href="/clients/new" class="btn btn-primary mt-2">Create Client</a>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

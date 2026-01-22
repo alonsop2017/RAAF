@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}{{ client.company_name }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> / <a href="/clients">Clients</a> / <span>{{ client.company_name }}</span>
+</div>
+
+<div class="page-header">
+    <div class="flex flex-between flex-center">
+        <div>
+            <h1>{{ client.company_name }}</h1>
+            <p class="subtitle">{{ client_code }} | {{ client.industry or 'No industry specified' }}</p>
+        </div>
+        <div class="action-buttons">
+            <a href="/clients/{{ client_code }}/edit" class="btn btn-outline">Edit Client</a>
+            <a href="/requisitions/new?client_code={{ client_code }}" class="btn btn-primary">New Requisition</a>
+        </div>
+    </div>
+</div>
+
+<div class="two-column">
+    <div>
+        <!-- Requisitions -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Requisitions</h3>
+                <span class="badge badge-info">{{ requisitions|length }} total</span>
+            </div>
+            {% if requisitions %}
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Requisition</th>
+                            <th>Status</th>
+                            <th>Candidates</th>
+                            <th>Assessed</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for req in requisitions %}
+                        <tr>
+                            <td>
+                                <a href="/requisitions/{{ client_code }}/{{ req.req_id }}"
+                                   style="font-weight: 500; color: var(--primary-color); text-decoration: none;">
+                                    {{ req.title }}
+                                </a>
+                                <div class="text-muted" style="font-size: 0.875rem;">{{ req.req_id }}</div>
+                            </td>
+                            <td><span class="badge status-{{ req.status }}">{{ req.status }}</span></td>
+                            <td>{{ req.candidate_count }}</td>
+                            <td>{{ req.assessed_count }}</td>
+                            <td>
+                                <div class="action-buttons">
+                                    <a href="/requisitions/{{ client_code }}/{{ req.req_id }}" class="btn btn-sm btn-outline">View</a>
+                                    <a href="/assessments/{{ client_code }}/{{ req.req_id }}" class="btn btn-sm btn-outline">Assess</a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="card-body">
+                <div class="empty-state">
+                    <h3>No Requisitions Yet</h3>
+                    <p>Create your first requisition for this client.</p>
+                    <a href="/requisitions/new?client_code={{ client_code }}" class="btn btn-primary mt-2">Create Requisition</a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div>
+        <!-- Client Info -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Client Information</h3>
+            </div>
+            <div class="card-body">
+                <p><strong>Status:</strong> <span class="badge status-{{ client.status }}">{{ client.status }}</span></p>
+                <p class="mt-2"><strong>Industry:</strong> {{ client.industry or 'N/A' }}</p>
+
+                {% if client.contacts and client.contacts.primary %}
+                <h4 class="mt-3 mb-1">Primary Contact</h4>
+                <p>{{ client.contacts.primary.name or 'N/A' }}</p>
+                {% if client.contacts.primary.email %}
+                <p><a href="mailto:{{ client.contacts.primary.email }}">{{ client.contacts.primary.email }}</a></p>
+                {% endif %}
+                {% if client.contacts.primary.phone %}
+                <p>{{ client.contacts.primary.phone }}</p>
+                {% endif %}
+                {% endif %}
+
+                {% if client.billing %}
+                <h4 class="mt-3 mb-1">Billing</h4>
+                <p>Commission: {{ (client.billing.default_commission_rate * 100)|int }}%</p>
+                <p>Terms: {{ client.billing.payment_terms or 'N/A' }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

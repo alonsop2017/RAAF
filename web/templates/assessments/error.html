@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Assessment Error{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> / <a href="/assessments/{{ client_code }}/{{ req_id }}">Assessments</a> / <span>Error</span>
+</div>
+
+<div class="page-header">
+    <h1>Assessment Error</h1>
+    <p class="subtitle">An error occurred while running assessments</p>
+</div>
+
+<div class="alert alert-danger">
+    <strong>Error:</strong> {{ error }}
+</div>
+
+{% if output %}
+<div class="card">
+    <div class="card-header">
+        <h3>Output</h3>
+    </div>
+    <div class="card-body">
+        <pre style="background: #f8fafc; padding: 1rem; border-radius: 8px; overflow-x: auto;">{{ output }}</pre>
+    </div>
+</div>
+{% endif %}
+
+<div class="action-buttons">
+    <a href="/assessments/{{ client_code }}/{{ req_id }}" class="btn btn-primary">Back to Assessments</a>
+    <a href="/requisitions/{{ client_code }}/{{ req_id }}" class="btn btn-outline">View Requisition</a>
+</div>
+{% endblock %}

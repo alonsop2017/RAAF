@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Requisitions{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="flex flex-between flex-center">
+        <div>
+            <h1>Requisitions</h1>
+            <p class="subtitle">All job requisitions across clients</p>
+        </div>
+        <a href="/requisitions/new" class="btn btn-primary">New Requisition</a>
+    </div>
+</div>
+
+<!-- Status Filter -->
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="action-buttons">
+            <a href="/requisitions" class="btn {% if not filter_status %}btn-primary{% else %}btn-outline{% endif %}">All</a>
+            <a href="/requisitions?status=active" class="btn {% if filter_status == 'active' %}btn-primary{% else %}btn-outline{% endif %}">Active</a>
+            <a href="/requisitions?status=on_hold" class="btn {% if filter_status == 'on_hold' %}btn-primary{% else %}btn-outline{% endif %}">On Hold</a>
+            <a href="/requisitions?status=filled" class="btn {% if filter_status == 'filled' %}btn-primary{% else %}btn-outline{% endif %}">Filled</a>
+        </div>
+    </div>
+</div>
+
+{% if requisitions %}
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Requisition</th>
+                    <th>Client</th>
+                    <th>Status</th>
+                    <th>Candidates</th>
+                    <th>Assessed</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for req in requisitions %}
+                <tr>
+                    <td>
+                        <a href="/requisitions/{{ req.client_code }}/{{ req.req_id }}"
+                           style="font-weight: 500; color: var(--primary-color); text-decoration: none;">
+                            {{ req.title }}
+                        </a>
+                        <div class="text-muted" style="font-size: 0.875rem;">{{ req.req_id }}</div>
+                    </td>
+                    <td>
+                        <a href="/clients/{{ req.client_code }}" style="text-decoration: none; color: inherit;">
+                            {{ req.client_name }}
+                        </a>
+                    </td>
+                    <td><span class="badge status-{{ req.status }}">{{ req.status }}</span></td>
+                    <td>{{ req.candidate_count }}</td>
+                    <td>{{ req.assessed_count }}</td>
+                    <td>{{ req.created_date }}</td>
+                    <td>
+                        <div class="action-buttons">
+                            <a href="/requisitions/{{ req.client_code }}/{{ req.req_id }}" class="btn btn-sm btn-outline">View</a>
+                            <a href="/assessments/{{ req.client_code }}/{{ req.req_id }}" class="btn btn-sm btn-outline">Assess</a>
+                            <a href="/reports/{{ req.client_code }}/{{ req.req_id }}" class="btn btn-sm btn-outline">Reports</a>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body">
+        <div class="empty-state">
+            <h3>No Requisitions Found</h3>
+            <p>{% if filter_status %}No requisitions with status "{{ filter_status }}"{% else %}Create your first requisition to get started{% endif %}</p>
+            <a href="/requisitions/new" class="btn btn-primary mt-2">Create Requisition</a>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

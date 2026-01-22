@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}Assessment - {{ assessment.candidate.name }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> / <a href="/assessments/{{ client_code }}/{{ req_id }}">Assessments</a> / <span>{{ assessment.candidate.name }}</span>
+</div>
+
+<div class="page-header">
+    <div class="flex flex-between flex-center">
+        <div>
+            <h1>{{ assessment.candidate.name }}</h1>
+            <p class="subtitle">Assessment Details | {{ req_title }}</p>
+        </div>
+        <div class="action-buttons">
+            <a href="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/edit" class="btn btn-primary">Edit Assessment</a>
+            <a href="/candidates/{{ client_code }}/{{ req_id }}/{{ name_normalized }}" class="btn btn-outline">View Resume</a>
+            <a href="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/json" class="btn btn-outline" target="_blank">Export JSON</a>
+        </div>
+    </div>
+</div>
+
+<!-- Score Header -->
+<div class="card">
+    <div class="card-body">
+        <div class="flex flex-between flex-center" style="flex-wrap: wrap; gap: 2rem;">
+            <div class="text-center">
+                <div class="score-display" style="font-size: 3rem;">{{ assessment.total_score }}/{{ assessment.max_score }}</div>
+                <div style="font-size: 1.5rem; color: var(--text-secondary);">{{ assessment.percentage }}%</div>
+            </div>
+            <div class="text-center">
+                {% if assessment.recommendation == 'STRONG RECOMMEND' %}
+                <span class="badge rec-strong" style="font-size: 1.25rem; padding: 0.75rem 1.5rem;">STRONG RECOMMEND</span>
+                {% elif assessment.recommendation == 'RECOMMEND' %}
+                <span class="badge rec-recommend" style="font-size: 1.25rem; padding: 0.75rem 1.5rem;">RECOMMEND</span>
+                {% elif assessment.recommendation == 'CONDITIONAL' %}
+                <span class="badge rec-conditional" style="font-size: 1.25rem; padding: 0.75rem 1.5rem;">CONDITIONAL</span>
+                {% else %}
+                <span class="badge rec-dnr" style="font-size: 1.25rem; padding: 0.75rem 1.5rem;">DO NOT RECOMMEND</span>
+                {% endif %}
+                <div class="mt-1 text-muted">Tier {{ assessment.recommendation_tier }}</div>
+            </div>
+            <div>
+                <p><strong>Stability:</strong> {{ assessment.scores.job_stability.tenure_analysis.risk_level if assessment.scores.job_stability else 'N/A' }}</p>
+                <p class="mt-1"><strong>Assessed:</strong> {{ assessment.metadata.assessed_at[:16] if assessment.metadata.assessed_at else 'N/A' }}</p>
+                <p class="mt-1"><strong>Assessor:</strong> {{ assessment.metadata.assessor or 'Automated' }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="two-column">
+    <div>
+        <!-- Detailed Scores -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Score Breakdown</h3>
+            </div>
+            <div class="card-body">
+                {% for category, data in assessment.scores.items() %}
+                <div class="mb-3">
+                    <div class="flex flex-between flex-center mb-1">
+                        <h4 style="margin: 0;">{{ category.replace('_', ' ').title() }}</h4>
+                        <span style="font-weight: 600; font-size: 1.25rem;">{{ data.score }}/{{ data.max }}</span>
+                    </div>
+                    <div class="progress-bar">
+                        {% set pct = (data.score / data.max * 100) if data.max > 0 else 0 %}
+                        <div class="progress-fill {% if pct >= 80 %}success{% elif pct >= 60 %}primary{% elif pct >= 40 %}warning{% else %}danger{% endif %}"
+                             style="width: {{ pct }}%;"></div>
+                    </div>
+
+                    {% if data.breakdown %}
+                    <div style="margin-left: 1rem; margin-top: 0.5rem;">
+                        {% for sub_key, sub_data in data.breakdown.items() %}
+                        <div class="flex flex-between text-muted" style="font-size: 0.875rem; margin-bottom: 0.25rem;">
+                            <span>{{ sub_key.replace('_', ' ').title() }}</span>
+                            <span>{{ sub_data.score }}/{{ sub_data.max }}</span>
+                        </div>
+                        {% if sub_data.evidence %}
+                        <p style="font-size: 0.8rem; color: var(--secondary-color); margin-left: 0.5rem; margin-bottom: 0.5rem;">
+                            Evidence: {{ sub_data.evidence }}
+                        </p>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    {% if data.notes %}
+                    <p class="mt-1 text-muted" style="font-size: 0.875rem;">
+                        <strong>Notes:</strong> {{ data.notes }}
+                    </p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div>
+        <!-- Summary -->
+        {% if assessment.summary %}
+        <div class="card">
+            <div class="card-header">
+                <h3>Summary</h3>
+            </div>
+            <div class="card-body">
+                <p>{{ assessment.summary }}</p>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Key Strengths -->
+        {% if assessment.key_strengths %}
+        <div class="card">
+            <div class="card-header">
+                <h3>Key Strengths</h3>
+            </div>
+            <div class="card-body">
+                <ul>
+                    {% for strength in assessment.key_strengths %}
+                    <li class="mb-1">{{ strength }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Areas of Concern -->
+        {% if assessment.areas_of_concern %}
+        <div class="card">
+            <div class="card-header">
+                <h3>Areas of Concern</h3>
+            </div>
+            <div class="card-body">
+                <ul>
+                    {% for concern in assessment.areas_of_concern %}
+                    <li class="mb-1">{{ concern }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Interview Focus -->
+        {% if assessment.interview_focus_areas %}
+        <div class="card">
+            <div class="card-header">
+                <h3>Interview Focus Areas</h3>
+            </div>
+            <div class="card-body">
+                <ul>
+                    {% for area in assessment.interview_focus_areas %}
+                    <li class="mb-1">{{ area }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Candidate Info -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Candidate Info</h3>
+            </div>
+            <div class="card-body">
+                <p><strong>Name:</strong> {{ assessment.candidate.name }}</p>
+                {% if assessment.candidate.email %}
+                <p class="mt-1"><strong>Email:</strong> {{ assessment.candidate.email }}</p>
+                {% endif %}
+                {% if assessment.candidate.phone %}
+                <p class="mt-1"><strong>Phone:</strong> {{ assessment.candidate.phone }}</p>
+                {% endif %}
+                <p class="mt-1"><strong>Source:</strong> {{ assessment.candidate.source_platform or 'Manual' }}</p>
+                <p class="mt-1"><strong>Batch:</strong> {{ assessment.candidate.batch or 'N/A' }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

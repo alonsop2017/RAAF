@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}PCR Connection Test{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> / <a href="/pcr">PCR Integration</a> / <span>Test</span>
+</div>
+
+<div class="page-header">
+    <h1>PCR Connection Test</h1>
+</div>
+
+{% if success %}
+<div class="alert alert-success">
+    <strong>Connection Successful!</strong> PCRecruiter API is accessible.
+</div>
+{% else %}
+<div class="alert alert-danger">
+    <strong>Connection Failed</strong>
+</div>
+{% endif %}
+
+{% if output %}
+<div class="card">
+    <div class="card-header">
+        <h3>Output</h3>
+    </div>
+    <div class="card-body">
+        <pre style="background: #f8fafc; padding: 1rem; border-radius: 8px; overflow-x: auto;">{{ output }}</pre>
+    </div>
+</div>
+{% endif %}
+
+{% if error %}
+<div class="card">
+    <div class="card-header">
+        <h3>Error Details</h3>
+    </div>
+    <div class="card-body">
+        <pre style="background: #fee2e2; padding: 1rem; border-radius: 8px; overflow-x: auto; color: #b91c1c;">{{ error }}</pre>
+    </div>
+</div>
+{% endif %}
+
+<div class="action-buttons">
+    <a href="/pcr" class="btn btn-primary">Back to PCR Dashboard</a>
+    <a href="/pcr/test" class="btn btn-outline">Test Again</a>
+</div>
+{% endblock %}

@@ -16,6 +16,7 @@ RAAF transforms the labor-intensive process of evaluating candidate resumes into
 
 ### Key Features
 
+- **Web Interface** - Modern, responsive web dashboard for managing the entire assessment workflow
 - **Automated Resume Intake** - Continuous monitoring for new Indeed applicants via PCR API
 - **Structured Assessment Framework** - 100-point scoring system with customizable templates
 - **Professional Report Generation** - Polished DOCX reports with rankings and recommendations
@@ -59,7 +60,27 @@ cp config/pcr_credentials_template.yaml config/pcr_credentials.yaml
 # Edit config/pcr_credentials.yaml with your credentials
 ```
 
-### Basic Usage
+### Web Interface
+
+```bash
+# Start the web application
+./run_web.sh
+
+# Or manually:
+python3 -m uvicorn web.app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Access the web interface at **http://localhost:8000**
+
+The web interface provides:
+- Dashboard with overview of all clients and requisitions
+- Client and requisition management
+- Resume upload and candidate viewing
+- Assessment dashboard with scoring and editing
+- Report generation and download
+- PCRecruiter sync operations
+
+### CLI Usage
 
 ```bash
 # 1. Initialize a new client

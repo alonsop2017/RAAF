@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Edit {{ req.job.title }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> / <a href="/requisitions/{{ client_code }}/{{ req_id }}">{{ req_id }}</a> / <span>Edit</span>
+</div>
+
+<div class="page-header">
+    <h1>Edit Requisition</h1>
+    <p class="subtitle">Update requisition details</p>
+</div>
+
+<div class="card" style="max-width: 900px;">
+    <div class="card-body">
+        <form action="/requisitions/{{ client_code }}/{{ req_id }}/update" method="POST">
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Requisition ID</label>
+                    <input type="text" class="form-input" value="{{ req_id }}" disabled>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="status">Status</label>
+                    <select id="status" name="status" class="form-select">
+                        <option value="active" {% if req.status == 'active' %}selected{% endif %}>Active</option>
+                        <option value="on_hold" {% if req.status == 'on_hold' %}selected{% endif %}>On Hold</option>
+                        <option value="filled" {% if req.status == 'filled' %}selected{% endif %}>Filled</option>
+                        <option value="cancelled" {% if req.status == 'cancelled' %}selected{% endif %}>Cancelled</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="title">Job Title *</label>
+                    <input type="text" id="title" name="title" class="form-input" required
+                           value="{{ req.job.title }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="department">Department</label>
+                    <input type="text" id="department" name="department" class="form-input"
+                           value="{{ req.job.department or '' }}">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="location">Location</label>
+                <input type="text" id="location" name="location" class="form-input"
+                       value="{{ req.job.location or '' }}">
+            </div>
+
+            <h3 class="mt-3 mb-2">Compensation</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="salary_min">Salary Min (CAD)</label>
+                    <input type="number" id="salary_min" name="salary_min" class="form-input"
+                           value="{{ req.job.salary_range.min if req.job.salary_range else '' }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="salary_max">Salary Max (CAD)</label>
+                    <input type="number" id="salary_max" name="salary_max" class="form-input"
+                           value="{{ req.job.salary_range.max if req.job.salary_range else '' }}">
+                </div>
+            </div>
+
+            <h3 class="mt-3 mb-2">Requirements</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="experience_years_min">Minimum Years of Experience</label>
+                    <input type="number" id="experience_years_min" name="experience_years_min" class="form-input"
+                           value="{{ req.requirements.experience_years_min or 0 }}" min="0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="education">Education Requirement</label>
+                    <input type="text" id="education" name="education" class="form-input"
+                           value="{{ req.requirements.education or '' }}">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="notes">Notes</label>
+                <textarea id="notes" name="notes" class="form-textarea">{{ req.notes or '' }}</textarea>
+            </div>
+
+            <div class="action-buttons mt-3">
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <a href="/requisitions/{{ client_code }}/{{ req_id }}" class="btn btn-outline">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}{{ name }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> / <a href="/requisitions/{{ client_code }}/{{ req_id }}">{{ req_id }}</a> /
+    <a href="/candidates/{{ client_code }}/{{ req_id }}">Candidates</a> / <span>{{ name }}</span>
+</div>
+
+<div class="page-header">
+    <div class="flex flex-between flex-center">
+        <div>
+            <h1>{{ name }}</h1>
+            <p class="subtitle">{{ req_title }} | {{ client_name }}</p>
+        </div>
+        <div class="action-buttons">
+            {% if assessment %}
+            <a href="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}"
+               class="btn btn-primary">View Assessment</a>
+            <a href="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/edit"
+               class="btn btn-outline">Edit Assessment</a>
+            {% else %}
+            <form action="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/run" method="POST">
+                <button type="submit" class="btn btn-primary">Run Assessment</button>
+            </form>
+            {% endif %}
+            <a href="/candidates/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/resume"
+               class="btn btn-outline">Download Resume</a>
+        </div>
+    </div>
+</div>
+
+<div class="two-column">
+    <div>
+        <!-- Resume -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Resume</h3>
+            </div>
+            <div class="card-body">
+                <pre class="resume-preview">{{ resume_text }}</pre>
+            </div>
+        </div>
+    </div>
+
+    <div>
+        {% if assessment %}
+        <!-- Assessment Summary -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Assessment Summary</h3>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-3">
+                    <div class="score-display" style="font-size: 3rem;">
+                        {{ assessment.total_score }}/{{ assessment.max_score }}
+                    </div>
+                    <div class="score-percentage" style="font-size: 1.5rem;">
+                        {{ assessment.percentage }}%
+                    </div>
+                    <div class="mt-2">
+                        {% if assessment.recommendation == 'STRONG RECOMMEND' %}
+                        <span class="badge rec-strong" style="font-size: 1rem; padding: 0.5rem 1rem;">STRONG RECOMMEND</span>
+                        {% elif assessment.recommendation == 'RECOMMEND' %}
+                        <span class="badge rec-recommend" style="font-size: 1rem; padding: 0.5rem 1rem;">RECOMMEND</span>
+                        {% elif assessment.recommendation == 'CONDITIONAL' %}
+                        <span class="badge rec-conditional" style="font-size: 1rem; padding: 0.5rem 1rem;">CONDITIONAL</span>
+                        {% else %}
+                        <span class="badge rec-dnr" style="font-size: 1rem; padding: 0.5rem 1rem;">{{ assessment.recommendation }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Score Breakdown -->
+                <h4 class="mt-3 mb-2">Score Breakdown</h4>
+                {% for category, data in assessment.scores.items() %}
+                <div class="mb-2">
+                    <div class="flex flex-between">
+                        <span>{{ category.replace('_', ' ').title() }}</span>
+                        <span>{{ data.score }}/{{ data.max }}</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill primary" style="width: {{ (data.score / data.max * 100) if data.max > 0 else 0 }}%;"></div>
+                    </div>
+                </div>
+                {% endfor %}
+
+                {% if assessment.key_strengths %}
+                <h4 class="mt-3 mb-1">Key Strengths</h4>
+                <ul>
+                    {% for strength in assessment.key_strengths %}
+                    <li>{{ strength }}</li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+
+                {% if assessment.areas_of_concern %}
+                <h4 class="mt-3 mb-1">Areas of Concern</h4>
+                <ul>
+                    {% for concern in assessment.areas_of_concern %}
+                    <li>{{ concern }}</li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+
+                {% if assessment.interview_focus_areas %}
+                <h4 class="mt-3 mb-1">Interview Focus Areas</h4>
+                <ul>
+                    {% for area in assessment.interview_focus_areas %}
+                    <li>{{ area }}</li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Candidate Info -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Candidate Info</h3>
+            </div>
+            <div class="card-body">
+                {% if assessment.candidate.email %}
+                <p><strong>Email:</strong> {{ assessment.candidate.email }}</p>
+                {% endif %}
+                {% if assessment.candidate.phone %}
+                <p class="mt-1"><strong>Phone:</strong> {{ assessment.candidate.phone }}</p>
+                {% endif %}
+                <p class="mt-1"><strong>Source:</strong> {{ assessment.candidate.source_platform or 'Manual' }}</p>
+                <p class="mt-1"><strong>Assessed:</strong> {{ assessment.metadata.assessed_at[:10] if assessment.metadata.assessed_at else 'N/A' }}</p>
+            </div>
+        </div>
+        {% else %}
+        <!-- No Assessment Yet -->
+        <div class="card">
+            <div class="card-body">
+                <div class="empty-state">
+                    <h3>Not Yet Assessed</h3>
+                    <p>Run an assessment to score this candidate.</p>
+                    <form action="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/run" method="POST">
+                        <button type="submit" class="btn btn-primary mt-2">Run Assessment</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

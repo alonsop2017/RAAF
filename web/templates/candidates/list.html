@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Candidates - {{ req_title }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> / <a href="/clients/{{ client_code }}">{{ client_name }}</a> / <a href="/requisitions/{{ client_code }}/{{ req_id }}">{{ req_id }}</a> / <span>Candidates</span>
+</div>
+
+<div class="page-header">
+    <div class="flex flex-between flex-center">
+        <div>
+            <h1>Candidates</h1>
+            <p class="subtitle">{{ req_title }} | {{ client_name }}</p>
+        </div>
+        <div class="action-buttons">
+            <a href="/candidates/{{ client_code }}/{{ req_id }}/upload" class="btn btn-primary">Upload Resumes</a>
+            <a href="/assessments/{{ client_code }}/{{ req_id }}" class="btn btn-outline">Run Assessments</a>
+        </div>
+    </div>
+</div>
+
+{% if candidates %}
+<div class="card">
+    <div class="card-header">
+        <h3>All Candidates ({{ candidates|length }})</h3>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Candidate</th>
+                    <th>Score</th>
+                    <th>%</th>
+                    <th>Stability</th>
+                    <th>Recommendation</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for candidate in candidates %}
+                <tr>
+                    <td>
+                        {% if candidate.assessed %}
+                        {{ loop.index }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="/candidates/{{ client_code }}/{{ req_id }}/{{ candidate.name_normalized }}"
+                           style="font-weight: 500; color: var(--primary-color); text-decoration: none;">
+                            {{ candidate.name }}
+                        </a>
+                    </td>
+                    <td>
+                        {% if candidate.assessed %}
+                        <span style="font-weight: 600;">{{ candidate.score }}/{{ candidate.max_score }}</span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if candidate.assessed %}
+                        {{ candidate.percentage }}%
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if candidate.assessed and candidate.stability %}
+                        {{ candidate.stability }}
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if candidate.assessed %}
+                            {% if candidate.recommendation == 'STRONG RECOMMEND' %}
+                            <span class="badge rec-strong">STRONG RECOMMEND</span>
+                            {% elif candidate.recommendation == 'RECOMMEND' %}
+                            <span class="badge rec-recommend">RECOMMEND</span>
+                            {% elif candidate.recommendation == 'CONDITIONAL' %}
+                            <span class="badge rec-conditional">CONDITIONAL</span>
+                            {% elif candidate.recommendation == 'DO NOT RECOMMEND' %}
+                            <span class="badge rec-dnr">DO NOT RECOMMEND</span>
+                            {% else %}
+                            <span class="badge rec-pending">{{ candidate.recommendation }}</span>
+                            {% endif %}
+                        {% else %}
+                        <span class="badge rec-pending">PENDING</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <a href="/candidates/{{ client_code }}/{{ req_id }}/{{ candidate.name_normalized }}"
+                               class="btn btn-sm btn-outline">View</a>
+                            {% if candidate.assessed %}
+                            <a href="/assessments/{{ client_code }}/{{ req_id }}/{{ candidate.name_normalized }}"
+                               class="btn btn-sm btn-outline">Assessment</a>
+                            {% else %}
+                            <form action="/assessments/{{ client_code }}/{{ req_id }}/{{ candidate.name_normalized }}/run"
+                                  method="POST" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-primary">Assess</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body">
+        <div class="empty-state">
+            <h3>No Candidates Yet</h3>
+            <p>Upload resumes to add candidates for assessment.</p>
+            <a href="/candidates/{{ client_code }}/{{ req_id }}/upload" class="btn btn-primary mt-2">Upload Resumes</a>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

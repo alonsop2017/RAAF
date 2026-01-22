@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Resumes{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> / <a href="/requisitions/{{ client_code }}/{{ req_id }}">{{ req_id }}</a> / <span>Upload</span>
+</div>
+
+<div class="page-header">
+    <h1>Upload Resumes</h1>
+    <p class="subtitle">Add candidate resumes for assessment</p>
+</div>
+
+<div class="card" style="max-width: 600px;">
+    <div class="card-body">
+        <form action="/candidates/{{ client_code }}/{{ req_id }}/upload" method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <label class="form-label" for="files">Select Resume Files</label>
+                <input type="file" id="files" name="files" class="form-input" multiple
+                       accept=".pdf,.docx,.doc,.txt"
+                       style="padding: 1rem; border-style: dashed;">
+                <p class="form-hint">Supported formats: PDF, DOCX, DOC, TXT. You can select multiple files.</p>
+            </div>
+
+            <div class="alert alert-info">
+                <strong>Naming Tip:</strong> For best results, name your resume files as
+                <code>lastname_firstname.pdf</code> or similar. The system will normalize filenames automatically.
+            </div>
+
+            <div class="action-buttons mt-3">
+                <button type="submit" class="btn btn-primary btn-lg">Upload Resumes</button>
+                <a href="/candidates/{{ client_code }}/{{ req_id }}" class="btn btn-outline">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

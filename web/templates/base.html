@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}RAAF{% endblock %} - Resume Assessment Automation</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <a href="/">RAAF</a>
+            <span class="nav-subtitle">Resume Assessment Automation Framework</span>
+        </div>
+        <div class="nav-links">
+            <a href="/" class="nav-link">Dashboard</a>
+            <a href="/clients" class="nav-link">Clients</a>
+            <a href="/requisitions" class="nav-link">Requisitions</a>
+            <a href="/pcr" class="nav-link">PCR Integration</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <p>RAAF - Resume Assessment Automation Framework | Archtekt Consulting Inc.</p>
+    </footer>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

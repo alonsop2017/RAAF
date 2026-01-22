@@ -1,0 +1,114 @@
+"""
+RAAF Web Application - MVP
+Resume Assessment Automation Framework Web Interface
+"""
+
+import sys
+from pathlib import Path
+
+# Add parent directory for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+import uvicorn
+
+from web.routers import clients, requisitions, candidates, assessments, reports, pcr
+
+app = FastAPI(
+    title="RAAF - Resume Assessment Automation Framework",
+    description="Web interface for managing candidate assessments",
+    version="1.0.0"
+)
+
+# Mount static files
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+
+# Templates
+templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
+
+# Include routers
+app.include_router(clients.router, prefix="/clients", tags=["clients"])
+app.include_router(requisitions.router, prefix="/requisitions", tags=["requisitions"])
+app.include_router(candidates.router, prefix="/candidates", tags=["candidates"])
+app.include_router(assessments.router, prefix="/assessments", tags=["assessments"])
+app.include_router(reports.router, prefix="/reports", tags=["reports"])
+app.include_router(pcr.router, prefix="/pcr", tags=["pcr"])
+
+
+@app.get("/", response_class=HTMLResponse)
+async def dashboard(request: Request):
+    """Main dashboard showing overview of all clients and requisitions."""
+    from scripts.utils.client_utils import list_clients, list_requisitions, get_client_info, get_requisition_config
+    get_client_config = get_client_info  # Alias
+
+    # Gather dashboard data
+    dashboard_data = []
+    total_candidates = 0
+    total_assessed = 0
+
+    for client_code in list_clients():
+        try:
+            client_config = get_client_config(client_code)
+            client_name = client_config.get('company_name', client_code)
+
+            client_reqs = []
+            for req_id in list_requisitions(client_code):
+                try:
+                    req_config = get_requisition_config(client_code, req_id)
+
+                    # Count candidates and assessments
+                    from scripts.utils.client_utils import get_requisition_root
+                    req_root = get_requisition_root(client_code, req_id)
+
+                    # Count resumes
+                    resumes_dir = req_root / "resumes" / "processed"
+                    candidate_count = len(list(resumes_dir.glob("*.txt"))) if resumes_dir.exists() else 0
+
+                    # Count assessments
+                    assessments_dir = req_root / "assessments" / "individual"
+                    assessed_count = len(list(assessments_dir.glob("*.json"))) if assessments_dir.exists() else 0
+
+                    total_candidates += candidate_count
+                    total_assessed += assessed_count
+
+                    client_reqs.append({
+                        'req_id': req_id,
+                        'title': req_config.get('job', {}).get('title', req_id),
+                        'status': req_config.get('status', 'unknown'),
+                        'candidate_count': candidate_count,
+                        'assessed_count': assessed_count
+                    })
+                except Exception:
+                    continue
+
+            if client_reqs:
+                dashboard_data.append({
+                    'client_code': client_code,
+                    'client_name': client_name,
+                    'requisitions': client_reqs,
+                    'status': client_config.get('status', 'active')
+                })
+        except Exception:
+            continue
+
+    return templates.TemplateResponse("dashboard.html", {
+        "request": request,
+        "clients": dashboard_data,
+        "total_clients": len(dashboard_data),
+        "total_requisitions": sum(len(c['requisitions']) for c in dashboard_data),
+        "total_candidates": total_candidates,
+        "total_assessed": total_assessed
+    })
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    return {"status": "healthy", "version": "1.0.0"}
+
+
+if __name__ == "__main__":
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

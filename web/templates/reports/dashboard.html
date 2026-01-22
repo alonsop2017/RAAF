@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Reports - {{ req_title }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> / <a href="/clients/{{ client_code }}">{{ client_name }}</a> / <a href="/requisitions/{{ client_code }}/{{ req_id }}">{{ req_id }}</a> / <span>Reports</span>
+</div>
+
+<div class="page-header">
+    <div class="flex flex-between flex-center">
+        <div>
+            <h1>Reports</h1>
+            <p class="subtitle">{{ req_title }} | {{ client_name }}</p>
+        </div>
+        {% if can_generate %}
+        <form action="/reports/{{ client_code }}/{{ req_id }}/generate" method="POST">
+            <input type="hidden" name="output_type" value="final">
+            <button type="submit" class="btn btn-primary">Generate New Report</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Summary Stats -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ summary.total }}</div>
+        <div class="stat-label">Total Assessed</div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-value">{{ summary.strong_recommend }}</div>
+        <div class="stat-label">Strong Recommend</div>
+    </div>
+    <div class="stat-card info">
+        <div class="stat-value">{{ summary.recommend }}</div>
+        <div class="stat-label">Recommend</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-value">{{ summary.conditional }}</div>
+        <div class="stat-label">Conditional</div>
+    </div>
+</div>
+
+<div class="two-column">
+    <div>
+        <!-- Generated Reports -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Generated Reports</h3>
+            </div>
+            {% if reports %}
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Report</th>
+                            <th>Type</th>
+                            <th>Created</th>
+                            <th>Size</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for report in reports %}
+                        <tr>
+                            <td>{{ report.filename }}</td>
+                            <td><span class="badge {% if report.type == 'final' %}badge-success{% else %}badge-secondary{% endif %}">{{ report.type }}</span></td>
+                            <td>{{ report.created }}</td>
+                            <td>{{ report.size }}</td>
+                            <td>
+                                <div class="action-buttons">
+                                    <a href="/reports/{{ client_code }}/{{ req_id }}/download/{{ report.path }}"
+                                       class="btn btn-sm btn-primary">Download</a>
+                                    <form action="/reports/{{ client_code }}/{{ req_id }}/delete/{{ report.path }}"
+                                          method="POST" style="display: inline;">
+                                        <button type="submit" class="btn btn-sm btn-danger"
+                                                onclick="return confirm('Delete this report?');">Delete</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="card-body">
+                <div class="empty-state">
+                    <h3>No Reports Yet</h3>
+                    <p>Generate your first report once candidates are assessed.</p>
+                    {% if can_generate %}
+                    <form action="/reports/{{ client_code }}/{{ req_id }}/generate" method="POST" class="mt-2">
+                        <input type="hidden" name="output_type" value="final">
+                        <button type="submit" class="btn btn-primary">Generate Report</button>
+                    </form>
+                    {% else %}
+                    <p class="text-muted mt-2">Assess candidates first to generate reports.</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div>
+        <!-- Top Candidates Preview -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Top Candidates Preview</h3>
+            </div>
+            {% if assessments %}
+            <div class="card-body">
+                {% for a in assessments %}
+                <div class="flex flex-between flex-center mb-2" style="padding: 0.5rem; background: #f8fafc; border-radius: 6px;">
+                    <div>
+                        <span style="font-weight: 500;">{{ loop.index }}. {{ a.name }}</span>
+                        <span class="text-muted" style="font-size: 0.875rem;"> ({{ a.percentage }}%)</span>
+                    </div>
+                    {% if a.recommendation == 'STRONG RECOMMEND' %}
+                    <span class="badge rec-strong">STRONG</span>
+                    {% elif a.recommendation == 'RECOMMEND' %}
+                    <span class="badge rec-recommend">REC</span>
+                    {% elif a.recommendation == 'CONDITIONAL' %}
+                    <span class="badge rec-conditional">COND</span>
+                    {% else %}
+                    <span class="badge rec-dnr">DNR</span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="card-body">
+                <p class="text-muted">No assessments completed yet.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Generate Options -->
+        {% if can_generate %}
+        <div class="card">
+            <div class="card-header">
+                <h3>Generate Options</h3>
+            </div>
+            <div class="card-body">
+                <form action="/reports/{{ client_code }}/{{ req_id }}/generate" method="POST">
+                    <div class="form-group">
+                        <label class="form-label">Report Type</label>
+                        <select name="output_type" class="form-select">
+                            <option value="final">Final Report</option>
+                            <option value="draft">Draft Report</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Generate Report</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}PCRecruiter Integration{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="flex flex-between flex-center">
+        <div>
+            <h1>PCRecruiter Integration</h1>
+            <p class="subtitle">Manage your PCR connection and sync operations</p>
+        </div>
+        <a href="/pcr/test" class="btn btn-outline">Test Connection</a>
+    </div>
+</div>
+
+<!-- Status -->
+<div class="card">
+    <div class="card-header">
+        <h3>Connection Status</h3>
+    </div>
+    <div class="card-body">
+        {% if pcr_configured %}
+        <div class="alert alert-success">
+            PCR credentials are configured. <a href="/pcr/test">Test the connection</a> to verify.
+        </div>
+        {% else %}
+        <div class="alert alert-warning">
+            <strong>PCR credentials not configured.</strong><br>
+            Copy <code>config/pcr_credentials_template.yaml</code> to <code>config/pcr_credentials.yaml</code>
+            and fill in your API credentials.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Linked Requisitions -->
+<div class="card">
+    <div class="card-header">
+        <h3>PCR-Linked Requisitions</h3>
+    </div>
+    {% if requisitions %}
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Requisition</th>
+                    <th>Client</th>
+                    <th>PCR Job ID</th>
+                    <th>Last Sync</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for req in requisitions %}
+                <tr>
+                    <td>
+                        <a href="/requisitions/{{ req.client_code }}/{{ req.req_id }}"
+                           style="font-weight: 500; color: var(--primary-color); text-decoration: none;">
+                            {{ req.title }}
+                        </a>
+                        <div class="text-muted" style="font-size: 0.875rem;">{{ req.req_id }}</div>
+                    </td>
+                    <td>{{ req.client_name }}</td>
+                    <td>{{ req.pcr_job_id or 'N/A' }}</td>
+                    <td>{{ req.last_sync }}</td>
+                    <td>
+                        <a href="/pcr/sync/{{ req.client_code }}/{{ req.req_id }}" class="btn btn-sm btn-primary">Sync</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card-body">
+        <p class="text-muted">No requisitions are linked to PCR positions yet.</p>
+        <p class="mt-2">
+            To link a requisition to PCR, add the <code>pcr_integration</code> section to the requisition's YAML file,
+            or use the import script: <code>python scripts/pcr/import_position.py</code>
+        </p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Quick Actions -->
+<div class="card">
+    <div class="card-header">
+        <h3>Quick Actions</h3>
+    </div>
+    <div class="card-body">
+        <div class="action-buttons">
+            <a href="/pcr/positions" class="btn btn-outline">List PCR Positions</a>
+            <a href="/pcr/test" class="btn btn-outline">Test Connection</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

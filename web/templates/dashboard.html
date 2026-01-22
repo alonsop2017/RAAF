@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Dashboard</h1>
+    <p class="subtitle">Overview of all clients and active requisitions</p>
+</div>
+
+<!-- Stats Grid -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ total_clients }}</div>
+        <div class="stat-label">Active Clients</div>
+    </div>
+    <div class="stat-card info">
+        <div class="stat-value">{{ total_requisitions }}</div>
+        <div class="stat-label">Open Requisitions</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ total_candidates }}</div>
+        <div class="stat-label">Total Candidates</div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-value">{{ total_assessed }}</div>
+        <div class="stat-label">Assessed</div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="card">
+    <div class="card-header">
+        <h3>Quick Actions</h3>
+    </div>
+    <div class="card-body">
+        <div class="action-buttons">
+            <a href="/clients/new" class="btn btn-primary">New Client</a>
+            <a href="/requisitions/new" class="btn btn-primary">New Requisition</a>
+            <a href="/pcr" class="btn btn-outline">PCR Integration</a>
+        </div>
+    </div>
+</div>
+
+<!-- Clients and Requisitions -->
+{% if clients %}
+<div class="card">
+    <div class="card-header">
+        <h3>Active Clients & Requisitions</h3>
+        <a href="/clients" class="btn btn-sm btn-outline">View All</a>
+    </div>
+    <div class="card-body">
+        {% for client in clients %}
+        <div class="client-card">
+            <div class="client-header">
+                <div>
+                    <a href="/clients/{{ client.client_code }}" class="client-name">{{ client.client_name }}</a>
+                    <span class="badge status-{{ client.status }}">{{ client.status }}</span>
+                </div>
+                <a href="/requisitions/new?client_code={{ client.client_code }}" class="btn btn-sm btn-outline">Add Requisition</a>
+            </div>
+
+            {% if client.requisitions %}
+            <div class="req-list">
+                {% for req in client.requisitions %}
+                <a href="/requisitions/{{ client.client_code }}/{{ req.req_id }}" class="req-item">
+                    <div>
+                        <div class="req-title">{{ req.title }}</div>
+                        <div class="req-meta">
+                            <span>{{ req.req_id }}</span>
+                            <span class="badge status-{{ req.status }}">{{ req.status }}</span>
+                        </div>
+                    </div>
+                    <div class="req-meta">
+                        <span>{{ req.candidate_count }} candidates</span>
+                        <span>{{ req.assessed_count }} assessed</span>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted">No requisitions yet</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body">
+        <div class="empty-state">
+            <h3>No Clients Yet</h3>
+            <p>Get started by creating your first client.</p>
+            <a href="/clients/new" class="btn btn-primary mt-2">Create Client</a>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Assessment - {{ assessment.candidate.name }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> / <a href="/assessments/{{ client_code }}/{{ req_id }}">Assessments</a> /
+    <a href="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}">{{ assessment.candidate.name }}</a> / <span>Edit</span>
+</div>
+
+<div class="page-header">
+    <h1>Edit Assessment</h1>
+    <p class="subtitle">{{ assessment.candidate.name }}</p>
+</div>
+
+<form action="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/update" method="POST">
+    <div class="two-column">
+        <div>
+            <!-- Category Scores -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>Scores</h3>
+                </div>
+                <div class="card-body">
+                    {% for category, data in assessment.scores.items() %}
+                    <div class="form-group">
+                        <label class="form-label" for="{{ category }}">
+                            {{ category.replace('_', ' ').title() }}
+                            <span class="text-muted">(max: {{ data.max }})</span>
+                        </label>
+                        <div class="form-row">
+                            <div>
+                                <input type="number" id="{{ category }}" name="{{ category }}" class="form-input"
+                                       value="{{ data.score }}" min="0" max="{{ data.max }}">
+                            </div>
+                            <div>
+                                <input type="text" name="{{ category }}_notes" class="form-input"
+                                       value="{{ data.notes or '' }}" placeholder="Notes...">
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <!-- Summary Fields -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>Summary</h3>
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label" for="summary">Summary</label>
+                        <textarea id="summary" name="summary" class="form-textarea">{{ assessment.summary or '' }}</textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="key_strengths">Key Strengths</label>
+                        <textarea id="key_strengths" name="key_strengths" class="form-textarea" rows="4"
+                                  placeholder="One per line">{{ assessment.key_strengths|join('\n') if assessment.key_strengths else '' }}</textarea>
+                        <p class="form-hint">Enter one strength per line</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="areas_of_concern">Areas of Concern</label>
+                        <textarea id="areas_of_concern" name="areas_of_concern" class="form-textarea" rows="4"
+                                  placeholder="One per line">{{ assessment.areas_of_concern|join('\n') if assessment.areas_of_concern else '' }}</textarea>
+                        <p class="form-hint">Enter one concern per line</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="interview_focus_areas">Interview Focus Areas</label>
+                        <textarea id="interview_focus_areas" name="interview_focus_areas" class="form-textarea" rows="4"
+                                  placeholder="One per line">{{ assessment.interview_focus_areas|join('\n') if assessment.interview_focus_areas else '' }}</textarea>
+                        <p class="form-hint">Enter one area per line</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="assessor">Assessor</label>
+                        <input type="text" id="assessor" name="assessor" class="form-input"
+                               value="{{ assessment.metadata.assessor or '' }}" placeholder="Your name">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Thresholds Reference -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>Recommendation Thresholds</h3>
+                </div>
+                <div class="card-body">
+                    <p><strong>Strong Recommend:</strong> {{ thresholds.strong_recommend }}%+</p>
+                    <p class="mt-1"><strong>Recommend:</strong> {{ thresholds.recommend }}%+</p>
+                    <p class="mt-1"><strong>Conditional:</strong> {{ thresholds.conditional }}%+</p>
+                    <p class="mt-1"><strong>Do Not Recommend:</strong> &lt;{{ thresholds.conditional }}%</p>
+                    <p class="mt-2 text-muted">Recommendation will be calculated automatically based on total score.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="action-buttons mt-3">
+        <button type="submit" class="btn btn-primary btn-lg">Save Changes</button>
+        <a href="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}" class="btn btn-outline">Cancel</a>
+    </div>
+</form>
+{% endblock %}

@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}Assessments - {{ req_title }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> / <a href="/clients/{{ client_code }}">{{ client_name }}</a> / <a href="/requisitions/{{ client_code }}/{{ req_id }}">{{ req_id }}</a> / <span>Assessments</span>
+</div>
+
+<div class="page-header">
+    <div class="flex flex-between flex-center">
+        <div>
+            <h1>Assessments</h1>
+            <p class="subtitle">{{ req_title }} | {{ client_name }}</p>
+        </div>
+        <div class="action-buttons">
+            {% if pending %}
+            <form action="/assessments/{{ client_code }}/{{ req_id }}/run" method="POST">
+                <button type="submit" class="btn btn-primary">Assess All Pending ({{ pending|length }})</button>
+            </form>
+            {% endif %}
+            <a href="/reports/{{ client_code }}/{{ req_id }}" class="btn btn-outline">Generate Report</a>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Stats -->
+<div class="stats-grid">
+    <div class="stat-card success">
+        <div class="stat-value">{{ summary.strong_recommend }}</div>
+        <div class="stat-label">Strong Recommend</div>
+    </div>
+    <div class="stat-card info">
+        <div class="stat-value">{{ summary.recommend }}</div>
+        <div class="stat-label">Recommend</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-value">{{ summary.conditional }}</div>
+        <div class="stat-label">Conditional</div>
+    </div>
+    <div class="stat-card danger">
+        <div class="stat-value">{{ summary.do_not_recommend }}</div>
+        <div class="stat-label">Do Not Recommend</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ summary.pending }}</div>
+        <div class="stat-label">Pending</div>
+    </div>
+</div>
+
+<!-- Thresholds Info -->
+<div class="alert alert-info">
+    <strong>Thresholds:</strong>
+    Strong Recommend: {{ thresholds.strong_recommend }}%+ |
+    Recommend: {{ thresholds.recommend }}%+ |
+    Conditional: {{ thresholds.conditional }}%+ |
+    DNR: &lt;{{ thresholds.conditional }}%
+</div>
+
+<div class="two-column">
+    <div>
+        <!-- Completed Assessments -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Completed Assessments ({{ assessments|length }})</h3>
+            </div>
+            {% if assessments %}
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Candidate</th>
+                            <th>Score</th>
+                            <th>%</th>
+                            <th>Stability</th>
+                            <th>Recommendation</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for a in assessments %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>
+                                <a href="/assessments/{{ client_code }}/{{ req_id }}/{{ a.name_normalized }}"
+                                   style="font-weight: 500; color: var(--primary-color); text-decoration: none;">
+                                    {{ a.name }}
+                                </a>
+                            </td>
+                            <td style="font-weight: 600;">{{ a.score }}/{{ a.max_score }}</td>
+                            <td>{{ a.percentage }}%</td>
+                            <td>{{ a.stability }}</td>
+                            <td>
+                                {% if a.recommendation == 'STRONG RECOMMEND' %}
+                                <span class="badge rec-strong">STRONG</span>
+                                {% elif a.recommendation == 'RECOMMEND' %}
+                                <span class="badge rec-recommend">RECOMMEND</span>
+                                {% elif a.recommendation == 'CONDITIONAL' %}
+                                <span class="badge rec-conditional">CONDITIONAL</span>
+                                {% else %}
+                                <span class="badge rec-dnr">DNR</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="action-buttons">
+                                    <a href="/assessments/{{ client_code }}/{{ req_id }}/{{ a.name_normalized }}"
+                                       class="btn btn-sm btn-outline">View</a>
+                                    <a href="/assessments/{{ client_code }}/{{ req_id }}/{{ a.name_normalized }}/edit"
+                                       class="btn btn-sm btn-outline">Edit</a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="card-body">
+                <p class="text-muted">No assessments completed yet.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div>
+        <!-- Pending Assessments -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Pending ({{ pending|length }})</h3>
+            </div>
+            {% if pending %}
+            <div class="card-body">
+                {% for p in pending %}
+                <div class="flex flex-between flex-center mb-2">
+                    <span>{{ p.name }}</span>
+                    <form action="/assessments/{{ client_code }}/{{ req_id }}/{{ p.name_normalized }}/run" method="POST">
+                        <button type="submit" class="btn btn-sm btn-primary">Assess</button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="card-body">
+                <p class="text-muted">All candidates have been assessed.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Assessment Progress</h3>
+            </div>
+            <div class="card-body">
+                <div class="progress-bar" style="height: 20px;">
+                    <div class="progress-fill success" style="width: {{ (assessments|length / (assessments|length + pending|length) * 100) if (assessments|length + pending|length) > 0 else 0 }}%;"></div>
+                </div>
+                <p class="text-center mt-2">
+                    {{ assessments|length }} of {{ assessments|length + pending|length }} candidates assessed
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

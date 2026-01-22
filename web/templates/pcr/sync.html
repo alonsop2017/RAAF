@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Sync - {{ req_title }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> / <a href="/pcr">PCR Integration</a> / <span>{{ req_id }}</span>
+</div>
+
+<div class="page-header">
+    <h1>PCR Sync</h1>
+    <p class="subtitle">{{ req_title }} | {{ client_name }}</p>
+</div>
+
+{% if has_pcr_link %}
+<div class="card">
+    <div class="card-header">
+        <h3>PCR Integration Info</h3>
+    </div>
+    <div class="card-body">
+        <p><strong>PCR Position ID:</strong> {{ pcr_info.position_id }}</p>
+        <p class="mt-1"><strong>Last Sync:</strong> {{ pcr_info.last_sync or 'Never' }}</p>
+    </div>
+</div>
+
+<!-- Sync Actions -->
+<div class="card">
+    <div class="card-header">
+        <h3>Sync Operations</h3>
+    </div>
+    <div class="card-body">
+        <div class="form-row">
+            <div class="card" style="border: 1px dashed var(--border-color);">
+                <div class="card-body text-center">
+                    <h4>Sync Candidates</h4>
+                    <p class="text-muted mb-2">Pull candidate list from PCR pipeline</p>
+                    <form action="/pcr/sync-candidates" method="POST">
+                        <input type="hidden" name="client_code" value="{{ client_code }}">
+                        <input type="hidden" name="req_id" value="{{ req_id }}">
+                        <button type="submit" class="btn btn-primary">Sync Candidates</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card" style="border: 1px dashed var(--border-color);">
+                <div class="card-body text-center">
+                    <h4>Download Resumes</h4>
+                    <p class="text-muted mb-2">Download resumes from PCR</p>
+                    <form action="/pcr/download-resumes" method="POST">
+                        <input type="hidden" name="client_code" value="{{ client_code }}">
+                        <input type="hidden" name="req_id" value="{{ req_id }}">
+                        <button type="submit" class="btn btn-primary">Download Resumes</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-row mt-3">
+            <div class="card" style="border: 1px dashed var(--border-color);">
+                <div class="card-body text-center">
+                    <h4>Push Scores</h4>
+                    <p class="text-muted mb-2">Push assessment scores to PCR</p>
+                    <form action="/pcr/push-scores" method="POST">
+                        <input type="hidden" name="client_code" value="{{ client_code }}">
+                        <input type="hidden" name="req_id" value="{{ req_id }}">
+                        <button type="submit" class="btn btn-success">Push Scores</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card" style="border: 1px dashed var(--border-color);">
+                <div class="card-body text-center">
+                    <h4>Update Pipeline</h4>
+                    <p class="text-muted mb-2">Update candidate pipeline statuses</p>
+                    <form action="/pcr/update-pipeline" method="POST">
+                        <input type="hidden" name="client_code" value="{{ client_code }}">
+                        <input type="hidden" name="req_id" value="{{ req_id }}">
+                        <button type="submit" class="btn btn-success">Update Pipeline</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-warning">
+    This requisition is not linked to a PCR position. Add the PCR integration details to the requisition configuration.
+</div>
+{% endif %}
+
+<div class="action-buttons">
+    <a href="/requisitions/{{ client_code }}/{{ req_id }}" class="btn btn-outline">Back to Requisition</a>
+    <a href="/pcr" class="btn btn-outline">PCR Dashboard</a>
+</div>
+{% endblock %}

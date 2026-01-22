@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+
+{% block title %}{{ req.job.title }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> / <a href="/clients/{{ client_code }}">{{ client_name }}</a> / <span>{{ req_id }}</span>
+</div>
+
+<div class="page-header">
+    <div class="flex flex-between flex-center">
+        <div>
+            <h1>{{ req.job.title }}</h1>
+            <p class="subtitle">{{ req_id }} | {{ client_name }}</p>
+        </div>
+        <div class="action-buttons">
+            <form action="/requisitions/{{ client_code }}/{{ req_id }}/update-status" method="POST" style="display: inline;">
+                <select name="status" onchange="this.form.submit()" class="form-select" style="width: auto;">
+                    <option value="active" {% if req.status == 'active' %}selected{% endif %}>Active</option>
+                    <option value="on_hold" {% if req.status == 'on_hold' %}selected{% endif %}>On Hold</option>
+                    <option value="filled" {% if req.status == 'filled' %}selected{% endif %}>Filled</option>
+                    <option value="cancelled" {% if req.status == 'cancelled' %}selected{% endif %}>Cancelled</option>
+                </select>
+            </form>
+            <a href="/requisitions/{{ client_code }}/{{ req_id }}/edit" class="btn btn-outline">Edit</a>
+        </div>
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ candidate_count }}</div>
+        <div class="stat-label">Total Candidates</div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-value">{{ assessed_count }}</div>
+        <div class="stat-label">Assessed</div>
+    </div>
+    <div class="stat-card info">
+        <div class="stat-value">{{ candidate_count - assessed_count }}</div>
+        <div class="stat-label">Pending</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ reports|length }}</div>
+        <div class="stat-label">Reports</div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="card">
+    <div class="card-header">
+        <h3>Quick Actions</h3>
+    </div>
+    <div class="card-body">
+        <div class="action-buttons">
+            <a href="/candidates/{{ client_code }}/{{ req_id }}/upload" class="btn btn-primary">Upload Resumes</a>
+            <a href="/assessments/{{ client_code }}/{{ req_id }}" class="btn btn-primary">Assess Candidates</a>
+            <a href="/reports/{{ client_code }}/{{ req_id }}" class="btn btn-primary">Generate Report</a>
+            <a href="/pcr/sync/{{ client_code }}/{{ req_id }}" class="btn btn-outline">PCR Sync</a>
+        </div>
+    </div>
+</div>
+
+<div class="two-column">
+    <div>
+        <!-- Candidates -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Candidates</h3>
+                <a href="/candidates/{{ client_code }}/{{ req_id }}" class="btn btn-sm btn-outline">View All</a>
+            </div>
+            {% if candidates %}
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Candidate</th>
+                            <th>Score</th>
+                            <th>Recommendation</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for candidate in candidates[:10] %}
+                        <tr>
+                            <td>
+                                <a href="/candidates/{{ client_code }}/{{ req_id }}/{{ candidate.name_normalized }}"
+                                   style="font-weight: 500; color: var(--primary-color); text-decoration: none;">
+                                    {{ candidate.name }}
+                                </a>
+                            </td>
+                            <td>
+                                {% if candidate.assessed %}
+                                <span class="score-display">{{ candidate.score }}/100</span>
+                                <span class="score-percentage">({{ candidate.percentage }}%)</span>
+                                {% else %}
+                                <span class="text-muted">Not assessed</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if candidate.assessed %}
+                                    {% if candidate.recommendation == 'STRONG RECOMMEND' %}
+                                    <span class="badge rec-strong">{{ candidate.recommendation }}</span>
+                                    {% elif candidate.recommendation == 'RECOMMEND' %}
+                                    <span class="badge rec-recommend">{{ candidate.recommendation }}</span>
+                                    {% elif candidate.recommendation == 'CONDITIONAL' %}
+                                    <span class="badge rec-conditional">{{ candidate.recommendation }}</span>
+                                    {% elif candidate.recommendation == 'DO NOT RECOMMEND' %}
+                                    <span class="badge rec-dnr">DNR</span>
+                                    {% else %}
+                                    <span class="badge rec-pending">{{ candidate.recommendation }}</span>
+                                    {% endif %}
+                                {% else %}
+                                <span class="badge rec-pending">PENDING</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="/candidates/{{ client_code }}/{{ req_id }}/{{ candidate.name_normalized }}"
+                                   class="btn btn-sm btn-outline">View</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if candidates|length > 10 %}
+            <div class="card-body text-center">
+                <a href="/candidates/{{ client_code }}/{{ req_id }}" class="btn btn-outline">View All {{ candidates|length }} Candidates</a>
+            </div>
+            {% endif %}
+            {% else %}
+            <div class="card-body">
+                <div class="empty-state">
+                    <h3>No Candidates Yet</h3>
+                    <p>Upload resumes or sync from PCR to add candidates.</p>
+                    <div class="action-buttons mt-2" style="justify-content: center;">
+                        <a href="/candidates/{{ client_code }}/{{ req_id }}/upload" class="btn btn-primary">Upload Resumes</a>
+                        <a href="/pcr/sync/{{ client_code }}/{{ req_id }}" class="btn btn-outline">Sync from PCR</a>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Reports -->
+        {% if reports %}
+        <div class="card">
+            <div class="card-header">
+                <h3>Recent Reports</h3>
+                <a href="/reports/{{ client_code }}/{{ req_id }}" class="btn btn-sm btn-outline">All Reports</a>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Report</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for report in reports[:5] %}
+                        <tr>
+                            <td>{{ report.filename }}</td>
+                            <td>{{ report.created }}</td>
+                            <td>
+                                <a href="/reports/{{ client_code }}/{{ req_id }}/download/final/{{ report.filename }}"
+                                   class="btn btn-sm btn-outline">Download</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div>
+        <!-- Job Details -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Job Details</h3>
+            </div>
+            <div class="card-body">
+                <p><strong>Title:</strong> {{ req.job.title }}</p>
+                <p class="mt-1"><strong>Department:</strong> {{ req.job.department or 'N/A' }}</p>
+                <p class="mt-1"><strong>Location:</strong> {{ req.job.location or 'N/A' }}</p>
+
+                {% if req.job.salary_range %}
+                <p class="mt-1"><strong>Salary Range:</strong>
+                    {% if req.job.salary_range.min and req.job.salary_range.max %}
+                    ${{ "{:,}".format(req.job.salary_range.min) }} - ${{ "{:,}".format(req.job.salary_range.max) }} {{ req.job.salary_range.currency or 'CAD' }}
+                    {% else %}
+                    N/A
+                    {% endif %}
+                </p>
+                {% endif %}
+
+                <h4 class="mt-3 mb-1">Requirements</h4>
+                <p><strong>Experience:</strong> {{ req.requirements.experience_years_min or 0 }}+ years</p>
+                <p class="mt-1"><strong>Education:</strong> {{ req.requirements.education or 'N/A' }}</p>
+
+                <h4 class="mt-3 mb-1">Assessment Thresholds</h4>
+                <p><strong>Strong Recommend:</strong> {{ req.assessment.thresholds.strong_recommend }}%+</p>
+                <p class="mt-1"><strong>Recommend:</strong> {{ req.assessment.thresholds.recommend }}%+</p>
+                <p class="mt-1"><strong>Conditional:</strong> {{ req.assessment.thresholds.conditional }}%+</p>
+
+                {% if req.notes %}
+                <h4 class="mt-3 mb-1">Notes</h4>
+                <p style="white-space: pre-wrap;">{{ req.notes }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Batches -->
+        {% if batches %}
+        <div class="card">
+            <div class="card-header">
+                <h3>Assessment Batches</h3>
+            </div>
+            <div class="card-body">
+                {% for batch in batches %}
+                <div class="flex flex-between flex-center mb-1">
+                    <span>{{ batch.name }}</span>
+                    <span class="badge badge-secondary">{{ batch.candidate_count }} candidates</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
