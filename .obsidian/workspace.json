@@ -1,0 +1,201 @@
+{
+  "main": {
+    "id": "03f5325520eab97b",
+    "type": "split",
+    "children": [
+      {
+        "id": "8f8786f573743115",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "c95a1616c98e05f5",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "README.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "README"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "b6f206932948e06b",
+    "type": "split",
+    "children": [
+      {
+        "id": "aed6ced577be5fa3",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "87826bbf33380378",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "89737d3cb4e98891",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "0256a404cb7e391a",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "3fa5681208d9d837",
+    "type": "split",
+    "children": [
+      {
+        "id": "76e0a2e3e2e19cd7",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "34752ee08663ee90",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "README.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for README"
+            }
+          },
+          {
+            "id": "c09c03761a3ea5bb",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "README.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from README"
+            }
+          },
+          {
+            "id": "b7efb2b222dc2e87",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "57c5520a8dff76a9",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "8c9cfad404c9d42a",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "README.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of README"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "87826bbf33380378",
+  "lastOpenFiles": [
+    "web/templates/candidates/file_manager.html",
+    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/processed/shivani_mulekar_resume_resume.txt",
+    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/incoming/Shivani Mulekar_Resume.docx",
+    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/processed/shivani_mulekar_cover_letter_resume.txt",
+    "scripts/utils/__pycache__/docx_reader.cpython-310.pyc",
+    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/incoming/Shivani_Mulekar_Cover_Letter.docx",
+    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/processed/shawnhandelsman_resume.txt",
+    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/incoming/Shawnhandelsman.pdf",
+    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/processed/joseph_illingworth_cover_letter_2026_resume.txt",
+    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/incoming/Joseph Illingworth_Cover Letter_2026.pdf",
+    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/processed/illingworth_joseph_resume_2026_resume.txt",
+    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/framework/assessment_framework.md"
+  ]
+}

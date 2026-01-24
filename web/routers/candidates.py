@@ -238,3 +238,227 @@ async def delete_candidate(client_code: str, req_id: str, name_normalized: str):
         assessment_file.unlink()
 
     return RedirectResponse(url=f"/candidates/{client_code}/{req_id}", status_code=303)
+
+
+# =============================================================================
+# FILE MANAGER - Incoming folder management
+# =============================================================================
+
+@router.get("/{client_code}/{req_id}/files/incoming", response_class=HTMLResponse)
+async def file_manager(request: Request, client_code: str, req_id: str):
+    """File manager for incoming resumes folder."""
+    try:
+        req_config = get_requisition_config(client_code, req_id)
+        client_config = get_client_config(client_code)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    req_root = get_requisition_root(client_code, req_id)
+    incoming_dir = req_root / "resumes" / "incoming"
+    processed_dir = req_root / "resumes" / "processed"
+
+    incoming_dir.mkdir(parents=True, exist_ok=True)
+
+    # Get files in incoming folder
+    incoming_files = []
+    for file_path in sorted(incoming_dir.iterdir()):
+        if file_path.is_file():
+            # Check if already processed
+            normalized = normalize_filename(file_path.name)
+            processed_file = processed_dir / f"{normalized}_resume.txt"
+
+            incoming_files.append({
+                'name': file_path.name,
+                'size': f"{file_path.stat().st_size / 1024:.1f} KB",
+                'modified': datetime.fromtimestamp(file_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+                'extension': file_path.suffix.lower(),
+                'processed': processed_file.exists()
+            })
+
+    return templates.TemplateResponse("candidates/file_manager.html", {
+        "request": request,
+        "client_code": client_code,
+        "req_id": req_id,
+        "client_name": client_config.get('company_name', client_code),
+        "req_title": req_config.get('job', {}).get('title', req_id),
+        "files": incoming_files,
+        "file_count": len(incoming_files)
+    })
+
+
+@router.post("/{client_code}/{req_id}/files/incoming/delete")
+async def delete_incoming_file(
+    client_code: str,
+    req_id: str,
+    filename: str = Form(...)
+):
+    """Delete a file from the incoming folder."""
+    req_root = get_requisition_root(client_code, req_id)
+    incoming_dir = req_root / "resumes" / "incoming"
+
+    file_path = incoming_dir / filename
+    if file_path.exists() and file_path.is_file():
+        file_path.unlink()
+
+    return RedirectResponse(
+        url=f"/candidates/{client_code}/{req_id}/files/incoming?deleted=1",
+        status_code=303
+    )
+
+
+@router.post("/{client_code}/{req_id}/files/incoming/rename")
+async def rename_incoming_file(
+    client_code: str,
+    req_id: str,
+    old_name: str = Form(...),
+    new_name: str = Form(...)
+):
+    """Rename a file in the incoming folder."""
+    req_root = get_requisition_root(client_code, req_id)
+    incoming_dir = req_root / "resumes" / "incoming"
+
+    old_path = incoming_dir / old_name
+
+    # Preserve extension if not provided in new name
+    old_ext = old_path.suffix
+    if not Path(new_name).suffix:
+        new_name = new_name + old_ext
+
+    new_path = incoming_dir / new_name
+
+    if old_path.exists() and old_path.is_file():
+        if new_path.exists():
+            raise HTTPException(status_code=400, detail=f"File '{new_name}' already exists")
+        old_path.rename(new_path)
+
+    return RedirectResponse(
+        url=f"/candidates/{client_code}/{req_id}/files/incoming?renamed=1",
+        status_code=303
+    )
+
+
+@router.post("/{client_code}/{req_id}/files/incoming/process")
+async def process_incoming_file(
+    client_code: str,
+    req_id: str,
+    filename: str = Form(...)
+):
+    """Process a single file from incoming to processed."""
+    req_root = get_requisition_root(client_code, req_id)
+    incoming_dir = req_root / "resumes" / "incoming"
+    processed_dir = req_root / "resumes" / "processed"
+
+    processed_dir.mkdir(parents=True, exist_ok=True)
+
+    file_path = incoming_dir / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Extract text based on file type
+    normalized_name = normalize_filename(filename)
+    processed_path = processed_dir / f"{normalized_name}_resume.txt"
+
+    try:
+        with open(file_path, 'rb') as f:
+            content = f.read()
+
+        if filename.lower().endswith('.pdf'):
+            from scripts.utils.pdf_reader import extract_text_from_pdf
+            text = extract_text_from_pdf(str(file_path))
+        elif filename.lower().endswith('.docx'):
+            from scripts.utils.docx_reader import extract_text_from_docx
+            text = extract_text_from_docx(str(file_path))
+        elif filename.lower().endswith('.txt'):
+            text = content.decode('utf-8', errors='ignore')
+        else:
+            text = content.decode('utf-8', errors='ignore')
+
+        # Add metadata header
+        header = f"""# Extracted Resume
+# Source: {filename}
+# Extracted: {datetime.now().strftime('%Y-%m-%d')}
+
+---
+
+"""
+        with open(processed_path, 'w') as f:
+            f.write(header + text)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+
+    return RedirectResponse(
+        url=f"/candidates/{client_code}/{req_id}/files/incoming?processed=1",
+        status_code=303
+    )
+
+
+@router.post("/{client_code}/{req_id}/files/incoming/process-all")
+async def process_all_incoming_files(client_code: str, req_id: str):
+    """Process all files in the incoming folder."""
+    req_root = get_requisition_root(client_code, req_id)
+    incoming_dir = req_root / "resumes" / "incoming"
+    processed_dir = req_root / "resumes" / "processed"
+
+    processed_dir.mkdir(parents=True, exist_ok=True)
+
+    processed_count = 0
+    errors = []
+
+    for file_path in incoming_dir.iterdir():
+        if not file_path.is_file():
+            continue
+
+        filename = file_path.name
+        normalized_name = normalize_filename(filename)
+        processed_path = processed_dir / f"{normalized_name}_resume.txt"
+
+        # Skip if already processed
+        if processed_path.exists():
+            continue
+
+        try:
+            with open(file_path, 'rb') as f:
+                content = f.read()
+
+            if filename.lower().endswith('.pdf'):
+                from scripts.utils.pdf_reader import extract_text_from_pdf
+                text = extract_text_from_pdf(str(file_path))
+            elif filename.lower().endswith('.docx'):
+                from scripts.utils.docx_reader import extract_text_from_docx
+                text = extract_text_from_docx(str(file_path))
+            elif filename.lower().endswith('.txt'):
+                text = content.decode('utf-8', errors='ignore')
+            else:
+                text = content.decode('utf-8', errors='ignore')
+
+            header = f"""# Extracted Resume
+# Source: {filename}
+# Extracted: {datetime.now().strftime('%Y-%m-%d')}
+
+---
+
+"""
+            with open(processed_path, 'w') as f:
+                f.write(header + text)
+
+            processed_count += 1
+        except Exception as e:
+            errors.append(f"{filename}: {str(e)}")
+
+    return RedirectResponse(
+        url=f"/candidates/{client_code}/{req_id}/files/incoming?processed={processed_count}",
+        status_code=303
+    )
+
+
+@router.get("/{client_code}/{req_id}/files/incoming/download/{filename}")
+async def download_incoming_file(client_code: str, req_id: str, filename: str):
+    """Download a file from the incoming folder."""
+    req_root = get_requisition_root(client_code, req_id)
+    file_path = req_root / "resumes" / "incoming" / filename
+
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(file_path, filename=filename)

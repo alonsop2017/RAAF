@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}File Manager - {{ req_title }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> / <a href="/requisitions/{{ client_code }}/{{ req_id }}">{{ req_id }}</a> /
+    <a href="/candidates/{{ client_code }}/{{ req_id }}">Candidates</a> / <span>File Manager</span>
+</div>
+
+<div class="page-header">
+    <div class="flex flex-between flex-center">
+        <div>
+            <h1>File Manager</h1>
+            <p class="subtitle">Manage incoming resumes | {{ req_title }}</p>
+        </div>
+        <div class="action-buttons">
+            <a href="/candidates/{{ client_code }}/{{ req_id }}/upload" class="btn btn-primary">Upload Files</a>
+            <a href="/candidates/{{ client_code }}/{{ req_id }}" class="btn btn-outline">Back to Candidates</a>
+        </div>
+    </div>
+</div>
+
+<!-- Alerts -->
+{% if request.query_params.get('deleted') %}
+<div class="alert alert-success">File deleted successfully.</div>
+{% endif %}
+{% if request.query_params.get('renamed') %}
+<div class="alert alert-success">File renamed successfully.</div>
+{% endif %}
+{% if request.query_params.get('processed') %}
+<div class="alert alert-success">{{ request.query_params.get('processed') }} file(s) processed successfully.</div>
+{% endif %}
+
+<!-- Quick Actions -->
+{% if files %}
+<div class="card">
+    <div class="card-header">
+        <h3>Quick Actions</h3>
+    </div>
+    <div class="card-body">
+        <form action="/candidates/{{ client_code }}/{{ req_id }}/files/incoming/process-all" method="POST" style="display: inline;">
+            <button type="submit" class="btn btn-success">Process All Unprocessed Files</button>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<!-- Files Table -->
+<div class="card">
+    <div class="card-header">
+        <h3>Incoming Files ({{ file_count }})</h3>
+    </div>
+    {% if files %}
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Filename</th>
+                    <th>Type</th>
+                    <th>Size</th>
+                    <th>Modified</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for file in files %}
+                <tr>
+                    <td>
+                        <span style="font-weight: 500;">{{ file.name }}</span>
+                    </td>
+                    <td>
+                        <span class="badge badge-secondary">{{ file.extension or 'unknown' }}</span>
+                    </td>
+                    <td>{{ file.size }}</td>
+                    <td>{{ file.modified }}</td>
+                    <td>
+                        {% if file.processed %}
+                        <span class="badge badge-success">Processed</span>
+                        {% else %}
+                        <span class="badge badge-warning">Pending</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <!-- Download -->
+                            <a href="/candidates/{{ client_code }}/{{ req_id }}/files/incoming/download/{{ file.name }}"
+                               class="btn btn-sm btn-outline" title="Download">Download</a>
+
+                            <!-- Process -->
+                            {% if not file.processed %}
+                            <form action="/candidates/{{ client_code }}/{{ req_id }}/files/incoming/process"
+                                  method="POST" style="display: inline;">
+                                <input type="hidden" name="filename" value="{{ file.name }}">
+                                <button type="submit" class="btn btn-sm btn-success" title="Process">Process</button>
+                            </form>
+                            {% endif %}
+
+                            <!-- Rename -->
+                            <button type="button" class="btn btn-sm btn-outline"
+                                    onclick="showRenameModal('{{ file.name }}')" title="Rename">Rename</button>
+
+                            <!-- Delete -->
+                            <form action="/candidates/{{ client_code }}/{{ req_id }}/files/incoming/delete"
+                                  method="POST" style="display: inline;"
+                                  onsubmit="return confirm('Delete {{ file.name }}?');">
+                                <input type="hidden" name="filename" value="{{ file.name }}">
+                                <button type="submit" class="btn btn-sm btn-danger" title="Delete">Delete</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card-body">
+        <div class="empty-state">
+            <h3>No Files in Incoming Folder</h3>
+            <p>Upload resumes to add files for processing.</p>
+            <a href="/candidates/{{ client_code }}/{{ req_id }}/upload" class="btn btn-primary mt-2">Upload Files</a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Rename Modal -->
+<div id="renameModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+     background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div class="card" style="max-width: 500px; margin: 2rem;">
+        <div class="card-header">
+            <h3>Rename File</h3>
+        </div>
+        <div class="card-body">
+            <form id="renameForm" action="/candidates/{{ client_code }}/{{ req_id }}/files/incoming/rename" method="POST">
+                <input type="hidden" name="old_name" id="oldFileName">
+                <div class="form-group">
+                    <label class="form-label">Current Name</label>
+                    <input type="text" class="form-input" id="currentNameDisplay" disabled>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="new_name">New Name</label>
+                    <input type="text" class="form-input" name="new_name" id="newFileName" required>
+                    <p class="form-hint">Extension will be preserved if not specified</p>
+                </div>
+                <div class="action-buttons">
+                    <button type="submit" class="btn btn-primary">Rename</button>
+                    <button type="button" class="btn btn-outline" onclick="hideRenameModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function showRenameModal(filename) {
+    document.getElementById('oldFileName').value = filename;
+    document.getElementById('currentNameDisplay').value = filename;
+    // Set new name without extension
+    const nameWithoutExt = filename.replace(/\.[^/.]+$/, "");
+    document.getElementById('newFileName').value = nameWithoutExt;
+    document.getElementById('renameModal').style.display = 'flex';
+}
+
+function hideRenameModal() {
+    document.getElementById('renameModal').style.display = 'none';
+}
+
+// Close modal when clicking outside
+document.getElementById('renameModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        hideRenameModal();
+    }
+});
+</script>
+{% endblock %}
