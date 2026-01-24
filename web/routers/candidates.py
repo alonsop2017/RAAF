@@ -128,12 +128,12 @@ async def upload_resumes(
             try:
                 if file.filename.lower().endswith('.pdf'):
                     # Extract from PDF
-                    from scripts.utils.pdf_reader import extract_text_from_pdf
-                    text = extract_text_from_pdf(str(original_path))
+                    from scripts.utils.pdf_reader import extract_text
+                    text = extract_text(str(original_path))
                 elif file.filename.lower().endswith('.docx'):
                     # Extract from DOCX
-                    from scripts.utils.docx_reader import extract_text_from_docx
-                    text = extract_text_from_docx(str(original_path))
+                    from scripts.utils.docx_reader import extract_text as extract_docx_text
+                    text = extract_docx_text(str(original_path))
                 elif file.filename.lower().endswith('.txt'):
                     # Already text
                     text = content.decode('utf-8', errors='ignore')
@@ -363,11 +363,11 @@ async def process_incoming_file(
             content = f.read()
 
         if filename.lower().endswith('.pdf'):
-            from scripts.utils.pdf_reader import extract_text_from_pdf
-            text = extract_text_from_pdf(str(file_path))
+            from scripts.utils.pdf_reader import extract_text as extract_pdf_text
+            text = extract_pdf_text(str(file_path))
         elif filename.lower().endswith('.docx'):
-            from scripts.utils.docx_reader import extract_text_from_docx
-            text = extract_text_from_docx(str(file_path))
+            from scripts.utils.docx_reader import extract_text as extract_docx_text
+            text = extract_docx_text(str(file_path))
         elif filename.lower().endswith('.txt'):
             text = content.decode('utf-8', errors='ignore')
         else:
@@ -422,11 +422,11 @@ async def process_all_incoming_files(client_code: str, req_id: str):
                 content = f.read()
 
             if filename.lower().endswith('.pdf'):
-                from scripts.utils.pdf_reader import extract_text_from_pdf
-                text = extract_text_from_pdf(str(file_path))
+                from scripts.utils.pdf_reader import extract_text as extract_pdf_text
+                text = extract_pdf_text(str(file_path))
             elif filename.lower().endswith('.docx'):
-                from scripts.utils.docx_reader import extract_text_from_docx
-                text = extract_text_from_docx(str(file_path))
+                from scripts.utils.docx_reader import extract_text as extract_docx_text
+                text = extract_docx_text(str(file_path))
             elif filename.lower().endswith('.txt'):
                 text = content.decode('utf-8', errors='ignore')
             else:

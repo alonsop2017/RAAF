@@ -185,17 +185,17 @@
   },
   "active": "87826bbf33380378",
   "lastOpenFiles": [
+    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/incoming/Illingworth_Joseph_Resume.pdf",
+    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/incoming/Handelsman_Shawn_Resume.pdf",
+    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/assessments/individual/joseph_illingworth_cover_letter_2026_assessment.json",
+    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/assessments/individual/shawnhandelsman_assessment.json",
+    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/assessments/individual/shivani_mulekar_cover_letter_assessment.json",
+    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/assessments/individual/shivani_mulekar_assessment.json",
+    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/assessments/individual/illingworth_joseph_2026_assessment.json",
     "web/templates/candidates/file_manager.html",
     "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/processed/shivani_mulekar_resume_resume.txt",
     "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/incoming/Shivani Mulekar_Resume.docx",
     "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/processed/shivani_mulekar_cover_letter_resume.txt",
-    "scripts/utils/__pycache__/docx_reader.cpython-310.pyc",
-    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/incoming/Shivani_Mulekar_Cover_Letter.docx",
-    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/processed/shawnhandelsman_resume.txt",
-    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/incoming/Shawnhandelsman.pdf",
-    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/processed/joseph_illingworth_cover_letter_2026_resume.txt",
-    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/incoming/Joseph Illingworth_Cover Letter_2026.pdf",
-    "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/resumes/processed/illingworth_joseph_resume_2026_resume.txt",
     "clients/efrat_2026/requisitions/REQ-2026-001-ECSM/framework/assessment_framework.md"
   ]
 }
