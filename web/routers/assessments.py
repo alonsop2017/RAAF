@@ -25,7 +25,13 @@ router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
 
 
-def run_assessment(client_code: str, req_id: str, candidate_name: str = None, batch_name: str = None):
+def run_assessment(
+    client_code: str,
+    req_id: str,
+    candidate_name: str = None,
+    batch_name: str = None,
+    use_ai: bool = False
+):
     """Run assessment script as a subprocess."""
     script_path = get_project_root() / "scripts" / "assess_candidate.py"
 
@@ -37,6 +43,10 @@ def run_assessment(client_code: str, req_id: str, candidate_name: str = None, ba
         cmd.extend(["--batch", batch_name])
     else:
         cmd.append("--all-pending")
+
+    # Add AI flag if requested
+    if use_ai:
+        cmd.append("--use-ai")
 
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(get_project_root()))
     return result.returncode == 0, result.stdout, result.stderr
@@ -120,14 +130,16 @@ async def run_all_assessments(
     request: Request,
     client_code: str,
     req_id: str,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    use_ai: bool = Form(default=False)
 ):
     """Run assessments for all pending candidates."""
-    success, stdout, stderr = run_assessment(client_code, req_id)
+    success, stdout, stderr = run_assessment(client_code, req_id, use_ai=use_ai)
 
     if success:
+        mode = "ai" if use_ai else "manual"
         return RedirectResponse(
-            url=f"/assessments/{client_code}/{req_id}?success=1",
+            url=f"/assessments/{client_code}/{req_id}?success=1&mode={mode}",
             status_code=303
         )
     else:
@@ -145,14 +157,20 @@ async def run_single_assessment(
     request: Request,
     client_code: str,
     req_id: str,
-    name_normalized: str
+    name_normalized: str,
+    use_ai: bool = Form(default=False)
 ):
     """Run assessment for a single candidate."""
-    success, stdout, stderr = run_assessment(client_code, req_id, candidate_name=name_normalized)
+    success, stdout, stderr = run_assessment(
+        client_code, req_id,
+        candidate_name=name_normalized,
+        use_ai=use_ai
+    )
 
     if success:
+        mode = "ai" if use_ai else "manual"
         return RedirectResponse(
-            url=f"/candidates/{client_code}/{req_id}/{name_normalized}?assessed=1",
+            url=f"/candidates/{client_code}/{req_id}/{name_normalized}?assessed=1&mode={mode}",
             status_code=303
         )
     else:

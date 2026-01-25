@@ -1,0 +1,28 @@
+{
+  "name": "raaf",
+  "version": "1.0.0",
+  "description": "[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/) [![Node.js 18+](https://img.shields.io/badge/node.js-18+-green.svg)](https://nodejs.org/) [![License](https://img.shields.io/badge/license-Proprietary-red.svg)]()",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alonsop2017/RAAF.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/alonsop2017/RAAF/issues"
+  },
+  "homepage": "https://github.com/alonsop2017/RAAF#readme",
+  "dependencies": {
+    "docx": "^9.5.1",
+    "js-yaml": "^4.1.1"
+  }
+}

@@ -3,8 +3,9 @@
 Candidate assessment script.
 Scores candidates against the requisition's assessment framework.
 
-Note: This script provides the structure for assessment. The actual scoring
-logic would typically be performed by an AI model (like Claude) or human reviewer.
+Supports two modes:
+- Template mode (default): Creates assessment structure for manual scoring
+- AI mode (--use-ai): Uses Claude API for automated assessment
 """
 
 import sys
@@ -28,6 +29,18 @@ from utils.client_utils import (
     get_settings
 )
 
+# Lazy import for Claude client
+_claude_client = None
+
+
+def get_claude_client():
+    """Get or create the Claude client (lazy loading)."""
+    global _claude_client
+    if _claude_client is None:
+        from utils.claude_client import ClaudeClient
+        _claude_client = ClaudeClient()
+    return _claude_client
+
 
 def load_framework(client_code: str, req_id: str) -> dict:
     """Load the assessment framework for a requisition."""
@@ -42,6 +55,70 @@ def load_framework(client_code: str, req_id: str) -> dict:
     # Fall back to requisition config
     req_config = get_requisition_config(client_code, req_id)
     return req_config.get("assessment", {})
+
+
+def load_framework_text(client_code: str, req_id: str) -> str:
+    """
+    Load the assessment framework as text for Claude AI assessment.
+
+    Looks for framework files in this order:
+    1. framework/assessment_framework.md
+    2. framework/assessment_framework.txt
+    3. framework/framework_config.yaml (converted to text)
+    4. requisition.yaml assessment section
+    """
+    framework_path = get_framework_path(client_code, req_id)
+
+    # Check for markdown framework
+    md_file = framework_path / "assessment_framework.md"
+    if md_file.exists():
+        with open(md_file, "r", encoding="utf-8") as f:
+            return f.read()
+
+    # Check for text framework
+    txt_file = framework_path / "assessment_framework.txt"
+    if txt_file.exists():
+        with open(txt_file, "r", encoding="utf-8") as f:
+            return f.read()
+
+    # Check for YAML framework and convert to text
+    yaml_file = framework_path / "framework_config.yaml"
+    if yaml_file.exists():
+        with open(yaml_file, "r") as f:
+            framework = yaml.safe_load(f)
+        return yaml.dump(framework, default_flow_style=False)
+
+    # Fall back to requisition config
+    req_config = get_requisition_config(client_code, req_id)
+    assessment = req_config.get("assessment", {})
+    job = req_config.get("job", {})
+
+    # Build framework text from requisition config
+    framework_text = f"""# Assessment Framework
+## Position: {job.get('title', 'Unknown')}
+## Location: {job.get('location', 'Unknown')}
+
+### Requirements
+- Minimum Experience: {req_config.get('requirements', {}).get('experience_years_min', 'N/A')} years
+- Education: {req_config.get('requirements', {}).get('education', 'N/A')}
+- Industry: {req_config.get('requirements', {}).get('industry_preference', 'N/A')}
+
+### Special Requirements
+"""
+    for req in req_config.get("requirements", {}).get("special_requirements", []):
+        framework_text += f"- {req}\n"
+
+    framework_text += f"""
+### Scoring Thresholds
+- Strong Recommend: {assessment.get('thresholds', {}).get('strong_recommend', 85)}%+
+- Recommend: {assessment.get('thresholds', {}).get('recommend', 70)}%+
+- Conditional: {assessment.get('thresholds', {}).get('conditional', 55)}%+
+- Do Not Recommend: Below {assessment.get('thresholds', {}).get('conditional', 55)}%
+
+### Notes
+{req_config.get('notes', 'No additional notes')}
+"""
+    return framework_text
 
 
 def extract_candidate_info(resume_text: str, filename: str) -> dict:
@@ -250,7 +327,9 @@ def assess_candidate(
     req_id: str,
     resume_file: str | Path,
     batch_name: str = None,
-    output_dir: Path = None
+    output_dir: Path = None,
+    use_ai: bool = False,
+    ai_model: str = None
 ) -> dict:
     """
     Create assessment for a single candidate.
@@ -261,6 +340,8 @@ def assess_candidate(
         resume_file: Path to extracted resume text file
         batch_name: Batch name (for tracking)
         output_dir: Output directory for assessment
+        use_ai: Use Claude AI for assessment (default: False)
+        ai_model: Override AI model (optional)
 
     Returns:
         Assessment dictionary
@@ -279,14 +360,27 @@ def assess_candidate(
 
     print(f"Assessing: {candidate_info['name'] or resume_file.stem}")
 
-    # Create assessment template
-    assessment = create_assessment_template(
-        client_code=client_code,
-        req_id=req_id,
-        candidate_info=candidate_info,
-        resume_text=resume_text,
-        batch_name=batch_name
-    )
+    if use_ai:
+        # Use Claude AI for assessment
+        print("  Mode: AI Assessment (Claude)")
+        assessment = assess_with_claude(
+            client_code=client_code,
+            req_id=req_id,
+            candidate_info=candidate_info,
+            resume_text=resume_text,
+            batch_name=batch_name,
+            model=ai_model
+        )
+    else:
+        # Create assessment template for manual scoring
+        print("  Mode: Template (manual scoring required)")
+        assessment = create_assessment_template(
+            client_code=client_code,
+            req_id=req_id,
+            candidate_info=candidate_info,
+            resume_text=resume_text,
+            batch_name=batch_name
+        )
 
     # Determine output path
     if output_dir is None:
@@ -302,7 +396,82 @@ def assess_candidate(
         json.dump(assessment, f, indent=2)
 
     print(f"  Created: {output_file.name}")
-    print(f"  Status: {assessment['recommendation']} (pending full assessment)")
+    if use_ai:
+        print(f"  Score: {assessment['total_score']}/{assessment['max_score']} ({assessment['percentage']}%)")
+        print(f"  Recommendation: {assessment['recommendation']}")
+    else:
+        print(f"  Status: {assessment['recommendation']} (pending full assessment)")
+
+    return assessment
+
+
+def assess_with_claude(
+    client_code: str,
+    req_id: str,
+    candidate_info: dict,
+    resume_text: str,
+    batch_name: str = None,
+    model: str = None
+) -> dict:
+    """
+    Assess a candidate using Claude AI.
+
+    Args:
+        client_code: Client identifier
+        req_id: Requisition ID
+        candidate_info: Extracted candidate information
+        resume_text: Resume text content
+        batch_name: Batch name for tracking
+        model: Override AI model
+
+    Returns:
+        Complete assessment dictionary
+    """
+    # Load framework text
+    framework_text = load_framework_text(client_code, req_id)
+    framework_config = load_framework(client_code, req_id)
+
+    # Get Claude client
+    claude = get_claude_client()
+
+    print("  Sending to Claude API...")
+
+    # Get AI assessment
+    ai_result = claude.assess_candidate(
+        resume_text=resume_text,
+        framework_text=framework_text,
+        model=model
+    )
+
+    print("  Received AI assessment")
+
+    # Build complete assessment with metadata
+    assessment = {
+        "metadata": {
+            "client_code": client_code,
+            "requisition_id": req_id,
+            "framework_version": framework_config.get("framework_version", "1.0"),
+            "assessed_at": datetime.now().isoformat(),
+            "assessor": f"Claude/{model or claude.model}"
+        },
+        "candidate": {
+            **candidate_info,
+            "batch": batch_name or "",
+            "source_platform": "Indeed"
+        },
+        # Merge AI scores
+        "scores": ai_result.get("scores", {}),
+        "total_score": ai_result.get("total_score", 0),
+        "max_score": ai_result.get("max_score", 100),
+        "percentage": ai_result.get("percentage", 0),
+        "recommendation": ai_result.get("recommendation", "PENDING"),
+        "recommendation_tier": ai_result.get("recommendation_tier", 0),
+        "summary": ai_result.get("summary", ""),
+        "key_strengths": ai_result.get("key_strengths", []),
+        "areas_of_concern": ai_result.get("areas_of_concern", []),
+        "interview_focus_areas": ai_result.get("interview_focus_areas", []),
+        "resume_text_preview": resume_text[:2000] + "..." if len(resume_text) > 2000 else resume_text
+    }
 
     return assessment
 
@@ -310,7 +479,9 @@ def assess_candidate(
 def assess_batch(
     client_code: str,
     req_id: str,
-    batch_name: str
+    batch_name: str,
+    use_ai: bool = False,
+    ai_model: str = None
 ) -> dict:
     """
     Create assessments for all candidates in a batch.
@@ -319,6 +490,8 @@ def assess_batch(
         client_code: Client identifier
         req_id: Requisition ID
         batch_name: Batch to assess
+        use_ai: Use Claude AI for assessment
+        ai_model: Override AI model
 
     Returns:
         Batch assessment statistics
@@ -333,13 +506,15 @@ def assess_batch(
 
     print(f"Assessing batch: {batch_name}")
     print(f"  Candidates: {len(resume_files)}")
+    print(f"  Mode: {'AI Assessment' if use_ai else 'Template'}")
     print("-" * 40)
 
     stats = {
         "batch": batch_name,
         "total": len(resume_files),
         "assessed": 0,
-        "errors": 0
+        "errors": 0,
+        "mode": "ai" if use_ai else "template"
     }
 
     for resume_file in resume_files:
@@ -348,7 +523,9 @@ def assess_batch(
                 client_code=client_code,
                 req_id=req_id,
                 resume_file=resume_file,
-                batch_name=batch_name
+                batch_name=batch_name,
+                use_ai=use_ai,
+                ai_model=ai_model
             )
             stats["assessed"] += 1
         except Exception as e:
@@ -363,6 +540,7 @@ def assess_batch(
         manifest["status"] = "assessed"
         manifest["assessed_count"] = stats["assessed"]
         manifest["assessed_at"] = datetime.now().isoformat()
+        manifest["assessment_mode"] = stats["mode"]
         with open(manifest_path, "w") as f:
             yaml.dump(manifest, f, default_flow_style=False)
 
@@ -372,7 +550,12 @@ def assess_batch(
     return stats
 
 
-def assess_all_pending(client_code: str, req_id: str) -> dict:
+def assess_all_pending(
+    client_code: str,
+    req_id: str,
+    use_ai: bool = False,
+    ai_model: str = None
+) -> dict:
     """Assess all unprocessed resumes in processed folder."""
     processed_path = get_resumes_path(client_code, req_id, "processed")
     assessments_path = get_assessments_path(client_code, req_id, "individual")
@@ -387,12 +570,16 @@ def assess_all_pending(client_code: str, req_id: str) -> dict:
     ]
 
     print(f"Pending assessments: {len(resume_files)}")
+    print(f"Mode: {'AI Assessment' if use_ai else 'Template'}")
 
-    stats = {"total": len(resume_files), "assessed": 0, "errors": 0}
+    stats = {"total": len(resume_files), "assessed": 0, "errors": 0, "mode": "ai" if use_ai else "template"}
 
     for resume_file in resume_files:
         try:
-            assess_candidate(client_code, req_id, resume_file)
+            assess_candidate(
+                client_code, req_id, resume_file,
+                use_ai=use_ai, ai_model=ai_model
+            )
             stats["assessed"] += 1
         except Exception as e:
             print(f"Error: {e}")
@@ -413,6 +600,9 @@ def main():
                        help="Assess all pending resumes")
     parser.add_argument("--use-context", action="store_true",
                        help="Use saved context for client/req")
+    parser.add_argument("--use-ai", action="store_true",
+                       help="Use Claude AI for assessment (requires API key)")
+    parser.add_argument("--ai-model", help="Override AI model (e.g., claude-sonnet-4-20250514)")
     args = parser.parse_args()
 
     try:
@@ -420,16 +610,25 @@ def main():
             assess_candidate(
                 client_code=args.client,
                 req_id=args.req,
-                resume_file=args.resume
+                resume_file=args.resume,
+                use_ai=args.use_ai,
+                ai_model=args.ai_model
             )
         elif args.batch:
             assess_batch(
                 client_code=args.client,
                 req_id=args.req,
-                batch_name=args.batch
+                batch_name=args.batch,
+                use_ai=args.use_ai,
+                ai_model=args.ai_model
             )
         elif args.all_pending:
-            assess_all_pending(args.client, args.req)
+            assess_all_pending(
+                args.client,
+                args.req,
+                use_ai=args.use_ai,
+                ai_model=args.ai_model
+            )
         else:
             print("Specify --resume, --batch, or --all-pending")
             sys.exit(1)

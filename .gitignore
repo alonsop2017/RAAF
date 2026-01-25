@@ -1,6 +1,9 @@
 # PCRecruiter credentials (NEVER commit)
 config/pcr_credentials.yaml
 
+# Claude API credentials (NEVER commit)
+config/claude_credentials.yaml
+
 # Context file
 .current_context.yaml
 

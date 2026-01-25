@@ -17,6 +17,9 @@ pandas>=2.0.0
 # HTTP Requests (for PCR API)
 requests>=2.31.0
 
+# Claude API (for AI-powered assessments)
+anthropic>=0.40.0
+
 # Web Application
 fastapi>=0.109.0
 uvicorn>=0.27.0

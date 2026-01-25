@@ -70,3 +70,10 @@ logging:
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
   rotate_size_mb: 10
   backup_count: 5
+
+# Claude API settings (for AI-powered assessments)
+claude:
+  default_model: "claude-sonnet-4-20250514"
+  max_tokens: 4096
+  temperature: 0.3  # Lower for more consistent scoring
+  timeout_seconds: 120
