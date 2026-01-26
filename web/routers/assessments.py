@@ -30,9 +30,9 @@ def run_assessment(
     req_id: str,
     candidate_name: str = None,
     batch_name: str = None,
-    use_ai: bool = False
+    use_ai: bool = True
 ):
-    """Run assessment script as a subprocess."""
+    """Run assessment script as a subprocess. Uses AI by default."""
     script_path = get_project_root() / "scripts" / "assess_candidate.py"
 
     cmd = ["python3", str(script_path), "--client", client_code, "--req", req_id]
@@ -131,13 +131,15 @@ async def run_all_assessments(
     client_code: str,
     req_id: str,
     background_tasks: BackgroundTasks,
-    use_ai: bool = Form(default=False)
+    use_ai: str = Form(default="true")
 ):
     """Run assessments for all pending candidates."""
-    success, stdout, stderr = run_assessment(client_code, req_id, use_ai=use_ai)
+    # Default to AI assessment (use_ai=true unless explicitly set to false)
+    use_ai_bool = use_ai.lower() not in ("false", "0", "off", "no")
+    success, stdout, stderr = run_assessment(client_code, req_id, use_ai=use_ai_bool)
 
     if success:
-        mode = "ai" if use_ai else "manual"
+        mode = "ai" if use_ai_bool else "manual"
         return RedirectResponse(
             url=f"/assessments/{client_code}/{req_id}?success=1&mode={mode}",
             status_code=303
@@ -158,17 +160,19 @@ async def run_single_assessment(
     client_code: str,
     req_id: str,
     name_normalized: str,
-    use_ai: bool = Form(default=False)
+    use_ai: str = Form(default="true")
 ):
     """Run assessment for a single candidate."""
+    # Default to AI assessment (use_ai=true unless explicitly set to false)
+    use_ai_bool = use_ai.lower() not in ("false", "0", "off", "no")
     success, stdout, stderr = run_assessment(
         client_code, req_id,
         candidate_name=name_normalized,
-        use_ai=use_ai
+        use_ai=use_ai_bool
     )
 
     if success:
-        mode = "ai" if use_ai else "manual"
+        mode = "ai" if use_ai_bool else "manual"
         return RedirectResponse(
             url=f"/candidates/{client_code}/{req_id}/{name_normalized}?assessed=1&mode={mode}",
             status_code=303

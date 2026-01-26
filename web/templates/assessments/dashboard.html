@@ -15,7 +15,11 @@
         </div>
         <div class="action-buttons">
             {% if pending %}
-            <form action="/assessments/{{ client_code }}/{{ req_id }}/run" method="POST">
+            <form action="/assessments/{{ client_code }}/{{ req_id }}/run" method="POST" style="display: flex; align-items: center; gap: 1rem;">
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                    <input type="checkbox" name="use_ai" value="true" checked style="width: 18px; height: 18px;">
+                    <span style="font-weight: 500;">Use AI</span>
+                </label>
                 <button type="submit" class="btn btn-primary">Assess All Pending ({{ pending|length }})</button>
             </form>
             {% endif %}
@@ -134,8 +138,9 @@
                 {% for p in pending %}
                 <div class="flex flex-between flex-center mb-2">
                     <span>{{ p.name }}</span>
-                    <form action="/assessments/{{ client_code }}/{{ req_id }}/{{ p.name_normalized }}/run" method="POST">
-                        <button type="submit" class="btn btn-sm btn-primary">Assess</button>
+                    <form action="/assessments/{{ client_code }}/{{ req_id }}/{{ p.name_normalized }}/run" method="POST" style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="hidden" name="use_ai" value="true">
+                        <button type="submit" class="btn btn-sm btn-primary">Assess (AI)</button>
                     </form>
                 </div>
                 {% endfor %}
