@@ -132,12 +132,23 @@ def extract_candidate_info(resume_text: str, filename: str) -> dict:
     }
 
     # Try to extract name from filename
-    # Expected format: lastname_firstname_resume.txt
     base_name = Path(filename).stem.replace("_resume", "")
-    parts = base_name.split("_")
-    if len(parts) >= 2:
-        info["name"] = f"{parts[1].title()} {parts[0].title()}"
-        info["name_normalized"] = base_name
+
+    # Handle "Information for {NAME}" format (from Indeed extraction)
+    if base_name.lower().startswith("information for "):
+        candidate_name = base_name[16:].strip()  # Remove "Information for " prefix
+        info["name"] = candidate_name.title()
+        info["name_normalized"] = normalize_candidate_name(candidate_name)
+    # Handle lastname_firstname format
+    elif "_" in base_name:
+        parts = base_name.split("_")
+        if len(parts) >= 2:
+            info["name"] = f"{parts[1].title()} {parts[0].title()}"
+            info["name_normalized"] = base_name
+    else:
+        # Use filename as-is for name
+        info["name"] = base_name.title()
+        info["name_normalized"] = normalize_candidate_name(base_name)
 
     # Try to extract email
     email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', resume_text)
