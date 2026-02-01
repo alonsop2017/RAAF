@@ -44,6 +44,7 @@ async def list_all_clients(request: Request):
 
     return templates.TemplateResponse("clients/list.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "clients": clients_data
     })
 
@@ -52,7 +53,8 @@ async def list_all_clients(request: Request):
 async def new_client_form(request: Request):
     """Show form to create a new client."""
     return templates.TemplateResponse("clients/new.html", {
-        "request": request
+        "request": request,
+        "user": getattr(request.state, 'user', None)
     })
 
 
@@ -142,6 +144,7 @@ async def view_client(request: Request, client_code: str):
 
     return templates.TemplateResponse("clients/view.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "client": config,
         "client_code": client_code,
         "requisitions": reqs_data
@@ -158,6 +161,7 @@ async def edit_client_form(request: Request, client_code: str):
 
     return templates.TemplateResponse("clients/edit.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "client": config,
         "client_code": client_code
     })

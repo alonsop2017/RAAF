@@ -79,6 +79,7 @@ async def list_candidates(request: Request, client_code: str, req_id: str):
 
     return templates.TemplateResponse("candidates/list.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "candidates": candidates,
         "req_id": req_id,
         "client_code": client_code,
@@ -92,6 +93,7 @@ async def upload_resume_form(request: Request, client_code: str, req_id: str):
     """Show form to upload resumes."""
     return templates.TemplateResponse("candidates/upload.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "client_code": client_code,
         "req_id": req_id
     })
@@ -191,6 +193,7 @@ async def view_candidate(request: Request, client_code: str, req_id: str, name_n
 
     return templates.TemplateResponse("candidates/view.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "client_code": client_code,
         "req_id": req_id,
         "client_name": client_config.get('company_name', client_code),
@@ -277,6 +280,7 @@ async def file_manager(request: Request, client_code: str, req_id: str):
 
     return templates.TemplateResponse("candidates/file_manager.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "client_code": client_code,
         "req_id": req_id,
         "client_name": client_config.get('company_name', client_code),

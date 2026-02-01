@@ -108,6 +108,7 @@ async def reports_dashboard(request: Request, client_code: str, req_id: str):
 
     return templates.TemplateResponse("reports/dashboard.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "client_code": client_code,
         "req_id": req_id,
         "client_name": client_config.get('company_name', client_code),
@@ -137,6 +138,7 @@ async def generate_new_report(
     else:
         return templates.TemplateResponse("reports/error.html", {
             "request": request,
+            "user": getattr(request.state, 'user', None),
             "client_code": client_code,
             "req_id": req_id,
             "error": stderr or "Report generation failed",

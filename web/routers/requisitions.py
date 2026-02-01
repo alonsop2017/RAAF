@@ -78,6 +78,7 @@ async def list_all_requisitions(request: Request, status: str = None):
 
     return templates.TemplateResponse("requisitions/list.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "requisitions": reqs_data,
         "filter_status": status
     })
@@ -91,6 +92,7 @@ async def new_requisition_form(request: Request, client_code: str = None):
 
     return templates.TemplateResponse("requisitions/new.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "clients": clients,
         "selected_client": client_code,
         "framework_templates": templates_list
@@ -271,6 +273,7 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
 
     return templates.TemplateResponse("requisitions/view.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "req": req_config,
         "req_id": req_id,
         "client_code": client_code,
@@ -293,6 +296,7 @@ async def edit_requisition_form(request: Request, client_code: str, req_id: str)
 
     return templates.TemplateResponse("requisitions/edit.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "req": req_config,
         "req_id": req_id,
         "client_code": client_code

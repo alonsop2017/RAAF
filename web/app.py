@@ -13,9 +13,14 @@ from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 
 from web.routers import clients, requisitions, candidates, assessments, reports, pcr
+from web.routers import auth as auth_router
+from web.auth.oauth import setup_oauth
+from web.auth.session import session_manager
+from web.auth.config import get_session_secret_key
 
 app = FastAPI(
     title="RAAF - Resume Assessment Automation Framework",
@@ -23,13 +28,52 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Add session middleware for OAuth state (required by Authlib)
+# Use a fallback secret for development if not set
+session_secret = get_session_secret_key() or "dev-secret-change-in-production"
+app.add_middleware(SessionMiddleware, secret_key=session_secret)
+
+# Setup OAuth
+setup_oauth()
+
 # Mount static files
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 # Templates
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
+
+# Authentication middleware
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """
+    Middleware to check authentication and redirect to login if needed.
+    Allows access to auth routes, static files, and health check without auth.
+    """
+    # Paths that don't require authentication
+    public_paths = ["/auth", "/static", "/health"]
+
+    # Check if path is public
+    path = request.url.path
+    is_public = any(path.startswith(p) for p in public_paths)
+
+    if not is_public:
+        # Check for valid session
+        user = session_manager.get_user_from_cookies(request.cookies)
+        if not user:
+            return RedirectResponse(url="/auth/login", status_code=302)
+        # Attach user to request state for use in routes
+        request.state.user = user
+    else:
+        # Still try to get user for public pages (e.g., login page redirect)
+        request.state.user = session_manager.get_user_from_cookies(request.cookies)
+
+    response = await call_next(request)
+    return response
+
+
 # Include routers
+app.include_router(auth_router.router, prefix="/auth", tags=["auth"])
 app.include_router(clients.router, prefix="/clients", tags=["clients"])
 app.include_router(requisitions.router, prefix="/requisitions", tags=["requisitions"])
 app.include_router(candidates.router, prefix="/candidates", tags=["candidates"])
@@ -96,6 +140,7 @@ async def dashboard(request: Request):
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "clients": dashboard_data,
         "total_clients": len(dashboard_data),
         "total_requisitions": sum(len(c['requisitions']) for c in dashboard_data),

@@ -77,6 +77,7 @@ async def pcr_dashboard(request: Request):
 
     return templates.TemplateResponse("pcr/dashboard.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "pcr_configured": pcr_configured,
         "requisitions": pcr_requisitions
     })
@@ -89,6 +90,7 @@ async def test_connection(request: Request):
 
     return templates.TemplateResponse("pcr/test_result.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "success": success,
         "output": stdout,
         "error": stderr
@@ -103,6 +105,7 @@ async def list_pcr_positions(request: Request):
     if not success:
         return templates.TemplateResponse("pcr/error.html", {
             "request": request,
+            "user": getattr(request.state, 'user', None),
             "error": stderr or "Failed to fetch positions from PCR"
         })
 
@@ -119,6 +122,7 @@ async def list_pcr_positions(request: Request):
 
     return templates.TemplateResponse("pcr/positions.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "positions": positions
     })
 
@@ -224,6 +228,7 @@ async def sync_requisition_page(request: Request, client_code: str, req_id: str)
 
     return templates.TemplateResponse("pcr/sync.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "client_code": client_code,
         "req_id": req_id,
         "client_name": client_config.get('company_name', client_code),

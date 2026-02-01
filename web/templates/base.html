@@ -19,6 +19,15 @@
             <a href="/requisitions" class="nav-link">Requisitions</a>
             <a href="/pcr" class="nav-link">PCR Integration</a>
         </div>
+        {% if user %}
+        <div class="nav-user">
+            {% if user.picture %}
+            <img src="{{ user.picture }}" alt="{{ user.name }}" class="user-avatar" referrerpolicy="no-referrer">
+            {% endif %}
+            <span class="user-name">{{ user.given_name or user.name }}</span>
+            <a href="/auth/logout" class="logout-link">Logout</a>
+        </div>
+        {% endif %}
     </nav>
 
     <main class="container">

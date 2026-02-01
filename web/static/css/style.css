@@ -81,6 +81,43 @@ body {
     background-color: #f1f5f9;
 }
 
+/* User section in navbar */
+.nav-user {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding-left: 1.5rem;
+    border-left: 1px solid var(--border-color);
+    margin-left: 1rem;
+}
+
+.user-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.user-name {
+    font-weight: 500;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+}
+
+.logout-link {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 0.8125rem;
+    padding: 0.375rem 0.75rem;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+
+.logout-link:hover {
+    color: var(--danger-color);
+    background-color: #fee2e2;
+}
+
 /* Main Container */
 .container {
     max-width: 1280px;
@@ -575,6 +612,15 @@ tr:hover {
     .nav-links {
         flex-wrap: wrap;
         justify-content: center;
+    }
+
+    .nav-user {
+        padding-left: 0;
+        border-left: none;
+        margin-left: 0;
+        padding-top: 0.75rem;
+        border-top: 1px solid var(--border-color);
+        margin-top: 0.5rem;
     }
 
     .container {

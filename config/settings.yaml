@@ -1,6 +1,17 @@
 # Global Settings - Resume Assessment Automation Framework
 # Archtekt Consulting Inc.
 
+# Authentication settings
+auth:
+  google:
+    client_id: "YOUR_CLIENT_ID.apps.googleusercontent.com"
+    client_secret_env: "GOOGLE_CLIENT_SECRET"
+  session:
+    secret_key_env: "SESSION_SECRET_KEY"
+    cookie_name: "raaf_session"
+    max_age_hours: 8
+  allowed_domains: []  # Optional: ["archtekt.ca"] to restrict login
+
 # Default assessment settings (can be overridden per requisition)
 assessment:
   default_max_score: 100

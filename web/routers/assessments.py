@@ -114,6 +114,7 @@ async def assessment_dashboard(request: Request, client_code: str, req_id: str):
 
     return templates.TemplateResponse("assessments/dashboard.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "client_code": client_code,
         "req_id": req_id,
         "client_name": client_config.get('company_name', client_code),
@@ -147,6 +148,7 @@ async def run_all_assessments(
     else:
         return templates.TemplateResponse("assessments/error.html", {
             "request": request,
+            "user": getattr(request.state, 'user', None),
             "client_code": client_code,
             "req_id": req_id,
             "error": stderr or "Assessment failed",
@@ -198,6 +200,7 @@ async def view_assessment(request: Request, client_code: str, req_id: str, name_
 
     return templates.TemplateResponse("assessments/view.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "client_code": client_code,
         "req_id": req_id,
         "client_name": client_config.get('company_name', client_code),
@@ -223,6 +226,7 @@ async def edit_assessment_form(request: Request, client_code: str, req_id: str, 
 
     return templates.TemplateResponse("assessments/edit.html", {
         "request": request,
+        "user": getattr(request.state, 'user', None),
         "client_code": client_code,
         "req_id": req_id,
         "name_normalized": name_normalized,
