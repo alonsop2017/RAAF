@@ -4,7 +4,7 @@
 # Authentication settings
 auth:
   google:
-    client_id: "YOUR_CLIENT_ID.apps.googleusercontent.com"
+    client_id: "344797612488-91k92gaufbvhbutq4j0ouof9u0qhmu80.apps.googleusercontent.com"
     client_secret_env: "GOOGLE_CLIENT_SECRET"
   session:
     secret_key_env: "SESSION_SECRET_KEY"
