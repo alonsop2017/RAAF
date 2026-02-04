@@ -18,6 +18,7 @@ from scripts.utils.client_utils import (
     get_requisition_root, get_requisition_config, list_requisitions,
     get_project_root
 )
+from scripts.utils.archive_requisition import archive_requisition
 
 # Alias for consistency
 get_client_config = get_client_info
@@ -350,15 +351,31 @@ async def update_requisition_status(
     request: Request,
     client_code: str,
     req_id: str,
-    status: str = Form(...)
+    status: str = Form(...),
+    archive_note: str = Form("")
 ):
-    """Quick status update for requisition."""
+    """Quick status update for requisition. If status is 'cancelled', archives the requisition."""
     req_root = get_requisition_root(client_code, req_id)
     config_path = req_root / "requisition.yaml"
 
     if not config_path.exists():
         raise HTTPException(status_code=404, detail=f"Requisition not found")
 
+    # If cancelling, archive the requisition and redirect to list
+    if status == "cancelled":
+        try:
+            archive_requisition(
+                client_code=client_code,
+                req_id=req_id,
+                status="cancelled",
+                note=archive_note or "Cancelled via web interface"
+            )
+            # Redirect to requisitions list since the requisition folder is now archived
+            return RedirectResponse(url="/requisitions", status_code=303)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to archive requisition: {str(e)}")
+
+    # For other statuses, just update the YAML
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
 

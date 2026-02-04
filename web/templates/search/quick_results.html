@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+
+{% block title %}Quick Search Results - Talent Pool{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> / <a href="/search">Search</a> / <span>Quick Results</span>
+</div>
+
+<div class="page-header">
+    <div class="flex flex-between flex-center">
+        <div>
+            <h1>Quick Search Results</h1>
+            <p class="subtitle">
+                {% if results %}
+                Found {{ results | length }} matching candidates out of {{ total_searched }} assessed
+                {% else %}
+                No matches found
+                {% endif %}
+            </p>
+        </div>
+        <a href="/search" class="btn btn-outline">New Search</a>
+    </div>
+</div>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<!-- Search Summary -->
+<div class="card">
+    <div class="card-header">
+        <h3>Search Query</h3>
+        <span class="badge badge-info">
+            {% if search_type == 'name' %}Name Search{% elif search_type == 'skills' %}Skills Search{% else %}All Fields{% endif %}
+        </span>
+    </div>
+    <div class="card-body">
+        <form action="/search/quick" method="GET" id="quickSearchForm" style="display: flex; gap: 1rem; align-items: flex-end;">
+            <div class="form-group" style="flex: 2; margin-bottom: 0;">
+                <input type="text" class="form-input" name="q" id="quickSearchInput"
+                       value="{{ search_query }}" placeholder="Search...">
+            </div>
+            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                <select class="form-select" name="search_type" id="searchType">
+                    <option value="all" {% if search_type == 'all' %}selected{% endif %}>All Fields</option>
+                    <option value="name" {% if search_type == 'name' %}selected{% endif %}>Name Only</option>
+                    <option value="skills" {% if search_type == 'skills' %}selected{% endif %}>Skills & Experience</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Search Again</button>
+        </form>
+    </div>
+</div>
+
+{% if results %}
+<!-- Results Summary -->
+<div class="stats-grid">
+    {% set strong_matches = results | selectattr('recommendation', 'equalto', 'strong_match') | list | length %}
+    {% set good_matches = results | selectattr('recommendation', 'equalto', 'good_match') | list | length %}
+    {% set partial_matches = results | selectattr('recommendation', 'equalto', 'partial_match') | list | length %}
+    {% set name_matches = results | selectattr('match_type', 'equalto', 'name') | list | length %}
+
+    <div class="stat-card success">
+        <div class="stat-value">{{ strong_matches }}</div>
+        <div class="stat-label">Strong Matches</div>
+    </div>
+    <div class="stat-card info">
+        <div class="stat-value">{{ good_matches }}</div>
+        <div class="stat-label">Good Matches</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-value">{{ partial_matches }}</div>
+        <div class="stat-label">Partial Matches</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ results | length }}</div>
+        <div class="stat-label">Total Results</div>
+    </div>
+</div>
+
+<!-- Results List -->
+<div class="card">
+    <div class="card-header">
+        <h3>Matched Candidates</h3>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 50px;">#</th>
+                    <th>Candidate</th>
+                    <th>Match</th>
+                    <th>Original Assessment</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for result in results %}
+                <tr>
+                    <td class="text-muted">{{ loop.index }}</td>
+                    <td>
+                        <div>
+                            <strong>{{ result.name }}</strong>
+                            {% if result.matched_keywords %}
+                            <div class="matched-keywords">
+                                {% for kw in result.matched_keywords[:5] %}
+                                <span class="keyword-tag">{{ kw }}</span>
+                                {% endfor %}
+                                {% if result.matched_keywords | length > 5 %}
+                                <span class="keyword-more">+{{ result.matched_keywords | length - 5 }} more</span>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        {% if result.match_score is defined %}
+                        <div class="match-score-cell match-{{ result.recommendation }}">
+                            {{ result.match_score }}%
+                        </div>
+                        {% elif result.match_type == 'name' %}
+                        <span class="badge badge-info">Name Match</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="original-assessment">
+                            <span class="assessment-score">{{ result.original_assessment.score }}%</span>
+                            <span class="assessment-rec badge badge-{% if result.original_assessment.recommendation == 'STRONG RECOMMEND' %}success{% elif result.original_assessment.recommendation == 'RECOMMEND' %}info{% elif result.original_assessment.recommendation == 'CONDITIONAL' %}warning{% else %}secondary{% endif %}">
+                                {{ result.original_assessment.recommendation }}
+                            </span>
+                            <div class="assessment-source text-muted">
+                                {{ result.original_assessment.req_title or result.original_assessment.req_id }}
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <a href="/candidates/{{ result.original_assessment.client_code }}/{{ result.original_assessment.req_id }}/{{ result.candidate_id }}"
+                           class="btn btn-sm btn-outline">View Profile</a>
+                    </td>
+                </tr>
+                {% if result.summary %}
+                <tr class="summary-row">
+                    <td></td>
+                    <td colspan="4">
+                        <p class="result-summary-text">{{ result.summary[:200] }}{% if result.summary | length > 200 %}...{% endif %}</p>
+                        {% if result.key_strengths %}
+                        <div class="key-strengths">
+                            <strong>Key strengths:</strong>
+                            {% for strength in result.key_strengths %}
+                            <span class="strength-item">{{ strength }}</span>{% if not loop.last %}, {% endif %}
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% else %}
+<!-- No Results -->
+<div class="card">
+    <div class="card-body">
+        <div class="empty-state">
+            <h3>No Matching Candidates Found</h3>
+            <p>Try different keywords or use the full Job Description search for AI-powered matching.</p>
+            <div class="action-buttons mt-2" style="justify-content: center;">
+                <a href="/search" class="btn btn-primary">Try Full Search</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.matched-keywords {
+    margin-top: 0.25rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.keyword-tag {
+    background-color: #dbeafe;
+    color: #1d4ed8;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.keyword-more {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+}
+
+.match-score-cell {
+    font-weight: 700;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    text-align: center;
+    display: inline-block;
+    min-width: 50px;
+}
+
+.match-strong_match {
+    background-color: #dcfce7;
+    color: #15803d;
+}
+
+.match-good_match {
+    background-color: #dbeafe;
+    color: #1d4ed8;
+}
+
+.match-partial_match {
+    background-color: #fef9c3;
+    color: #a16207;
+}
+
+.match-weak_match {
+    background-color: #f1f5f9;
+    color: #475569;
+}
+
+.original-assessment {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.assessment-score {
+    font-weight: 600;
+}
+
+.assessment-source {
+    font-size: 0.75rem;
+}
+
+.summary-row {
+    background-color: var(--bg-light);
+}
+
+.summary-row td {
+    padding-top: 0 !important;
+    padding-bottom: 1rem !important;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.result-summary-text {
+    font-style: italic;
+    color: var(--text-secondary);
+    margin: 0 0 0.5rem 0;
+    font-size: 0.875rem;
+}
+
+.key-strengths {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.strength-item {
+    color: var(--text-primary);
+}
+</style>
+{% endblock %}

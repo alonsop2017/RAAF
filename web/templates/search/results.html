@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+
+{% block title %}Search Results - Talent Pool{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> / <a href="/search">Search</a> / <span>Results</span>
+</div>
+
+<div class="page-header">
+    <div class="flex flex-between flex-center">
+        <div>
+            <h1>Search Results</h1>
+            <p class="subtitle">
+                {% if results %}
+                Found {{ results | length }} matching candidates out of {{ total_searched }} assessed
+                {% else %}
+                No matches found
+                {% endif %}
+            </p>
+        </div>
+        <a href="/search" class="btn btn-outline">New Search</a>
+    </div>
+</div>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<!-- Search Summary -->
+<div class="card">
+    <div class="card-header">
+        <h3>Job Description Used</h3>
+        <span class="badge badge-{% if use_ai %}info{% else %}secondary{% endif %}">
+            {% if use_ai %}AI Matching{% else %}Keyword Matching{% endif %}
+        </span>
+    </div>
+    <div class="card-body">
+        <div class="resume-preview" style="max-height: 150px; font-family: inherit;">{{ job_description }}</div>
+    </div>
+</div>
+
+{% if results %}
+<!-- Results Summary -->
+<div class="stats-grid">
+    {% set strong_matches = results | selectattr('recommendation', 'equalto', 'strong_match') | list | length %}
+    {% set good_matches = results | selectattr('recommendation', 'equalto', 'good_match') | list | length %}
+    {% set partial_matches = results | selectattr('recommendation', 'equalto', 'partial_match') | list | length %}
+
+    <div class="stat-card success">
+        <div class="stat-value">{{ strong_matches }}</div>
+        <div class="stat-label">Strong Matches</div>
+    </div>
+    <div class="stat-card info">
+        <div class="stat-value">{{ good_matches }}</div>
+        <div class="stat-label">Good Matches</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-value">{{ partial_matches }}</div>
+        <div class="stat-label">Partial Matches</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ results | length }}</div>
+        <div class="stat-label">Total Results</div>
+    </div>
+</div>
+
+<!-- Results List -->
+<div class="card">
+    <div class="card-header">
+        <h3>Matched Candidates</h3>
+    </div>
+    <div class="search-results">
+        {% for result in results %}
+        <div class="search-result-item">
+            <div class="result-header">
+                <div class="result-name-section">
+                    <span class="result-rank">#{{ loop.index }}</span>
+                    <div>
+                        <h4 class="result-name">{{ result.name }}</h4>
+                        <p class="result-source">
+                            From: {{ result.original_assessment.req_title or result.original_assessment.req_id }}
+                            ({{ result.original_assessment.client_code }})
+                        </p>
+                    </div>
+                </div>
+                <div class="result-score-section">
+                    <div class="match-score match-{{ result.recommendation }}">
+                        {{ result.match_score }}%
+                    </div>
+                    <span class="badge badge-{% if result.recommendation == 'strong_match' %}success{% elif result.recommendation == 'good_match' %}info{% elif result.recommendation == 'partial_match' %}warning{% else %}secondary{% endif %}">
+                        {{ result.recommendation | replace('_', ' ') | title }}
+                    </span>
+                </div>
+            </div>
+
+            {% if result.summary %}
+            <p class="result-summary">{{ result.summary }}</p>
+            {% endif %}
+
+            <div class="result-details">
+                {% if result.match_reasons %}
+                <div class="result-reasons">
+                    <strong>Why they match:</strong>
+                    <ul>
+                        {% for reason in result.match_reasons[:4] %}
+                        <li>{{ reason }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                {% if result.gaps %}
+                <div class="result-gaps">
+                    <strong>Potential gaps:</strong>
+                    <ul>
+                        {% for gap in result.gaps[:3] %}
+                        <li>{{ gap }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="result-meta">
+                <span class="text-muted">
+                    Original assessment: {{ result.original_assessment.score }}%
+                    ({{ result.original_assessment.recommendation }})
+                </span>
+                <a href="/candidates/{{ result.original_assessment.client_code }}/{{ result.original_assessment.req_id }}/{{ result.candidate_id }}"
+                   class="btn btn-sm btn-outline">View Full Profile</a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+{% else %}
+<!-- No Results -->
+<div class="card">
+    <div class="card-body">
+        <div class="empty-state">
+            <h3>No Matching Candidates Found</h3>
+            <p>Try adjusting your job description or using different keywords.</p>
+            <a href="/search" class="btn btn-primary mt-2">Try Another Search</a>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.search-results {
+    padding: 0;
+}
+
+.search-result-item {
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.search-result-item:last-child {
+    border-bottom: none;
+}
+
+.result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+
+.result-name-section {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.result-rank {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    min-width: 2.5rem;
+}
+
+.result-name {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.result-source {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin: 0.25rem 0 0 0;
+}
+
+.result-score-section {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+}
+
+.match-score {
+    font-size: 1.5rem;
+    font-weight: 700;
+    padding: 0.25rem 0.75rem;
+    border-radius: 8px;
+}
+
+.match-strong_match {
+    background-color: #dcfce7;
+    color: #15803d;
+}
+
+.match-good_match {
+    background-color: #dbeafe;
+    color: #1d4ed8;
+}
+
+.match-partial_match {
+    background-color: #fef9c3;
+    color: #a16207;
+}
+
+.match-weak_match {
+    background-color: #f1f5f9;
+    color: #475569;
+}
+
+.result-summary {
+    font-style: italic;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    padding-left: 3.5rem;
+}
+
+.result-details {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+    padding-left: 3.5rem;
+}
+
+.result-details ul {
+    margin: 0.5rem 0 0 0;
+    padding-left: 1.25rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.result-details li {
+    margin-bottom: 0.25rem;
+}
+
+.result-reasons strong {
+    color: var(--success-color);
+}
+
+.result-gaps strong {
+    color: var(--warning-color);
+}
+
+.result-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-left: 3.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+    margin-top: 1rem;
+}
+
+@media (max-width: 768px) {
+    .result-header {
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .result-score-section {
+        flex-direction: row;
+        align-items: center;
+    }
+
+    .result-details {
+        grid-template-columns: 1fr;
+        padding-left: 0;
+    }
+
+    .result-summary,
+    .result-meta {
+        padding-left: 0;
+    }
+}
+</style>
+{% endblock %}

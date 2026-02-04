@@ -14,13 +14,14 @@
             <p class="subtitle">{{ req_id }} | {{ client_name }}</p>
         </div>
         <div class="action-buttons">
-            <form action="/requisitions/{{ client_code }}/{{ req_id }}/update-status" method="POST" style="display: inline;">
-                <select name="status" onchange="this.form.submit()" class="form-select" style="width: auto;">
+            <form action="/requisitions/{{ client_code }}/{{ req_id }}/update-status" method="POST" style="display: inline;" id="statusForm">
+                <select name="status" id="statusSelect" class="form-select" style="width: auto;">
                     <option value="active" {% if req.status == 'active' %}selected{% endif %}>Active</option>
                     <option value="on_hold" {% if req.status == 'on_hold' %}selected{% endif %}>On Hold</option>
                     <option value="filled" {% if req.status == 'filled' %}selected{% endif %}>Filled</option>
                     <option value="cancelled" {% if req.status == 'cancelled' %}selected{% endif %}>Cancelled</option>
                 </select>
+                <input type="hidden" name="archive_note" id="archiveNote" value="">
             </form>
             <a href="/requisitions/{{ client_code }}/{{ req_id }}/edit" class="btn btn-outline">Edit</a>
         </div>
@@ -232,4 +233,133 @@
         {% endif %}
     </div>
 </div>
+
+<!-- Cancel Confirmation Modal -->
+<div id="cancelModal" class="modal" style="display: none;">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Cancel and Archive Requisition?</h3>
+        </div>
+        <div class="modal-body">
+            <p><strong>Warning:</strong> Cancelling this requisition will:</p>
+            <ul style="margin: 1rem 0; padding-left: 1.5rem;">
+                <li>Move all requisition data to the archive folder</li>
+                <li>Remove it from the active requisitions list</li>
+                <li>This action cannot be easily undone</li>
+            </ul>
+            <div class="form-group">
+                <label class="form-label" for="cancelReason">Reason for cancellation (optional):</label>
+                <textarea class="form-textarea" id="cancelReason" rows="2" placeholder="e.g., Client paused hiring, Position filled externally..."></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-outline" id="cancelModalClose">Keep Active</button>
+            <button type="button" class="btn btn-danger" id="confirmCancel">Cancel & Archive</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const statusSelect = document.getElementById('statusSelect');
+    const statusForm = document.getElementById('statusForm');
+    const cancelModal = document.getElementById('cancelModal');
+    const cancelReason = document.getElementById('cancelReason');
+    const archiveNote = document.getElementById('archiveNote');
+    const confirmCancel = document.getElementById('confirmCancel');
+    const cancelModalClose = document.getElementById('cancelModalClose');
+
+    let previousStatus = statusSelect.value;
+
+    statusSelect.addEventListener('change', function() {
+        if (this.value === 'cancelled') {
+            // Show confirmation modal
+            cancelModal.style.display = 'flex';
+        } else {
+            // Submit form for other status changes
+            statusForm.submit();
+        }
+    });
+
+    cancelModalClose.addEventListener('click', function() {
+        // Reset to previous status and close modal
+        statusSelect.value = previousStatus;
+        cancelModal.style.display = 'none';
+        cancelReason.value = '';
+    });
+
+    confirmCancel.addEventListener('click', function() {
+        // Set the archive note and submit
+        archiveNote.value = cancelReason.value;
+        statusForm.submit();
+    });
+
+    // Close modal on overlay click
+    cancelModal.querySelector('.modal-overlay').addEventListener('click', function() {
+        statusSelect.value = previousStatus;
+        cancelModal.style.display = 'none';
+        cancelReason.value = '';
+    });
+})();
+</script>
+
+<style>
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+}
+.modal-content {
+    position: relative;
+    background: var(--card-bg);
+    border-radius: 8px;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+.modal-header {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.modal-header h3 {
+    margin: 0;
+    color: var(--danger-color);
+}
+.modal-body {
+    padding: 1.5rem;
+}
+.modal-body p {
+    margin: 0;
+}
+.modal-footer {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+}
+.btn-danger {
+    background-color: var(--danger-color);
+    color: white;
+    border: none;
+}
+.btn-danger:hover {
+    background-color: #dc2626;
+}
+</style>
 {% endblock %}

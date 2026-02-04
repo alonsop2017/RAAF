@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block title %}Search Talent Pool{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Search Talent Pool</h1>
+    <p class="subtitle">Find candidates across all assessed requisitions using AI-powered matching</p>
+</div>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<!-- Repository Stats -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_candidates }}</div>
+        <div class="stat-label">Assessed Candidates</div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-value">{{ stats.by_recommendation.get('STRONG RECOMMEND', 0) + stats.by_recommendation.get('RECOMMEND', 0) }}</div>
+        <div class="stat-label">Recommended</div>
+    </div>
+    <div class="stat-card info">
+        <div class="stat-value">{{ stats.avg_score }}%</div>
+        <div class="stat-label">Average Score</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.by_client | length }}</div>
+        <div class="stat-label">Clients</div>
+    </div>
+</div>
+
+<!-- Quick Search Form -->
+<div class="card">
+    <div class="card-header">
+        <h3>Quick Search</h3>
+    </div>
+    <div class="card-body">
+        <form action="/search/quick" method="GET" id="quickSearchForm">
+            <div class="form-row" style="align-items: flex-end;">
+                <div class="form-group" style="flex: 2;">
+                    <label class="form-label" for="quickSearchInput">Search by Name or Skills</label>
+                    <input type="text" class="form-input" name="q" id="quickSearchInput"
+                           placeholder="e.g., John Smith, SaaS, customer success, Salesforce..."
+                           value="{{ search_query or '' }}">
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label class="form-label" for="searchType">Search In</label>
+                    <select class="form-select" name="search_type" id="searchType">
+                        <option value="all" {% if search_type == 'all' %}selected{% endif %}>All Fields</option>
+                        <option value="name" {% if search_type == 'name' %}selected{% endif %}>Name Only</option>
+                        <option value="skills" {% if search_type == 'skills' %}selected{% endif %}>Skills & Experience</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary">Search</button>
+                </div>
+            </div>
+            <p class="form-hint">Find candidates quickly by name or keywords from their skills, experience, and assessment summaries</p>
+        </form>
+    </div>
+</div>
+
+<!-- Search Form -->
+<div class="card">
+    <div class="card-header">
+        <h3>Search by Job Description</h3>
+    </div>
+    <div class="card-body">
+        <form action="/search" method="POST" enctype="multipart/form-data" id="searchForm">
+            <div class="form-group">
+                <label class="form-label" for="jd_text">Paste Job Description</label>
+                <textarea class="form-textarea" name="jd_text" id="jd_text" rows="8"
+                          placeholder="Paste the job description here..."></textarea>
+                <p class="form-hint">Enter the job requirements, qualifications, and responsibilities</p>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Or Upload Job Description File</label>
+                <input type="file" class="form-input" name="jd_file" accept=".pdf,.docx,.txt">
+                <p class="form-hint">Supported formats: PDF, DOCX, TXT</p>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="top_n">Max Results</label>
+                    <select class="form-select" name="top_n" id="top_n">
+                        <option value="10">10 candidates</option>
+                        <option value="20" selected>20 candidates</option>
+                        <option value="50">50 candidates</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Search Mode</label>
+                    <div style="padding: 0.75rem 0;">
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" name="use_ai" value="true" checked>
+                            <span>Use AI-powered matching (recommended)</span>
+                        </label>
+                        <p class="form-hint">AI matching analyzes requirements and provides detailed match explanations</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <button type="submit" class="btn btn-primary btn-lg" id="searchBtn">
+                    Search Talent Pool
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- How It Works -->
+<div class="card">
+    <div class="card-header">
+        <h3>How Search Works</h3>
+    </div>
+    <div class="card-body">
+        <div class="two-column" style="grid-template-columns: 1fr 1fr;">
+            <div>
+                <h4 style="margin-bottom: 0.5rem;">AI-Powered Matching</h4>
+                <ul style="color: var(--text-secondary); padding-left: 1.25rem;">
+                    <li>Analyzes job requirements against candidate profiles</li>
+                    <li>Considers skills, experience, and qualifications</li>
+                    <li>Provides match explanations and identifies gaps</li>
+                    <li>Ranks candidates by overall fit</li>
+                </ul>
+            </div>
+            <div>
+                <h4 style="margin-bottom: 0.5rem;">What Gets Searched</h4>
+                <ul style="color: var(--text-secondary); padding-left: 1.25rem;">
+                    <li>All completed assessments across all clients</li>
+                    <li>Candidate summaries and key strengths</li>
+                    <li>Previous assessment scores and recommendations</li>
+                    <li>Resume content (when available)</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('searchForm').addEventListener('submit', function() {
+    const btn = document.getElementById('searchBtn');
+    btn.disabled = true;
+    btn.textContent = 'Searching...';
+});
+</script>
+{% endblock %}
