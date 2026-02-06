@@ -416,6 +416,20 @@ def assess_candidate(
     return assessment
 
 
+def cap_scores(scores: dict) -> dict:
+    """Cap all scores at their max values to correct AI over-scoring."""
+    for category, data in scores.items():
+        max_val = data.get("max", 0)
+        if data.get("score", 0) > max_val:
+            data["score"] = max_val
+        if "breakdown" in data:
+            for sub_key, sub_data in data["breakdown"].items():
+                sub_max = sub_data.get("max", 0)
+                if sub_data.get("score", 0) > sub_max:
+                    sub_data["score"] = sub_max
+    return scores
+
+
 def assess_with_claude(
     client_code: str,
     req_id: str,
@@ -456,6 +470,13 @@ def assess_with_claude(
 
     print("  Received AI assessment")
 
+    # Cap scores at max values (AI sometimes over-scores)
+    scores = cap_scores(ai_result.get("scores", {}))
+    total_score = sum(cat.get("score", 0) for cat in scores.values())
+    max_score = ai_result.get("max_score", 100)
+    percentage = round((total_score / max_score) * 100, 1) if max_score > 0 else 0
+    recommendation = calculate_recommendation({"percentage": percentage})
+
     # Build complete assessment with metadata
     assessment = {
         "metadata": {
@@ -470,12 +491,12 @@ def assess_with_claude(
             "batch": batch_name or "",
             "source_platform": "Indeed"
         },
-        # Merge AI scores
-        "scores": ai_result.get("scores", {}),
-        "total_score": ai_result.get("total_score", 0),
-        "max_score": ai_result.get("max_score", 100),
-        "percentage": ai_result.get("percentage", 0),
-        "recommendation": ai_result.get("recommendation", "PENDING"),
+        # Merge AI scores (capped at max)
+        "scores": scores,
+        "total_score": total_score,
+        "max_score": max_score,
+        "percentage": percentage,
+        "recommendation": recommendation,
         "recommendation_tier": ai_result.get("recommendation_tier", 0),
         "summary": ai_result.get("summary", ""),
         "key_strengths": ai_result.get("key_strengths", []),
