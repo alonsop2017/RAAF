@@ -7,11 +7,14 @@ from pathlib import Path
 from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from fastapi import APIRouter, Request, Form, HTTPException
+from fastapi import APIRouter, Request, Form, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 import yaml
 import shutil
+import logging
+
+logger = logging.getLogger(__name__)
 
 from scripts.utils.client_utils import (
     list_clients, get_client_info, get_client_root,
@@ -110,10 +113,13 @@ async def create_requisition(
     location: str = Form(""),
     salary_min: int = Form(0),
     salary_max: int = Form(0),
+    currency: str = Form("CAD"),
     experience_years_min: int = Form(0),
     education: str = Form(""),
+    framework_source: str = Form("template"),
     template: str = Form("base_framework"),
-    notes: str = Form("")
+    notes: str = Form(""),
+    job_description: UploadFile = File(None),
 ):
     """Create a new requisition."""
     # Validate client exists
@@ -143,6 +149,35 @@ async def create_requisition(
     for subdir in subdirs:
         (req_root / subdir).mkdir(parents=True, exist_ok=True)
 
+    # Save uploaded job description if provided
+    jd_text = None
+    if job_description and job_description.filename:
+        jd_content = await job_description.read()
+        if jd_content:
+            # Determine extension
+            ext = Path(job_description.filename).suffix.lower()
+            if ext not in (".pdf", ".docx"):
+                ext = ".pdf"  # default
+            jd_path = req_root / f"job_description{ext}"
+            with open(jd_path, "wb") as f:
+                f.write(jd_content)
+            logger.info(f"Saved job description: {jd_path}")
+
+            # Extract text from job description
+            try:
+                if ext == ".pdf":
+                    from scripts.utils.pdf_reader import extract_text as extract_pdf
+                    jd_text = extract_pdf(jd_path, use_ocr_fallback=False)
+                elif ext == ".docx":
+                    from scripts.utils.docx_reader import extract_text as extract_docx
+                    jd_text = extract_docx(jd_path)
+                if jd_text:
+                    jd_text = jd_text.strip()
+                    logger.info(f"Extracted {len(jd_text)} chars from job description")
+            except Exception as e:
+                logger.warning(f"Failed to extract JD text: {e}")
+                jd_text = None
+
     # Create requisition.yaml
     req_config = {
         'requisition_id': req_id,
@@ -156,7 +191,7 @@ async def create_requisition(
             'salary_range': {
                 'min': salary_min,
                 'max': salary_max,
-                'currency': 'CAD'
+                'currency': currency.strip().upper() or 'CAD'
             }
         },
         'requirements': {
@@ -175,18 +210,52 @@ async def create_requisition(
         'notes': notes
     }
 
+    # Add JD info to config if uploaded
+    if job_description and job_description.filename:
+        req_config['job']['description_file'] = job_description.filename
+
     with open(req_root / "requisition.yaml", 'w') as f:
         yaml.dump(req_config, f, default_flow_style=False)
 
-    # Copy framework template
-    template_path = get_project_root() / "templates" / "frameworks" / f"{template}_template.md"
-    if template_path.exists():
-        shutil.copy(template_path, req_root / "framework" / "assessment_framework.md")
-    else:
-        # Use base template as fallback
-        base_template = get_project_root() / "templates" / "frameworks" / "base_framework_template.md"
-        if base_template.exists():
-            shutil.copy(base_template, req_root / "framework" / "assessment_framework.md")
+    # Generate or copy assessment framework
+    framework_generated = False
+    if framework_source == "generate" and jd_text:
+        try:
+            from web.services.framework_generator import generate_framework
+            framework_md = await generate_framework(
+                jd_text=jd_text,
+                job_title=title,
+                department=department,
+                location=location,
+                experience_years_min=experience_years_min,
+                education=education,
+            )
+            with open(req_root / "framework" / "assessment_framework.md", "w") as f:
+                f.write(framework_md)
+            framework_generated = True
+            logger.info(f"Generated AI assessment framework for {req_id}")
+
+            # Save extracted JD text for reference
+            with open(req_root / "framework" / "job_description_text.txt", "w") as f:
+                f.write(f"# Extracted Job Description Text\n")
+                f.write(f"# Source: {job_description.filename}\n")
+                f.write(f"# Extracted: {datetime.now().strftime('%Y-%m-%d')}\n\n")
+                f.write(jd_text)
+
+        except Exception as e:
+            logger.error(f"Framework generation failed: {e}")
+            # Fall back to template
+            framework_generated = False
+
+    if not framework_generated:
+        # Copy framework template
+        template_path = get_project_root() / "templates" / "frameworks" / f"{template}_template.md"
+        if template_path.exists():
+            shutil.copy(template_path, req_root / "framework" / "assessment_framework.md")
+        else:
+            base_template = get_project_root() / "templates" / "frameworks" / "base_framework_template.md"
+            if base_template.exists():
+                shutil.copy(base_template, req_root / "framework" / "assessment_framework.md")
 
     # Update client's active requisitions list
     client_root = get_client_root(client_code)
@@ -204,7 +273,10 @@ async def create_requisition(
         with open(client_config_path, 'w') as f:
             yaml.dump(client_config, f, default_flow_style=False)
 
-    return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}", status_code=303)
+    redirect_url = f"/requisitions/{client_code}/{req_id}"
+    if framework_generated:
+        redirect_url += "?framework=generated"
+    return RedirectResponse(url=redirect_url, status_code=303)
 
 
 @router.get("/{client_code}/{req_id}", response_class=HTMLResponse)
@@ -272,6 +344,10 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
                 'created': datetime.fromtimestamp(report_file.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
             })
 
+    # PCR integration data
+    pcr_integration = req_config.get('pcr_integration', {})
+    pcr_company_name = client_config.get('pcr_company_name', '')
+
     return templates.TemplateResponse("requisitions/view.html", {
         "request": request,
         "user": getattr(request.state, 'user', None),
@@ -283,7 +359,9 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
         "batches": batches,
         "reports": reports,
         "candidate_count": len(candidates),
-        "assessed_count": sum(1 for c in candidates if c['assessed'])
+        "assessed_count": sum(1 for c in candidates if c['assessed']),
+        "pcr_integration": pcr_integration,
+        "pcr_company_name": pcr_company_name,
     })
 
 
@@ -315,6 +393,7 @@ async def update_requisition(
     status: str = Form("active"),
     salary_min: int = Form(0),
     salary_max: int = Form(0),
+    currency: str = Form("CAD"),
     experience_years_min: int = Form(0),
     education: str = Form(""),
     notes: str = Form("")
@@ -336,6 +415,7 @@ async def update_requisition(
     config['job']['location'] = location
     config['job']['salary_range']['min'] = salary_min
     config['job']['salary_range']['max'] = salary_max
+    config['job']['salary_range']['currency'] = currency.strip().upper() or 'CAD'
     config['requirements']['experience_years_min'] = experience_years_min
     config['requirements']['education'] = education
     config['notes'] = notes
@@ -380,6 +460,62 @@ async def update_requisition_status(
         config = yaml.safe_load(f)
 
     config['status'] = status
+
+    with open(config_path, 'w') as f:
+        yaml.dump(config, f, default_flow_style=False)
+
+    return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}", status_code=303)
+
+
+@router.post("/{client_code}/{req_id}/link-pcr")
+async def link_pcr_position(
+    request: Request,
+    client_code: str,
+    req_id: str,
+    job_id: str = Form(...),
+    job_title: str = Form(""),
+    company_name: str = Form(""),
+):
+    """Link a PCR position to this requisition."""
+    req_root = get_requisition_root(client_code, req_id)
+    config_path = req_root / "requisition.yaml"
+
+    if not config_path.exists():
+        raise HTTPException(status_code=404, detail="Requisition not found")
+
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+
+    config['pcr_integration'] = {
+        'job_id': job_id,
+        'job_title': job_title,
+        'company_name': company_name,
+        'linked_date': datetime.now().strftime("%Y-%m-%d"),
+    }
+
+    with open(config_path, 'w') as f:
+        yaml.dump(config, f, default_flow_style=False)
+
+    return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}", status_code=303)
+
+
+@router.post("/{client_code}/{req_id}/unlink-pcr")
+async def unlink_pcr_position(
+    request: Request,
+    client_code: str,
+    req_id: str,
+):
+    """Remove PCR position linkage from this requisition."""
+    req_root = get_requisition_root(client_code, req_id)
+    config_path = req_root / "requisition.yaml"
+
+    if not config_path.exists():
+        raise HTTPException(status_code=404, detail="Requisition not found")
+
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+
+    config.pop('pcr_integration', None)
 
     with open(config_path, 'w') as f:
         yaml.dump(config, f, default_flow_style=False)

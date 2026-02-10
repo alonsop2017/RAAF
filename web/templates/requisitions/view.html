@@ -215,6 +215,61 @@
             </div>
         </div>
 
+        <!-- PCR Integration -->
+        <div class="card">
+            <div class="card-header">
+                <h3>PCR Integration</h3>
+            </div>
+            <div class="card-body">
+                {% if pcr_integration and pcr_integration.job_id %}
+                <!-- Linked state -->
+                <div class="pcr-linked">
+                    <p><strong>Position:</strong> {{ pcr_integration.job_title or 'N/A' }}</p>
+                    <p class="mt-1"><strong>Company:</strong> {{ pcr_integration.company_name or 'N/A' }}</p>
+                    <p class="mt-1"><strong>Job ID:</strong> {{ pcr_integration.job_id }}</p>
+                    <p class="mt-1"><strong>Linked:</strong> {{ pcr_integration.linked_date or 'N/A' }}</p>
+                    <div class="action-buttons mt-2">
+                        <a href="/pcr/sync/{{ client_code }}/{{ req_id }}" class="btn btn-sm btn-primary">Sync Candidates</a>
+                        <form action="/requisitions/{{ client_code }}/{{ req_id }}/unlink-pcr" method="POST" style="display:inline;">
+                            <button type="submit" class="btn btn-sm btn-outline" onclick="return confirm('Unlink this PCR position?')">Unlink</button>
+                        </form>
+                    </div>
+                </div>
+                {% else %}
+                <!-- Not linked — search and link -->
+                <div class="pcr-search">
+                    <div class="form-group">
+                        <label class="form-label" for="pcrSearch">Search PCR Positions</label>
+                        <div style="display:flex; gap:0.5rem;">
+                            <input type="text" id="pcrSearch" class="form-input" style="flex:1;" placeholder="Company name..." value="{{ pcr_company_name }}">
+                            <button type="button" id="pcrSearchBtn" class="btn btn-sm btn-primary">Search</button>
+                        </div>
+                    </div>
+                    <div id="pcrResults" style="display:none;" class="mt-2">
+                        <div class="form-group">
+                            <label class="form-label" for="pcrSelect">Select Position</label>
+                            <select id="pcrSelect" class="form-select">
+                                <option value="">-- Select a position --</option>
+                            </select>
+                        </div>
+                        <form action="/requisitions/{{ client_code }}/{{ req_id }}/link-pcr" method="POST" id="pcrLinkForm" class="mt-1">
+                            <input type="hidden" name="job_id" id="pcrJobId">
+                            <input type="hidden" name="job_title" id="pcrJobTitle">
+                            <input type="hidden" name="company_name" id="pcrCompanyName">
+                            <button type="submit" class="btn btn-sm btn-primary" id="pcrLinkBtn" disabled>Link Position</button>
+                        </form>
+                    </div>
+                    <div id="pcrLoading" style="display:none;" class="mt-2">
+                        <span class="text-muted">Searching...</span>
+                    </div>
+                    <div id="pcrError" style="display:none;" class="mt-2">
+                        <span style="color:var(--danger-color);"></span>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
         <!-- Batches -->
         {% if batches %}
         <div class="card">
@@ -301,6 +356,76 @@
         cancelModal.style.display = 'none';
         cancelReason.value = '';
     });
+
+    // PCR position search and link
+    var pcrSearchBtn = document.getElementById('pcrSearchBtn');
+    if (pcrSearchBtn) {
+        var pcrSearchInput = document.getElementById('pcrSearch');
+        var pcrResults = document.getElementById('pcrResults');
+        var pcrSelect = document.getElementById('pcrSelect');
+        var pcrLoading = document.getElementById('pcrLoading');
+        var pcrError = document.getElementById('pcrError');
+        var pcrLinkBtn = document.getElementById('pcrLinkBtn');
+        var pcrJobId = document.getElementById('pcrJobId');
+        var pcrJobTitle = document.getElementById('pcrJobTitle');
+        var pcrCompanyName = document.getElementById('pcrCompanyName');
+        var positionsData = [];
+
+        pcrSearchBtn.addEventListener('click', function() {
+            var query = pcrSearchInput.value.trim();
+            pcrLoading.style.display = 'block';
+            pcrResults.style.display = 'none';
+            pcrError.style.display = 'none';
+
+            fetch('/pcr/api/positions?search=' + encodeURIComponent(query))
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    pcrLoading.style.display = 'none';
+                    if (data.error) {
+                        pcrError.querySelector('span').textContent = data.error;
+                        pcrError.style.display = 'block';
+                        return;
+                    }
+                    positionsData = data;
+                    pcrSelect.innerHTML = '<option value="">-- Select a position (' + data.length + ' found) --</option>';
+                    data.forEach(function(pos) {
+                        var opt = document.createElement('option');
+                        opt.value = pos.job_id;
+                        opt.textContent = pos.title + ' - ' + pos.company + ' (' + pos.job_id + ')';
+                        pcrSelect.appendChild(opt);
+                    });
+                    pcrResults.style.display = 'block';
+                    pcrLinkBtn.disabled = true;
+                })
+                .catch(function(err) {
+                    pcrLoading.style.display = 'none';
+                    pcrError.querySelector('span').textContent = 'Failed to fetch positions: ' + err;
+                    pcrError.style.display = 'block';
+                });
+        });
+
+        pcrSelect.addEventListener('change', function() {
+            var selected = this.value;
+            if (!selected) {
+                pcrLinkBtn.disabled = true;
+                return;
+            }
+            var pos = positionsData.find(function(p) { return String(p.job_id) === String(selected); });
+            if (pos) {
+                pcrJobId.value = pos.job_id;
+                pcrJobTitle.value = pos.title;
+                pcrCompanyName.value = pos.company;
+                pcrLinkBtn.disabled = false;
+            }
+        });
+
+        pcrSearchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                pcrSearchBtn.click();
+            }
+        });
+    }
 })();
 </script>
 

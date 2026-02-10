@@ -7,8 +7,8 @@ from pathlib import Path
 import subprocess
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from fastapi import APIRouter, Request, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Request, Form, HTTPException, Query
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from scripts.utils.client_utils import (
@@ -69,7 +69,7 @@ async def pcr_dashboard(request: Request):
                         'client_name': client_config.get('company_name', client_code),
                         'req_id': req_id,
                         'title': req_config.get('job', {}).get('title', req_id),
-                        'pcr_job_id': pcr_info.get('position_id'),
+                        'pcr_job_id': pcr_info.get('job_id'),
                         'last_sync': pcr_info.get('last_sync', 'Never')
                     })
         except Exception:
@@ -95,6 +95,34 @@ async def test_connection(request: Request):
         "output": stdout,
         "error": stderr
     })
+
+
+@router.get("/api/positions")
+async def api_list_positions(request: Request, search: str = Query("")):
+    """Return PCR positions as JSON, optionally filtered by company name."""
+    try:
+        from scripts.utils.pcr_client import PCRClient
+        client = PCRClient()
+        client.ensure_authenticated()
+        positions = client.get_positions(status="Open", limit=200)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+    results = []
+    search_lower = search.strip().lower()
+    for pos in positions:
+        company = pos.get("CompanyName", "")
+        if search_lower and search_lower not in company.lower():
+            continue
+        results.append({
+            "job_id": pos.get("JobId", pos.get("PositionId", "")),
+            "title": pos.get("JobTitle", pos.get("Title", "")),
+            "company": company,
+            "location": pos.get("City", ""),
+            "status": pos.get("Status", ""),
+        })
+
+    return JSONResponse(results)
 
 
 @router.get("/positions", response_class=HTMLResponse)
@@ -234,5 +262,5 @@ async def sync_requisition_page(request: Request, client_code: str, req_id: str)
         "client_name": client_config.get('company_name', client_code),
         "req_title": req_config.get('job', {}).get('title', req_id),
         "pcr_info": pcr_info,
-        "has_pcr_link": bool(pcr_info.get('position_id'))
+        "has_pcr_link": bool(pcr_info.get('job_id'))
     })
