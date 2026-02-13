@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Drive Import Preview{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> / <a href="/candidates/{{ client_code }}/{{ req_id }}">Candidates</a> /
+    <a href="/candidates/{{ client_code }}/{{ req_id }}/import/drive">Import from Drive</a> / <span>Preview</span>
+</div>
+
+<div class="page-header">
+    <div class="flex flex-between flex-center">
+        <div>
+            <h1>Preview Drive Files</h1>
+            <p class="subtitle">{{ files|length }} file{{ 's' if files|length != 1 else '' }} found. Review names and select files to import.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <form action="/candidates/{{ client_code }}/{{ req_id }}/import/drive/import" method="POST">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <h3>Files in Folder</h3>
+            <label style="cursor: pointer; font-weight: normal;">
+                <input type="checkbox" id="select-all" checked onchange="toggleAll(this)"> Select All
+            </label>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 40px;">Import</th>
+                        <th>Original Filename</th>
+                        <th style="width: 80px;">Type</th>
+                        <th style="width: 80px;">Size</th>
+                        <th>Target Name (lastname_firstname)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for file in files %}
+                    <tr>
+                        <td>
+                            <input type="checkbox" name="selected_{{ loop.index0 }}" value="1" checked
+                                   class="file-checkbox">
+                            <input type="hidden" name="file_id_{{ loop.index0 }}" value="{{ file.id }}">
+                            <input type="hidden" name="extension_{{ loop.index0 }}" value="{{ file.extension }}">
+                            <input type="hidden" name="original_name_{{ loop.index0 }}" value="{{ file.name }}">
+                        </td>
+                        <td style="font-size: 0.9rem;">{{ file.name }}</td>
+                        <td>
+                            <span class="badge {% if file.extension == '.pdf' %}rec-recommend{% else %}rec-conditional{% endif %}">
+                                {{ file.extension[1:]|upper }}
+                            </span>
+                        </td>
+                        <td style="font-size: 0.9rem;">{{ file.size_kb }} KB</td>
+                        <td>
+                            <input type="text" name="target_name_{{ loop.index0 }}"
+                                   value="{{ file.guessed_name }}"
+                                   class="form-input" style="margin: 0; padding: 0.3rem 0.5rem; font-size: 0.9rem;"
+                                   placeholder="lastname_firstname">
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card-body">
+            <div class="alert alert-info">
+                <strong>Naming format:</strong> Use <code>lastname_firstname</code> (e.g. <code>smith_john</code>).
+                The system will save files with this name and extract text for assessment.
+            </div>
+            <div class="action-buttons mt-3">
+                <button type="submit" id="import-btn" class="btn btn-primary btn-lg">Import Selected</button>
+                <a href="/candidates/{{ client_code }}/{{ req_id }}/import/drive" class="btn btn-outline" id="back-btn">Back</a>
+                <a href="/candidates/{{ client_code }}/{{ req_id }}" class="btn btn-outline" id="cancel-btn">Cancel</a>
+            </div>
+            <div id="import-progress" style="display: none; margin-top: 1rem;">
+                <div class="alert alert-warning" style="display: flex; align-items: center; gap: 0.75rem;">
+                    <span class="spinner" style="display: inline-block; width: 1.2rem; height: 1.2rem; border: 3px solid #ccc; border-top-color: #e67e22; border-radius: 50%; animation: spin 0.8s linear infinite;"></span>
+                    <span><strong>Importing files from Google Drive...</strong> This may take a minute. Please do not close this page.</span>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+<script>
+function toggleAll(source) {
+    var checkboxes = document.querySelectorAll('.file-checkbox');
+    for (var i = 0; i < checkboxes.length; i++) {
+        checkboxes[i].checked = source.checked;
+    }
+}
+
+document.getElementById('import-btn').addEventListener('click', function() {
+    var checked = document.querySelectorAll('.file-checkbox:checked');
+    if (checked.length === 0) {
+        alert('No files selected.');
+        return;
+    }
+    this.disabled = true;
+    this.textContent = 'Importing...';
+    document.getElementById('back-btn').style.display = 'none';
+    document.getElementById('cancel-btn').style.display = 'none';
+    document.getElementById('import-progress').style.display = 'block';
+});
+</script>
+{% endblock %}
