@@ -22,7 +22,7 @@ def setup_oauth():
         client_secret=get_google_client_secret(),
         server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
         client_kwargs={
-            'scope': 'openid email profile'
+            'scope': 'openid email profile https://www.googleapis.com/auth/drive.readonly'
         }
     )
     return oauth

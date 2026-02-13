@@ -4,7 +4,7 @@
 
 PI_HOST="alonsop@192.168.2.71"
 PI_DIR="/home/alonsop/RAAF"
-LOCAL_DIR="/home/alonsop/RAAF"
+LOCAL_DIR="/Users/aperez/RAAF/RAAF"
 
 echo "=============================================="
 echo "RAAF Deployment to Raspberry Pi"
@@ -27,6 +27,10 @@ rsync -avz --progress \
     --exclude 'venv' \
     --exclude '.venv' \
     --exclude 'config/pcr_credentials.yaml' \
+    --exclude 'config/claude_credentials.yaml' \
+    --exclude 'config/.token_store.json' \
+    --exclude '.DS_Store' \
+    --exclude '.obsidian' \
     $LOCAL_DIR/ $PI_HOST:$PI_DIR/
 
 # Step 3: Install Python dependencies
