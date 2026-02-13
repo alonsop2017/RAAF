@@ -4,6 +4,9 @@ config/pcr_credentials.yaml
 # Claude API credentials (NEVER commit)
 config/claude_credentials.yaml
 
+# OAuth token store (NEVER commit)
+config/.token_store.json
+
 # Context file
 .current_context.yaml
 

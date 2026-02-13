@@ -3,6 +3,7 @@ RAAF Web Application - MVP
 Resume Assessment Automation Framework Web Interface
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -49,7 +50,10 @@ async def auth_middleware(request: Request, call_next):
     """
     Middleware to check authentication and redirect to login if needed.
     Allows access to auth routes, static files, and health check without auth.
+    Set DEV_MODE=1 to bypass authentication for local development.
     """
+    dev_mode = os.environ.get("DEV_MODE", "0") == "1"
+
     # Paths that don't require authentication
     public_paths = ["/auth", "/static", "/health"]
 
@@ -57,7 +61,15 @@ async def auth_middleware(request: Request, call_next):
     path = request.url.path
     is_public = any(path.startswith(p) for p in public_paths)
 
-    if not is_public:
+    if dev_mode:
+        # Bypass auth in dev mode with a default user
+        request.state.user = {
+            "email": "dev@localhost",
+            "name": "Dev User",
+            "given_name": "Dev",
+            "family_name": "User",
+        }
+    elif not is_public:
         # Check for valid session
         user = session_manager.get_user_from_cookies(request.cookies)
         if not user:
