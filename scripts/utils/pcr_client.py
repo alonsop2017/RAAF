@@ -20,6 +20,8 @@ except ImportError:
 
 import yaml
 
+import sys
+sys.path.insert(0, str(Path(__file__).parent))
 from client_utils import get_config_path, get_settings
 
 
@@ -200,16 +202,19 @@ class PCRClient:
                 return self.session_token
 
         db = self.credentials["database"]
-        auth_data = {
+        api_key = self.credentials["api"]["api_key"]
+        auth_params = {
             "DatabaseId": db["database_id"],
             "Username": db["username"],
-            "Password": db["password"]
+            "Password": db["password"],
+            "ApiKey": api_key,
+            "AppId": api_key
         }
 
         response = self._make_request(
-            "POST",
-            "/sessions",
-            data=auth_data,
+            "GET",
+            "/access-token",
+            params=auth_params,
             include_auth=False
         )
 
