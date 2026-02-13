@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Import from Google Drive{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> / <a href="/candidates/{{ client_code }}/{{ req_id }}">Candidates</a> / <span>Import from Drive</span>
+</div>
+
+<div class="page-header">
+    <h1>Import from Google Drive</h1>
+    <p class="subtitle">Import candidate resumes from a shared Google Drive folder</p>
+</div>
+
+{% if not has_token %}
+<div class="card" style="max-width: 600px;">
+    <div class="card-body">
+        <div class="alert alert-warning">
+            <strong>Drive Access Required</strong><br>
+            Your Google account has not granted Drive access to this application.
+            Please <a href="/auth/logout">log out</a> and log in again to grant the required Google Drive permission.
+        </div>
+        <div class="action-buttons mt-3">
+            <a href="/candidates/{{ client_code }}/{{ req_id }}" class="btn btn-outline">Back to Candidates</a>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card" style="max-width: 600px;">
+    <div class="card-body">
+        {% if error %}
+        <div class="alert alert-danger">
+            {{ error }}
+        </div>
+        {% endif %}
+
+        <form action="/candidates/{{ client_code }}/{{ req_id }}/import/drive/list" method="POST">
+            <div class="form-group">
+                <label class="form-label" for="folder_url">Google Drive Folder URL</label>
+                <input type="text" id="folder_url" name="folder_url" class="form-input"
+                       placeholder="https://drive.google.com/drive/folders/..."
+                       value="{{ folder_url | default('', true) }}" required>
+                <p class="form-hint">Paste the full URL of a Google Drive folder containing PDF or DOCX resumes.</p>
+            </div>
+
+            <div class="alert alert-info">
+                <strong>How it works:</strong>
+                <ol style="margin: 0.5rem 0 0 1.2rem; padding: 0;">
+                    <li>Paste the folder URL and click "List Files"</li>
+                    <li>Review the file list and edit candidate names as needed</li>
+                    <li>Select files to import and click "Import Selected"</li>
+                </ol>
+            </div>
+
+            <div class="action-buttons mt-3">
+                <button type="submit" class="btn btn-primary btn-lg">List Files</button>
+                <a href="/candidates/{{ client_code }}/{{ req_id }}" class="btn btn-outline">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

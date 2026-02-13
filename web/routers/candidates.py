@@ -164,6 +164,278 @@ async def upload_resumes(
     return RedirectResponse(url=f"/candidates/{client_code}/{req_id}?uploaded={uploaded_count}", status_code=303)
 
 
+# =============================================================================
+# GOOGLE DRIVE IMPORT
+# =============================================================================
+
+@router.get("/{client_code}/{req_id}/import/drive", response_class=HTMLResponse)
+async def drive_import_form(request: Request, client_code: str, req_id: str):
+    """Render the Google Drive folder URL input form."""
+    from web.auth.token_store import get_token
+
+    user = getattr(request.state, 'user', None)
+    email = user.get('email', '') if user else ''
+    has_token = get_token(email) is not None if email else False
+
+    return templates.TemplateResponse("candidates/drive_import.html", {
+        "request": request,
+        "user": user,
+        "client_code": client_code,
+        "req_id": req_id,
+        "has_token": has_token,
+    })
+
+
+@router.post("/{client_code}/{req_id}/import/drive/list", response_class=HTMLResponse)
+async def drive_list_files(
+    request: Request,
+    client_code: str,
+    req_id: str,
+    folder_url: str = Form(...),
+):
+    """Parse a Drive folder URL, list files, and render the preview table."""
+    from web.auth.token_store import get_token, is_token_expired
+    from web.services.google_drive import (
+        parse_drive_folder_id, list_folder_files,
+        DriveAPIError, TokenExpiredError, FolderNotFoundError,
+    )
+
+    user = getattr(request.state, 'user', None)
+    email = user.get('email', '') if user else ''
+
+    # Get stored OAuth token
+    token_data = get_token(email) if email else None
+    if not token_data:
+        return templates.TemplateResponse("candidates/drive_import.html", {
+            "request": request,
+            "user": user,
+            "client_code": client_code,
+            "req_id": req_id,
+            "has_token": False,
+            "error": "No Google Drive token found. Please log out and log in again to grant Drive access.",
+        })
+
+    # Auto-refresh if expired
+    if is_token_expired(token_data):
+        import httpx
+        from web.auth.config import get_google_client_id, get_google_client_secret
+        from web.auth.token_store import store_token
+        import time
+
+        if not token_data.get('refresh_token'):
+            return templates.TemplateResponse("candidates/drive_import.html", {
+                "request": request,
+                "user": user,
+                "client_code": client_code,
+                "req_id": req_id,
+                "has_token": True,
+                "error": "Drive token expired and no refresh token available. Please log out and log in again.",
+            })
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.post("https://oauth2.googleapis.com/token", data={
+                "client_id": get_google_client_id(),
+                "client_secret": get_google_client_secret(),
+                "refresh_token": token_data["refresh_token"],
+                "grant_type": "refresh_token",
+            })
+
+        if resp.status_code != 200:
+            return templates.TemplateResponse("candidates/drive_import.html", {
+                "request": request,
+                "user": user,
+                "client_code": client_code,
+                "req_id": req_id,
+                "has_token": True,
+                "error": "Failed to refresh Drive token. Please log out and log in again.",
+            })
+
+        new_token = resp.json()
+        token_data["access_token"] = new_token["access_token"]
+        token_data["expires_at"] = new_token.get("expires_in", 3600) + time.time()
+        store_token(email, token_data)
+
+    # Parse folder ID and list files
+    try:
+        folder_id = parse_drive_folder_id(folder_url)
+        files = await list_folder_files(token_data["access_token"], folder_id)
+    except FolderNotFoundError:
+        return templates.TemplateResponse("candidates/drive_import.html", {
+            "request": request,
+            "user": user,
+            "client_code": client_code,
+            "req_id": req_id,
+            "has_token": True,
+            "error": "Folder not found. Check the URL and make sure the folder is shared with your Google account.",
+            "folder_url": folder_url,
+        })
+    except TokenExpiredError:
+        return templates.TemplateResponse("candidates/drive_import.html", {
+            "request": request,
+            "user": user,
+            "client_code": client_code,
+            "req_id": req_id,
+            "has_token": True,
+            "error": "Drive token expired. Please log out and log in again.",
+            "folder_url": folder_url,
+        })
+    except DriveAPIError as e:
+        return templates.TemplateResponse("candidates/drive_import.html", {
+            "request": request,
+            "user": user,
+            "client_code": client_code,
+            "req_id": req_id,
+            "has_token": True,
+            "error": str(e),
+            "folder_url": folder_url,
+        })
+
+    if not files:
+        return templates.TemplateResponse("candidates/drive_import.html", {
+            "request": request,
+            "user": user,
+            "client_code": client_code,
+            "req_id": req_id,
+            "has_token": True,
+            "error": "No PDF or DOCX files found in this folder.",
+            "folder_url": folder_url,
+        })
+
+    return templates.TemplateResponse("candidates/drive_preview.html", {
+        "request": request,
+        "user": user,
+        "client_code": client_code,
+        "req_id": req_id,
+        "files": files,
+        "folder_url": folder_url,
+    })
+
+
+@router.post("/{client_code}/{req_id}/import/drive/import")
+async def drive_import_files(
+    request: Request,
+    client_code: str,
+    req_id: str,
+):
+    """Download selected files from Drive, rename, save to incoming/, extract to processed/."""
+    from web.auth.token_store import get_token, is_token_expired, store_token
+    from web.services.google_drive import download_file, DriveAPIError, TokenExpiredError
+    import time
+
+    user = getattr(request.state, 'user', None)
+    email = user.get('email', '') if user else ''
+    token_data = get_token(email) if email else None
+
+    if not token_data:
+        raise HTTPException(status_code=400, detail="No Drive token. Please re-login.")
+
+    # Auto-refresh if expired
+    if is_token_expired(token_data):
+        import httpx
+        from web.auth.config import get_google_client_id, get_google_client_secret
+
+        if not token_data.get('refresh_token'):
+            raise HTTPException(status_code=400, detail="Token expired. Please re-login.")
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.post("https://oauth2.googleapis.com/token", data={
+                "client_id": get_google_client_id(),
+                "client_secret": get_google_client_secret(),
+                "refresh_token": token_data["refresh_token"],
+                "grant_type": "refresh_token",
+            })
+
+        if resp.status_code != 200:
+            raise HTTPException(status_code=502, detail="Failed to refresh token.")
+
+        new_token = resp.json()
+        token_data["access_token"] = new_token["access_token"]
+        token_data["expires_at"] = new_token.get("expires_in", 3600) + time.time()
+        store_token(email, token_data)
+
+    # Parse form data (dynamic field names from the preview table)
+    form = await request.form()
+
+    req_root = get_requisition_root(client_code, req_id)
+    incoming_dir = req_root / "resumes" / "incoming"
+    processed_dir = req_root / "resumes" / "processed"
+    incoming_dir.mkdir(parents=True, exist_ok=True)
+    processed_dir.mkdir(parents=True, exist_ok=True)
+
+    imported_count = 0
+
+    # Collect selected files from form
+    # Form fields: selected_<idx>, file_id_<idx>, target_name_<idx>, extension_<idx>
+    idx = 0
+    while True:
+        file_id = form.get(f"file_id_{idx}")
+        if file_id is None:
+            break
+
+        selected = form.get(f"selected_{idx}")
+        if not selected:
+            idx += 1
+            continue
+
+        target_name = form.get(f"target_name_{idx}", "").strip()
+        extension = form.get(f"extension_{idx}", ".pdf")
+        original_name = form.get(f"original_name_{idx}", "")
+
+        if not target_name:
+            idx += 1
+            continue
+
+        # Sanitize target name
+        safe_name = target_name.lower().replace(" ", "_").replace("-", "_")
+        safe_name = ''.join(c for c in safe_name if c.isalnum() or c == '_')
+
+        # Download to incoming/
+        incoming_path = incoming_dir / f"{safe_name}{extension}"
+        try:
+            await download_file(token_data["access_token"], file_id, incoming_path)
+        except (DriveAPIError, TokenExpiredError) as e:
+            idx += 1
+            continue
+
+        # Extract text to processed/
+        processed_path = processed_dir / f"{safe_name}_resume.txt"
+        try:
+            if extension == ".pdf":
+                from scripts.utils.pdf_reader import extract_text as extract_pdf_text
+                text = extract_pdf_text(str(incoming_path))
+            elif extension == ".docx":
+                from scripts.utils.docx_reader import extract_text as extract_docx_text
+                text = extract_docx_text(str(incoming_path))
+            else:
+                with open(incoming_path, 'r', errors='ignore') as f:
+                    text = f.read()
+
+            header = f"""# Extracted Resume
+# Source: {original_name} (Google Drive import)
+# Saved as: {safe_name}{extension}
+# Extracted: {datetime.now().strftime('%Y-%m-%d')}
+
+---
+
+"""
+            with open(processed_path, 'w') as f:
+                f.write(header + text)
+
+            imported_count += 1
+        except Exception as e:
+            # If extraction fails, save error note
+            with open(processed_path, 'w') as f:
+                f.write(f"# Extraction failed: {str(e)}\n")
+            imported_count += 1
+
+        idx += 1
+
+    return RedirectResponse(
+        url=f"/candidates/{client_code}/{req_id}?uploaded={imported_count}",
+        status_code=303
+    )
+
+
 @router.get("/{client_code}/{req_id}/{name_normalized}", response_class=HTMLResponse)
 async def view_candidate(request: Request, client_code: str, req_id: str, name_normalized: str):
     """View candidate details and assessment."""

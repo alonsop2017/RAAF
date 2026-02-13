@@ -34,6 +34,12 @@
                 <a href="/candidates/{{ client_code }}/{{ req_id }}" class="btn btn-outline">Cancel</a>
             </div>
         </form>
+
+        <div class="alert alert-info mt-3">
+            <strong>Have resumes in Google Drive?</strong>
+            <a href="/candidates/{{ client_code }}/{{ req_id }}/import/drive">Import from Google Drive</a>
+            to bulk-import resumes from a shared folder.
+        </div>
     </div>
 </div>
 {% endblock %}
