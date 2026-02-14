@@ -8,7 +8,7 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from fastapi import APIRouter, Request, Form, HTTPException, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 import yaml
 import shutil
@@ -391,6 +391,16 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
     pcr_integration = req_config.get('pcr_integration', {})
     pcr_company_name = client_config.get('pcr_company_name', '')
 
+    # Check for job description file
+    has_job_description = False
+    jd_filename = None
+    for ext in (".pdf", ".docx"):
+        jd_path = req_root / f"job_description{ext}"
+        if jd_path.exists():
+            has_job_description = True
+            jd_filename = jd_path.name
+            break
+
     return templates.TemplateResponse("requisitions/view.html", {
         "request": request,
         "user": getattr(request.state, 'user', None),
@@ -405,6 +415,8 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
         "assessed_count": sum(1 for c in candidates if c['assessed']),
         "pcr_integration": pcr_integration,
         "pcr_company_name": pcr_company_name,
+        "has_job_description": has_job_description,
+        "jd_filename": jd_filename,
     })
 
 
@@ -416,12 +428,25 @@ async def edit_requisition_form(request: Request, client_code: str, req_id: str)
     except Exception:
         raise HTTPException(status_code=404, detail=f"Requisition not found")
 
+    # Check for job description file
+    req_root = get_requisition_root(client_code, req_id)
+    has_job_description = False
+    jd_filename = None
+    for ext in (".pdf", ".docx"):
+        jd_path = req_root / f"job_description{ext}"
+        if jd_path.exists():
+            has_job_description = True
+            jd_filename = jd_path.name
+            break
+
     return templates.TemplateResponse("requisitions/edit.html", {
         "request": request,
         "user": getattr(request.state, 'user', None),
         "req": req_config,
         "req_id": req_id,
-        "client_code": client_code
+        "client_code": client_code,
+        "has_job_description": has_job_description,
+        "jd_filename": jd_filename,
     })
 
 
@@ -439,7 +464,8 @@ async def update_requisition(
     currency: str = Form("CAD"),
     experience_years_min: int = Form(0),
     education: str = Form(""),
-    notes: str = Form("")
+    notes: str = Form(""),
+    job_description: UploadFile = File(None),
 ):
     """Update requisition."""
     req_root = get_requisition_root(client_code, req_id)
@@ -462,6 +488,46 @@ async def update_requisition(
     config['requirements']['experience_years_min'] = experience_years_min
     config['requirements']['education'] = education
     config['notes'] = notes
+
+    # Handle job description upload
+    if job_description and job_description.filename:
+        jd_content = await job_description.read()
+        if jd_content:
+            ext = Path(job_description.filename).suffix.lower()
+            if ext not in (".pdf", ".docx"):
+                ext = ".pdf"
+            # Remove existing JD files
+            for old_ext in (".pdf", ".docx"):
+                old_jd = req_root / f"job_description{old_ext}"
+                if old_jd.exists():
+                    old_jd.unlink()
+            jd_path = req_root / f"job_description{ext}"
+            with open(jd_path, "wb") as f:
+                f.write(jd_content)
+            config['job']['description_file'] = job_description.filename
+            logger.info(f"Updated job description for {req_id}: {jd_path}")
+
+            # Extract text from new JD
+            try:
+                if ext == ".pdf":
+                    from scripts.utils.pdf_reader import extract_text as extract_pdf
+                    jd_text = extract_pdf(jd_path, use_ocr_fallback=False)
+                elif ext == ".docx":
+                    from scripts.utils.docx_reader import extract_text as extract_docx
+                    jd_text = extract_docx(jd_path)
+                else:
+                    jd_text = None
+                if jd_text:
+                    jd_text = jd_text.strip()
+                    framework_dir = req_root / "framework"
+                    framework_dir.mkdir(parents=True, exist_ok=True)
+                    with open(framework_dir / "job_description_text.txt", "w", encoding="utf-8") as f:
+                        f.write(f"# Extracted Job Description Text\n")
+                        f.write(f"# Source: {job_description.filename}\n")
+                        f.write(f"# Extracted: {datetime.now().strftime('%Y-%m-%d')}\n\n")
+                        f.write(jd_text)
+            except Exception as e:
+                logger.warning(f"Failed to extract JD text during update: {e}")
 
     with open(config_path, 'w') as f:
         yaml.dump(config, f, default_flow_style=False)
@@ -628,3 +694,92 @@ async def regenerate_framework(request: Request, client_code: str, req_id: str):
             url=f"/requisitions/{client_code}/{req_id}?framework=generation_failed",
             status_code=303
         )
+
+
+@router.get("/{client_code}/{req_id}/download-jd")
+async def download_job_description(client_code: str, req_id: str):
+    """Download the job description file for a requisition."""
+    req_root = get_requisition_root(client_code, req_id)
+
+    for ext in (".pdf", ".docx"):
+        jd_path = req_root / f"job_description{ext}"
+        if jd_path.exists():
+            media_type = (
+                "application/pdf" if ext == ".pdf"
+                else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+            return FileResponse(jd_path, filename=jd_path.name, media_type=media_type)
+
+    raise HTTPException(status_code=404, detail="No job description file found")
+
+
+@router.post("/{client_code}/{req_id}/update-jd")
+async def update_job_description(
+    request: Request,
+    client_code: str,
+    req_id: str,
+    job_description: UploadFile = File(...),
+):
+    """Upload or replace the job description file for a requisition."""
+    req_root = get_requisition_root(client_code, req_id)
+    config_path = req_root / "requisition.yaml"
+
+    if not config_path.exists():
+        raise HTTPException(status_code=404, detail="Requisition not found")
+
+    jd_content = await job_description.read()
+    if not jd_content:
+        return RedirectResponse(
+            url=f"/requisitions/{client_code}/{req_id}?jd=empty",
+            status_code=303,
+        )
+
+    ext = Path(job_description.filename).suffix.lower()
+    if ext not in (".pdf", ".docx"):
+        ext = ".pdf"
+
+    # Remove existing JD files
+    for old_ext in (".pdf", ".docx"):
+        old_jd = req_root / f"job_description{old_ext}"
+        if old_jd.exists():
+            old_jd.unlink()
+
+    # Save new file
+    jd_path = req_root / f"job_description{ext}"
+    with open(jd_path, "wb") as f:
+        f.write(jd_content)
+    logger.info(f"Updated job description for {req_id}: {jd_path}")
+
+    # Update requisition.yaml
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    config.setdefault('job', {})['description_file'] = job_description.filename
+    with open(config_path, 'w') as f:
+        yaml.dump(config, f, default_flow_style=False)
+
+    # Extract text from new JD
+    try:
+        if ext == ".pdf":
+            from scripts.utils.pdf_reader import extract_text as extract_pdf
+            jd_text = extract_pdf(jd_path, use_ocr_fallback=False)
+        elif ext == ".docx":
+            from scripts.utils.docx_reader import extract_text as extract_docx
+            jd_text = extract_docx(jd_path)
+        else:
+            jd_text = None
+        if jd_text:
+            jd_text = jd_text.strip()
+            framework_dir = req_root / "framework"
+            framework_dir.mkdir(parents=True, exist_ok=True)
+            with open(framework_dir / "job_description_text.txt", "w", encoding="utf-8") as f:
+                f.write(f"# Extracted Job Description Text\n")
+                f.write(f"# Source: {job_description.filename}\n")
+                f.write(f"# Extracted: {datetime.now().strftime('%Y-%m-%d')}\n\n")
+                f.write(jd_text)
+    except Exception as e:
+        logger.warning(f"Failed to extract JD text: {e}")
+
+    return RedirectResponse(
+        url=f"/requisitions/{client_code}/{req_id}?jd=updated",
+        status_code=303,
+    )

@@ -49,6 +49,12 @@
 </div>
 {% endif %}
 
+{% if request.query_params.get('jd') == 'updated' %}
+<div class="alert alert-success">Job description has been updated successfully.</div>
+{% elif request.query_params.get('jd') == 'empty' %}
+<div class="alert alert-warning">The uploaded file was empty. Job description was not updated.</div>
+{% endif %}
+
 <!-- Stats -->
 <div class="stats-grid">
     <div class="stat-card">
@@ -232,6 +238,39 @@
                 {% if req.notes %}
                 <h4 class="mt-3 mb-1">Notes</h4>
                 <p style="white-space: pre-wrap;">{{ req.notes }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Job Description -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Job Description</h3>
+            </div>
+            <div class="card-body">
+                {% if has_job_description %}
+                <p><strong>File:</strong> {{ jd_filename }}</p>
+                <div class="action-buttons mt-2">
+                    <a href="/requisitions/{{ client_code }}/{{ req_id }}/download-jd" class="btn btn-sm btn-primary">Download</a>
+                </div>
+                <hr style="margin: 1rem 0; border-color: var(--border-color);">
+                <p class="text-muted" style="font-size: 0.85rem; margin-bottom: 0.5rem;">Replace job description:</p>
+                <form action="/requisitions/{{ client_code }}/{{ req_id }}/update-jd" method="POST" enctype="multipart/form-data">
+                    <div class="form-group" style="margin-bottom: 0.5rem;">
+                        <input type="file" name="job_description" class="form-input" accept=".pdf,.docx" required>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-outline">Upload & Replace</button>
+                </form>
+                {% else %}
+                <div class="empty-state" style="padding: 1rem 0;">
+                    <p class="text-muted">No job description uploaded.</p>
+                    <form action="/requisitions/{{ client_code }}/{{ req_id }}/update-jd" method="POST" enctype="multipart/form-data" class="mt-2">
+                        <div class="form-group" style="margin-bottom: 0.5rem;">
+                            <input type="file" name="job_description" class="form-input" accept=".pdf,.docx" required>
+                        </div>
+                        <button type="submit" class="btn btn-sm btn-primary">Upload Job Description</button>
+                    </form>
+                </div>
                 {% endif %}
             </div>
         </div>
