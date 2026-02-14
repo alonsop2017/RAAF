@@ -28,6 +28,27 @@
     </div>
 </div>
 
+<!-- Framework alerts -->
+{% if request.query_params.get('framework') == 'generated' %}
+<div class="alert alert-success">Assessment framework was successfully generated from the job description.</div>
+{% elif request.query_params.get('framework') == 'regenerated' %}
+<div class="alert alert-success">Assessment framework was successfully regenerated from the job description.</div>
+{% elif request.query_params.get('framework') == 'extraction_failed' %}
+<div class="alert alert-warning">
+    <strong>Warning:</strong> Could not extract text from the uploaded job description. A generic template was used instead.
+    <form action="/requisitions/{{ client_code }}/{{ req_id }}/regenerate-framework" method="POST" style="display:inline; margin-left: 0.5rem;">
+        <button type="submit" class="btn btn-sm btn-primary">Retry Framework Generation</button>
+    </form>
+</div>
+{% elif request.query_params.get('framework') == 'generation_failed' %}
+<div class="alert alert-warning">
+    <strong>Warning:</strong> AI framework generation failed. A generic template was used instead.
+    <form action="/requisitions/{{ client_code }}/{{ req_id }}/regenerate-framework" method="POST" style="display:inline; margin-left: 0.5rem;">
+        <button type="submit" class="btn btn-sm btn-primary">Retry Framework Generation</button>
+    </form>
+</div>
+{% endif %}
+
 <!-- Stats -->
 <div class="stats-grid">
     <div class="stat-card">

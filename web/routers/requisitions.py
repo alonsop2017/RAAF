@@ -56,9 +56,18 @@ async def list_all_requisitions(request: Request, status: str = None):
                     req_config = get_requisition_config(client_code, req_id)
                     req_root = get_requisition_root(client_code, req_id)
 
-                    # Count candidates
-                    resumes_dir = req_root / "resumes" / "processed"
-                    candidate_count = len(list(resumes_dir.glob("*.txt"))) if resumes_dir.exists() else 0
+                    # Count candidates from batch extracted/ folders + legacy processed/
+                    candidate_count = 0
+                    batches_dir = req_root / "resumes" / "batches"
+                    if batches_dir.exists():
+                        for batch_d in batches_dir.iterdir():
+                            if batch_d.is_dir():
+                                ext_dir = batch_d / "extracted"
+                                if ext_dir.exists():
+                                    candidate_count += len(list(ext_dir.glob("*.txt")))
+                    legacy_dir = req_root / "resumes" / "processed"
+                    if legacy_dir.exists():
+                        candidate_count += len(list(legacy_dir.glob("*.txt")))
 
                     # Count assessments
                     assessments_dir = req_root / "assessments" / "individual"
@@ -136,8 +145,6 @@ async def create_requisition(
     # Create all required subdirectories
     subdirs = [
         "framework",
-        "resumes/incoming",
-        "resumes/processed",
         "resumes/batches",
         "assessments/individual",
         "assessments/consolidated",
@@ -219,36 +226,41 @@ async def create_requisition(
 
     # Generate or copy assessment framework
     framework_generated = False
-    if framework_source == "generate" and jd_text:
-        try:
-            from web.services.framework_generator import generate_framework
-            framework_md = await generate_framework(
-                jd_text=jd_text,
-                job_title=title,
-                department=department,
-                location=location,
-                experience_years_min=experience_years_min,
-                education=education,
-            )
-            with open(req_root / "framework" / "assessment_framework.md", "w") as f:
-                f.write(framework_md)
-            framework_generated = True
-            logger.info(f"Generated AI assessment framework for {req_id}")
+    framework_warning = None
+    if framework_source == "generate":
+        if not jd_text:
+            # JD extraction failed - copy template as fallback but warn user
+            logger.warning(f"Framework generation requested but JD text extraction failed for {req_id}")
+            framework_warning = "extraction_failed"
+        else:
+            try:
+                from web.services.framework_generator import generate_framework
+                framework_md = await generate_framework(
+                    jd_text=jd_text,
+                    job_title=title,
+                    department=department,
+                    location=location,
+                    experience_years_min=experience_years_min,
+                    education=education,
+                )
+                with open(req_root / "framework" / "assessment_framework.md", "w", encoding="utf-8") as f:
+                    f.write(framework_md)
+                framework_generated = True
+                logger.info(f"Generated AI assessment framework for {req_id}")
 
-            # Save extracted JD text for reference
-            with open(req_root / "framework" / "job_description_text.txt", "w") as f:
-                f.write(f"# Extracted Job Description Text\n")
-                f.write(f"# Source: {job_description.filename}\n")
-                f.write(f"# Extracted: {datetime.now().strftime('%Y-%m-%d')}\n\n")
-                f.write(jd_text)
+                # Save extracted JD text for reference
+                with open(req_root / "framework" / "job_description_text.txt", "w", encoding="utf-8") as f:
+                    f.write(f"# Extracted Job Description Text\n")
+                    f.write(f"# Source: {job_description.filename}\n")
+                    f.write(f"# Extracted: {datetime.now().strftime('%Y-%m-%d')}\n\n")
+                    f.write(jd_text)
 
-        except Exception as e:
-            logger.error(f"Framework generation failed: {e}")
-            # Fall back to template
-            framework_generated = False
+            except Exception as e:
+                logger.error(f"Framework generation failed: {e}")
+                framework_warning = "generation_failed"
 
     if not framework_generated:
-        # Copy framework template
+        # Copy framework template as fallback
         template_path = get_project_root() / "templates" / "frameworks" / f"{template}_template.md"
         if template_path.exists():
             shutil.copy(template_path, req_root / "framework" / "assessment_framework.md")
@@ -276,6 +288,8 @@ async def create_requisition(
     redirect_url = f"/requisitions/{client_code}/{req_id}"
     if framework_generated:
         redirect_url += "?framework=generated"
+    elif framework_warning:
+        redirect_url += f"?framework={framework_warning}"
     return RedirectResponse(url=redirect_url, status_code=303)
 
 
@@ -290,24 +304,53 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
 
     req_root = get_requisition_root(client_code, req_id)
 
-    # Get candidates
+    # Get candidates from batch extracted/ folders + legacy processed/
+    import json
+    from scripts.utils.client_utils import list_all_extracted_resumes
     candidates = []
-    resumes_dir = req_root / "resumes" / "processed"
+    seen = set()
     assessments_dir = req_root / "assessments" / "individual"
 
-    if resumes_dir.exists():
-        for resume_file in sorted(resumes_dir.glob("*.txt")):
-            name_normalized = resume_file.stem.replace("_resume", "")
-            assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
+    for resume_file in list_all_extracted_resumes(client_code, req_id):
+        name_normalized = resume_file.stem.replace("_resume", "")
+        if name_normalized in seen:
+            continue
+        seen.add(name_normalized)
+        assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
 
+        candidate_data = {
+            'name_normalized': name_normalized,
+            'resume_file': resume_file.name,
+            'assessed': assessment_file.exists()
+        }
+
+        if assessment_file.exists():
+            with open(assessment_file, 'r') as f:
+                assessment = json.load(f)
+            candidate_data['score'] = assessment.get('total_score', 0)
+            candidate_data['percentage'] = assessment.get('percentage', 0)
+            candidate_data['recommendation'] = assessment.get('recommendation', 'PENDING')
+            candidate_data['name'] = assessment.get('candidate', {}).get('name', name_normalized)
+        else:
+            candidate_data['name'] = name_normalized.replace("_", " ").title()
+
+        candidates.append(candidate_data)
+
+    # Also check legacy processed/ folder
+    legacy_dir = req_root / "resumes" / "processed"
+    if legacy_dir.exists():
+        for resume_file in sorted(legacy_dir.glob("*.txt")):
+            name_normalized = resume_file.stem.replace("_resume", "")
+            if name_normalized in seen:
+                continue
+            seen.add(name_normalized)
+            assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
             candidate_data = {
                 'name_normalized': name_normalized,
                 'resume_file': resume_file.name,
                 'assessed': assessment_file.exists()
             }
-
             if assessment_file.exists():
-                import json
                 with open(assessment_file, 'r') as f:
                     assessment = json.load(f)
                 candidate_data['score'] = assessment.get('total_score', 0)
@@ -316,7 +359,6 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
                 candidate_data['name'] = assessment.get('candidate', {}).get('name', name_normalized)
             else:
                 candidate_data['name'] = name_normalized.replace("_", " ").title()
-
             candidates.append(candidate_data)
 
     # Sort by score (assessed first, then by score descending)
@@ -328,7 +370,8 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
     if batches_dir.exists():
         for batch_dir in sorted(batches_dir.iterdir(), reverse=True):
             if batch_dir.is_dir():
-                batch_files = list(batch_dir.glob("*.txt"))
+                extracted_dir = batch_dir / "extracted"
+                batch_files = list(extracted_dir.glob("*.txt")) if extracted_dir.exists() else []
                 batches.append({
                     'name': batch_dir.name,
                     'candidate_count': len(batch_files)
@@ -521,3 +564,67 @@ async def unlink_pcr_position(
         yaml.dump(config, f, default_flow_style=False)
 
     return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}", status_code=303)
+
+
+@router.post("/{client_code}/{req_id}/regenerate-framework")
+async def regenerate_framework(request: Request, client_code: str, req_id: str):
+    """Regenerate the assessment framework from the stored job description using AI."""
+    req_root = get_requisition_root(client_code, req_id)
+    req_config = get_requisition_config(client_code, req_id)
+
+    # Find the job description file
+    jd_text = None
+    for ext in (".docx", ".pdf"):
+        jd_path = req_root / f"job_description{ext}"
+        if jd_path.exists():
+            try:
+                if ext == ".pdf":
+                    from scripts.utils.pdf_reader import extract_text as extract_pdf
+                    jd_text = extract_pdf(jd_path, use_ocr_fallback=False)
+                elif ext == ".docx":
+                    from scripts.utils.docx_reader import extract_text as extract_docx
+                    jd_text = extract_docx(jd_path)
+                if jd_text:
+                    jd_text = jd_text.strip()
+            except Exception as e:
+                logger.error(f"JD extraction failed during regeneration: {e}")
+            break
+
+    if not jd_text:
+        return RedirectResponse(
+            url=f"/requisitions/{client_code}/{req_id}?framework=extraction_failed",
+            status_code=303
+        )
+
+    try:
+        from web.services.framework_generator import generate_framework
+        job = req_config.get('job', {})
+        reqs = req_config.get('requirements', {})
+        framework_md = await generate_framework(
+            jd_text=jd_text,
+            job_title=job.get('title', ''),
+            department=job.get('department', ''),
+            location=job.get('location', ''),
+            experience_years_min=reqs.get('experience_years_min', 0),
+            education=reqs.get('education', ''),
+        )
+        with open(req_root / "framework" / "assessment_framework.md", "w", encoding="utf-8") as f:
+            f.write(framework_md)
+
+        # Save extracted JD text for reference
+        with open(req_root / "framework" / "job_description_text.txt", "w", encoding="utf-8") as f:
+            f.write(f"# Extracted Job Description Text\n")
+            f.write(f"# Regenerated: {datetime.now().strftime('%Y-%m-%d')}\n\n")
+            f.write(jd_text)
+
+        logger.info(f"Regenerated AI framework for {req_id}")
+        return RedirectResponse(
+            url=f"/requisitions/{client_code}/{req_id}?framework=regenerated",
+            status_code=303
+        )
+    except Exception as e:
+        logger.error(f"Framework regeneration failed: {e}")
+        return RedirectResponse(
+            url=f"/requisitions/{client_code}/{req_id}?framework=generation_failed",
+            status_code=303
+        )

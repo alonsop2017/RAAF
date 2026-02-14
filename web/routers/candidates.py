@@ -14,8 +14,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 
 from scripts.utils.client_utils import (
-    get_requisition_root, get_requisition_config, get_client_info
+    get_requisition_root, get_requisition_config, get_client_info,
+    get_resumes_path, create_batch_folder, get_next_batch_name,
+    list_all_extracted_resumes, find_resume_in_batches, get_batch_for_resume,
 )
+import yaml
 
 # Alias for consistency
 get_client_config = get_client_info
@@ -32,12 +35,19 @@ def normalize_filename(name: str) -> str:
     name = name.lower().replace(" ", "_").replace("-", "_")
     # Remove special characters
     name = ''.join(c for c in name if c.isalnum() or c == '_')
+    # Remove trailing _resume to avoid double suffix when _resume.txt is appended
+    if name.endswith('_resume'):
+        name = name[:-7]
+    elif name.endswith('resume'):
+        name = name[:-6]
+    # Remove trailing underscores
+    name = name.rstrip('_')
     return name
 
 
 @router.get("/{client_code}/{req_id}", response_class=HTMLResponse)
 async def list_candidates(request: Request, client_code: str, req_id: str):
-    """List all candidates for a requisition."""
+    """List all candidates for a requisition, scanning all batch folders."""
     try:
         req_config = get_requisition_config(client_code, req_id)
         client_config = get_client_config(client_code)
@@ -45,21 +55,58 @@ async def list_candidates(request: Request, client_code: str, req_id: str):
         raise HTTPException(status_code=404, detail=str(e))
 
     req_root = get_requisition_root(client_code, req_id)
-    resumes_dir = req_root / "resumes" / "processed"
     assessments_dir = req_root / "assessments" / "individual"
 
     candidates = []
-    if resumes_dir.exists():
-        for resume_file in sorted(resumes_dir.glob("*.txt")):
-            name_normalized = resume_file.stem.replace("_resume", "")
-            assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
+    seen = set()
 
+    # Scan all batch extracted folders
+    for resume_file in list_all_extracted_resumes(client_code, req_id):
+        name_normalized = resume_file.stem.replace("_resume", "")
+        if name_normalized in seen:
+            continue
+        seen.add(name_normalized)
+
+        batch_name = resume_file.parent.parent.name  # extracted/ -> batch_dir
+        assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
+
+        candidate_data = {
+            'name_normalized': name_normalized,
+            'resume_file': resume_file.name,
+            'batch': batch_name,
+            'assessed': assessment_file.exists()
+        }
+
+        if assessment_file.exists():
+            with open(assessment_file, 'r') as f:
+                assessment = json.load(f)
+            candidate_data['score'] = assessment.get('total_score', 0)
+            candidate_data['max_score'] = assessment.get('max_score', 100)
+            candidate_data['percentage'] = assessment.get('percentage', 0)
+            candidate_data['recommendation'] = assessment.get('recommendation', 'PENDING')
+            candidate_data['name'] = assessment.get('candidate', {}).get('name', name_normalized)
+            candidate_data['stability'] = assessment.get('scores', {}).get('job_stability', {}).get('tenure_analysis', {}).get('risk_level', 'N/A')
+        else:
+            candidate_data['name'] = name_normalized.replace("_", " ").title()
+
+        candidates.append(candidate_data)
+
+    # Also check legacy processed/ folder for backwards compatibility
+    legacy_dir = req_root / "resumes" / "processed"
+    if legacy_dir.exists():
+        for resume_file in sorted(legacy_dir.glob("*.txt")):
+            name_normalized = resume_file.stem.replace("_resume", "")
+            if name_normalized in seen:
+                continue
+            seen.add(name_normalized)
+
+            assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
             candidate_data = {
                 'name_normalized': name_normalized,
                 'resume_file': resume_file.name,
+                'batch': 'legacy',
                 'assessed': assessment_file.exists()
             }
-
             if assessment_file.exists():
                 with open(assessment_file, 'r') as f:
                     assessment = json.load(f)
@@ -71,7 +118,6 @@ async def list_candidates(request: Request, client_code: str, req_id: str):
                 candidate_data['stability'] = assessment.get('scores', {}).get('job_stability', {}).get('tenure_analysis', {}).get('risk_level', 'N/A')
             else:
                 candidate_data['name'] = name_normalized.replace("_", " ").title()
-
             candidates.append(candidate_data)
 
     # Sort by score (assessed first, then by percentage descending)
@@ -106,60 +152,66 @@ async def upload_resumes(
     req_id: str,
     files: list[UploadFile] = File(...)
 ):
-    """Upload one or more resume files."""
-    req_root = get_requisition_root(client_code, req_id)
-    incoming_dir = req_root / "resumes" / "incoming"
-    processed_dir = req_root / "resumes" / "processed"
-
-    incoming_dir.mkdir(parents=True, exist_ok=True)
-    processed_dir.mkdir(parents=True, exist_ok=True)
+    """Upload one or more resume files into a new batch folder."""
+    # Create a new batch folder
+    batch_dir = create_batch_folder(client_code, req_id)
+    originals_dir = batch_dir / "originals"
+    extracted_dir = batch_dir / "extracted"
 
     uploaded_count = 0
+    source_files = []
     for file in files:
         if file.filename:
-            # Save original file to incoming
-            original_path = incoming_dir / file.filename
+            # Save original file to originals/
+            original_path = originals_dir / file.filename
             content = await file.read()
             with open(original_path, 'wb') as f:
                 f.write(content)
 
             # Extract text based on file type
             normalized_name = normalize_filename(file.filename)
-            processed_path = processed_dir / f"{normalized_name}_resume.txt"
+            extracted_path = extracted_dir / f"{normalized_name}_resume.txt"
 
             try:
                 if file.filename.lower().endswith('.pdf'):
-                    # Extract from PDF
                     from scripts.utils.pdf_reader import extract_text
                     text = extract_text(str(original_path))
                 elif file.filename.lower().endswith('.docx'):
-                    # Extract from DOCX
                     from scripts.utils.docx_reader import extract_text as extract_docx_text
                     text = extract_docx_text(str(original_path))
                 elif file.filename.lower().endswith('.txt'):
-                    # Already text
                     text = content.decode('utf-8', errors='ignore')
                 else:
-                    # Try to read as text
                     text = content.decode('utf-8', errors='ignore')
 
-                # Add metadata header
                 header = f"""# Extracted Resume
 # Source: {file.filename}
+# Batch: {batch_dir.name}
 # Extracted: {datetime.now().strftime('%Y-%m-%d')}
 
 ---
 
 """
-                with open(processed_path, 'w') as f:
+                with open(extracted_path, 'w', encoding='utf-8') as f:
                     f.write(header + text)
 
                 uploaded_count += 1
             except Exception as e:
-                # If extraction fails, save raw content
-                with open(processed_path, 'w') as f:
+                with open(extracted_path, 'w', encoding='utf-8') as f:
                     f.write(f"# Extraction failed: {str(e)}\n\n{content.decode('utf-8', errors='ignore')}")
                 uploaded_count += 1
+
+            source_files.append(file.filename)
+
+    # Write batch manifest
+    manifest = {
+        'created_at': datetime.now().isoformat(),
+        'file_count': uploaded_count,
+        'source_files': source_files,
+        'status': 'uploaded',
+    }
+    with open(batch_dir / "batch_manifest.yaml", 'w') as f:
+        yaml.dump(manifest, f, default_flow_style=False)
 
     return RedirectResponse(url=f"/candidates/{client_code}/{req_id}?uploaded={uploaded_count}", status_code=303)
 
@@ -317,7 +369,7 @@ async def drive_import_files(
     client_code: str,
     req_id: str,
 ):
-    """Download selected files from Drive, rename, save to incoming/, extract to processed/."""
+    """Download selected files from Drive into a new batch folder."""
     from web.auth.token_store import get_token, is_token_expired, store_token
     from web.services.google_drive import download_file, DriveAPIError, TokenExpiredError
     import time
@@ -356,13 +408,13 @@ async def drive_import_files(
     # Parse form data (dynamic field names from the preview table)
     form = await request.form()
 
-    req_root = get_requisition_root(client_code, req_id)
-    incoming_dir = req_root / "resumes" / "incoming"
-    processed_dir = req_root / "resumes" / "processed"
-    incoming_dir.mkdir(parents=True, exist_ok=True)
-    processed_dir.mkdir(parents=True, exist_ok=True)
+    # Create a new batch folder for this import
+    batch_dir = create_batch_folder(client_code, req_id)
+    originals_dir = batch_dir / "originals"
+    extracted_dir = batch_dir / "extracted"
 
     imported_count = 0
+    source_files = []
 
     # Collect selected files from form
     # Form fields: selected_<idx>, file_id_<idx>, target_name_<idx>, extension_<idx>
@@ -388,47 +440,65 @@ async def drive_import_files(
         # Sanitize target name
         safe_name = target_name.lower().replace(" ", "_").replace("-", "_")
         safe_name = ''.join(c for c in safe_name if c.isalnum() or c == '_')
+        # Remove trailing _resume to avoid double suffix
+        if safe_name.endswith('_resume'):
+            safe_name = safe_name[:-7]
+        elif safe_name.endswith('resume'):
+            safe_name = safe_name[:-6]
+        safe_name = safe_name.rstrip('_')
 
-        # Download to incoming/
-        incoming_path = incoming_dir / f"{safe_name}{extension}"
+        # Download to originals/
+        original_path = originals_dir / f"{safe_name}{extension}"
         try:
-            await download_file(token_data["access_token"], file_id, incoming_path)
+            await download_file(token_data["access_token"], file_id, original_path)
         except (DriveAPIError, TokenExpiredError) as e:
             idx += 1
             continue
 
-        # Extract text to processed/
-        processed_path = processed_dir / f"{safe_name}_resume.txt"
+        # Extract text to extracted/
+        extracted_path = extracted_dir / f"{safe_name}_resume.txt"
         try:
             if extension == ".pdf":
                 from scripts.utils.pdf_reader import extract_text as extract_pdf_text
-                text = extract_pdf_text(str(incoming_path))
+                text = extract_pdf_text(str(original_path))
             elif extension == ".docx":
                 from scripts.utils.docx_reader import extract_text as extract_docx_text
-                text = extract_docx_text(str(incoming_path))
+                text = extract_docx_text(str(original_path))
             else:
-                with open(incoming_path, 'r', errors='ignore') as f:
+                with open(original_path, 'r', errors='ignore') as f:
                     text = f.read()
 
             header = f"""# Extracted Resume
 # Source: {original_name} (Google Drive import)
 # Saved as: {safe_name}{extension}
+# Batch: {batch_dir.name}
 # Extracted: {datetime.now().strftime('%Y-%m-%d')}
 
 ---
 
 """
-            with open(processed_path, 'w') as f:
+            with open(extracted_path, 'w', encoding='utf-8') as f:
                 f.write(header + text)
 
             imported_count += 1
         except Exception as e:
-            # If extraction fails, save error note
-            with open(processed_path, 'w') as f:
+            with open(extracted_path, 'w', encoding='utf-8') as f:
                 f.write(f"# Extraction failed: {str(e)}\n")
             imported_count += 1
 
+        source_files.append(original_name or f"{safe_name}{extension}")
         idx += 1
+
+    # Write batch manifest
+    manifest = {
+        'created_at': datetime.now().isoformat(),
+        'file_count': imported_count,
+        'source': 'google_drive',
+        'source_files': source_files,
+        'status': 'uploaded',
+    }
+    with open(batch_dir / "batch_manifest.yaml", 'w') as f:
+        yaml.dump(manifest, f, default_flow_style=False)
 
     return RedirectResponse(
         url=f"/candidates/{client_code}/{req_id}?uploaded={imported_count}",
@@ -440,16 +510,20 @@ async def drive_import_files(
 async def view_candidate(request: Request, client_code: str, req_id: str, name_normalized: str):
     """View candidate details and assessment."""
     req_root = get_requisition_root(client_code, req_id)
-    resumes_dir = req_root / "resumes" / "processed"
     assessments_dir = req_root / "assessments" / "individual"
 
-    # Find resume file
-    resume_file = resumes_dir / f"{name_normalized}_resume.txt"
-    if not resume_file.exists():
+    # Find resume file across batches
+    resume_file = find_resume_in_batches(client_code, req_id, name_normalized, "extracted")
+    # Fall back to legacy processed/ folder
+    if not resume_file:
+        legacy = req_root / "resumes" / "processed" / f"{name_normalized}_resume.txt"
+        if legacy.exists():
+            resume_file = legacy
+    if not resume_file:
         raise HTTPException(status_code=404, detail="Candidate resume not found")
 
     # Read resume
-    with open(resume_file, 'r') as f:
+    with open(resume_file, 'r', encoding='utf-8') as f:
         resume_text = f.read()
 
     # Check for assessment
@@ -479,17 +553,27 @@ async def view_candidate(request: Request, client_code: str, req_id: str, name_n
 
 @router.get("/{client_code}/{req_id}/{name_normalized}/resume")
 async def download_resume(client_code: str, req_id: str, name_normalized: str):
-    """Download candidate resume."""
+    """Download candidate resume (original file from batch originals/)."""
+    # Search batch originals/ for original file
+    original = find_resume_in_batches(client_code, req_id, name_normalized, "originals")
+    if original:
+        return FileResponse(original, filename=original.name)
+
+    # Fall back to legacy incoming/
     req_root = get_requisition_root(client_code, req_id)
-
-    # Check incoming folder for original
     incoming_dir = req_root / "resumes" / "incoming"
-    for ext in ['.pdf', '.docx', '.txt']:
-        for file in incoming_dir.glob(f"*{ext}"):
-            if normalize_filename(file.name) == name_normalized:
-                return FileResponse(file, filename=file.name)
+    if incoming_dir.exists():
+        for ext in ['.pdf', '.docx', '.txt']:
+            for file in incoming_dir.glob(f"*{ext}"):
+                if normalize_filename(file.name) == name_normalized:
+                    return FileResponse(file, filename=file.name)
 
-    # Fall back to processed
+    # Fall back to extracted text
+    extracted = find_resume_in_batches(client_code, req_id, name_normalized, "extracted")
+    if extracted:
+        return FileResponse(extracted, filename=f"{name_normalized}_resume.txt")
+
+    # Legacy processed/
     processed_file = req_root / "resumes" / "processed" / f"{name_normalized}_resume.txt"
     if processed_file.exists():
         return FileResponse(processed_file, filename=f"{name_normalized}_resume.txt")
@@ -502,10 +586,20 @@ async def delete_candidate(client_code: str, req_id: str, name_normalized: str):
     """Delete a candidate and their assessment."""
     req_root = get_requisition_root(client_code, req_id)
 
-    # Delete processed resume
-    resume_file = req_root / "resumes" / "processed" / f"{name_normalized}_resume.txt"
-    if resume_file.exists():
-        resume_file.unlink()
+    # Delete extracted resume from batch
+    extracted = find_resume_in_batches(client_code, req_id, name_normalized, "extracted")
+    if extracted:
+        extracted.unlink()
+
+    # Delete original from batch
+    original = find_resume_in_batches(client_code, req_id, name_normalized, "originals")
+    if original:
+        original.unlink()
+
+    # Also delete from legacy folders
+    legacy_processed = req_root / "resumes" / "processed" / f"{name_normalized}_resume.txt"
+    if legacy_processed.exists():
+        legacy_processed.unlink()
 
     # Delete assessment
     assessment_file = req_root / "assessments" / "individual" / f"{name_normalized}_assessment.json"
@@ -521,7 +615,7 @@ async def delete_candidate(client_code: str, req_id: str, name_normalized: str):
 
 @router.get("/{client_code}/{req_id}/files/incoming", response_class=HTMLResponse)
 async def file_manager(request: Request, client_code: str, req_id: str):
-    """File manager for incoming resumes folder."""
+    """File manager showing all batches and their files."""
     try:
         req_config = get_requisition_config(client_code, req_id)
         client_config = get_client_config(client_code)
@@ -529,26 +623,67 @@ async def file_manager(request: Request, client_code: str, req_id: str):
         raise HTTPException(status_code=404, detail=str(e))
 
     req_root = get_requisition_root(client_code, req_id)
-    incoming_dir = req_root / "resumes" / "incoming"
-    processed_dir = req_root / "resumes" / "processed"
+    batches_dir = req_root / "resumes" / "batches"
+    batches_dir.mkdir(parents=True, exist_ok=True)
 
-    incoming_dir.mkdir(parents=True, exist_ok=True)
+    # Build batch data with files
+    batches_data = []
+    total_files = 0
+    for batch_dir in sorted(batches_dir.iterdir(), reverse=True):
+        if not batch_dir.is_dir():
+            continue
+        originals_dir = batch_dir / "originals"
+        extracted_dir = batch_dir / "extracted"
 
-    # Get files in incoming folder
-    incoming_files = []
-    for file_path in sorted(incoming_dir.iterdir()):
-        if file_path.is_file():
-            # Check if already processed
-            normalized = normalize_filename(file_path.name)
-            processed_file = processed_dir / f"{normalized}_resume.txt"
+        batch_files = []
+        if originals_dir.exists():
+            for file_path in sorted(originals_dir.iterdir()):
+                if file_path.is_file():
+                    normalized = normalize_filename(file_path.name)
+                    extracted_file = extracted_dir / f"{normalized}_resume.txt"
+                    batch_files.append({
+                        'name': file_path.name,
+                        'size': f"{file_path.stat().st_size / 1024:.1f} KB",
+                        'modified': datetime.fromtimestamp(file_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+                        'extension': file_path.suffix.lower(),
+                        'processed': extracted_file.exists(),
+                        'batch': batch_dir.name,
+                    })
 
-            incoming_files.append({
-                'name': file_path.name,
-                'size': f"{file_path.stat().st_size / 1024:.1f} KB",
-                'modified': datetime.fromtimestamp(file_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
-                'extension': file_path.suffix.lower(),
-                'processed': processed_file.exists()
-            })
+        # Load manifest
+        manifest_path = batch_dir / "batch_manifest.yaml"
+        manifest = {}
+        if manifest_path.exists():
+            with open(manifest_path, 'r') as f:
+                manifest = yaml.safe_load(f) or {}
+
+        batches_data.append({
+            'name': batch_dir.name,
+            'files': batch_files,
+            'file_count': len(batch_files),
+            'status': manifest.get('status', 'unknown'),
+            'created_at': manifest.get('created_at', ''),
+        })
+        total_files += len(batch_files)
+
+    # Also include legacy incoming/ files if present
+    legacy_files = []
+    legacy_dir = req_root / "resumes" / "incoming"
+    legacy_processed = req_root / "resumes" / "processed"
+    if legacy_dir.exists():
+        for file_path in sorted(legacy_dir.iterdir()):
+            if file_path.is_file() and not file_path.name.endswith('.json'):
+                normalized = normalize_filename(file_path.name)
+                processed_file = legacy_processed / f"{normalized}_resume.txt" if legacy_processed.exists() else None
+                legacy_files.append({
+                    'name': file_path.name,
+                    'size': f"{file_path.stat().st_size / 1024:.1f} KB",
+                    'modified': datetime.fromtimestamp(file_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+                    'extension': file_path.suffix.lower(),
+                    'processed': processed_file.exists() if processed_file else False,
+                    'batch': 'legacy',
+                })
+                total_files += 1
 
     return templates.TemplateResponse("candidates/file_manager.html", {
         "request": request,
@@ -557,23 +692,36 @@ async def file_manager(request: Request, client_code: str, req_id: str):
         "req_id": req_id,
         "client_name": client_config.get('company_name', client_code),
         "req_title": req_config.get('job', {}).get('title', req_id),
-        "files": incoming_files,
-        "file_count": len(incoming_files)
+        "batches": batches_data,
+        "legacy_files": legacy_files,
+        "file_count": total_files,
     })
 
 
-@router.post("/{client_code}/{req_id}/files/incoming/delete")
-async def delete_incoming_file(
+@router.post("/{client_code}/{req_id}/files/batch/delete")
+async def delete_batch_file(
     client_code: str,
     req_id: str,
-    filename: str = Form(...)
+    filename: str = Form(...),
+    batch: str = Form(...)
 ):
-    """Delete a file from the incoming folder."""
+    """Delete a file from a batch originals folder."""
     req_root = get_requisition_root(client_code, req_id)
-    incoming_dir = req_root / "resumes" / "incoming"
 
-    file_path = incoming_dir / filename
+    if batch == 'legacy':
+        file_path = req_root / "resumes" / "incoming" / filename
+    else:
+        file_path = req_root / "resumes" / "batches" / batch / "originals" / filename
+
     if file_path.exists() and file_path.is_file():
+        # Also delete corresponding extracted file
+        normalized = normalize_filename(filename)
+        if batch == 'legacy':
+            extracted = req_root / "resumes" / "processed" / f"{normalized}_resume.txt"
+        else:
+            extracted = req_root / "resumes" / "batches" / batch / "extracted" / f"{normalized}_resume.txt"
+        if extracted.exists():
+            extracted.unlink()
         file_path.unlink()
 
     return RedirectResponse(
@@ -582,25 +730,30 @@ async def delete_incoming_file(
     )
 
 
-@router.post("/{client_code}/{req_id}/files/incoming/rename")
-async def rename_incoming_file(
+@router.post("/{client_code}/{req_id}/files/batch/rename")
+async def rename_batch_file(
     client_code: str,
     req_id: str,
     old_name: str = Form(...),
-    new_name: str = Form(...)
+    new_name: str = Form(...),
+    batch: str = Form(...)
 ):
-    """Rename a file in the incoming folder."""
+    """Rename a file in a batch originals folder."""
     req_root = get_requisition_root(client_code, req_id)
-    incoming_dir = req_root / "resumes" / "incoming"
 
-    old_path = incoming_dir / old_name
+    if batch == 'legacy':
+        parent_dir = req_root / "resumes" / "incoming"
+    else:
+        parent_dir = req_root / "resumes" / "batches" / batch / "originals"
+
+    old_path = parent_dir / old_name
 
     # Preserve extension if not provided in new name
     old_ext = old_path.suffix
     if not Path(new_name).suffix:
         new_name = new_name + old_ext
 
-    new_path = incoming_dir / new_name
+    new_path = parent_dir / new_name
 
     if old_path.exists() and old_path.is_file():
         if new_path.exists():
@@ -613,51 +766,51 @@ async def rename_incoming_file(
     )
 
 
-@router.post("/{client_code}/{req_id}/files/incoming/process")
-async def process_incoming_file(
+@router.post("/{client_code}/{req_id}/files/batch/process")
+async def process_batch_file(
     client_code: str,
     req_id: str,
-    filename: str = Form(...)
+    filename: str = Form(...),
+    batch: str = Form(...)
 ):
-    """Process a single file from incoming to processed."""
+    """Re-extract text for a single file in a batch."""
     req_root = get_requisition_root(client_code, req_id)
-    incoming_dir = req_root / "resumes" / "incoming"
-    processed_dir = req_root / "resumes" / "processed"
 
-    processed_dir.mkdir(parents=True, exist_ok=True)
+    if batch == 'legacy':
+        file_path = req_root / "resumes" / "incoming" / filename
+        output_dir = req_root / "resumes" / "processed"
+    else:
+        file_path = req_root / "resumes" / "batches" / batch / "originals" / filename
+        output_dir = req_root / "resumes" / "batches" / batch / "extracted"
 
-    file_path = incoming_dir / filename
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
 
-    # Extract text based on file type
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     normalized_name = normalize_filename(filename)
-    processed_path = processed_dir / f"{normalized_name}_resume.txt"
+    output_path = output_dir / f"{normalized_name}_resume.txt"
 
     try:
-        with open(file_path, 'rb') as f:
-            content = f.read()
-
         if filename.lower().endswith('.pdf'):
             from scripts.utils.pdf_reader import extract_text as extract_pdf_text
             text = extract_pdf_text(str(file_path))
         elif filename.lower().endswith('.docx'):
             from scripts.utils.docx_reader import extract_text as extract_docx_text
             text = extract_docx_text(str(file_path))
-        elif filename.lower().endswith('.txt'):
-            text = content.decode('utf-8', errors='ignore')
         else:
-            text = content.decode('utf-8', errors='ignore')
+            with open(file_path, 'rb') as f:
+                text = f.read().decode('utf-8', errors='ignore')
 
-        # Add metadata header
         header = f"""# Extracted Resume
 # Source: {filename}
+# Batch: {batch}
 # Extracted: {datetime.now().strftime('%Y-%m-%d')}
 
 ---
 
 """
-        with open(processed_path, 'w') as f:
+        with open(output_path, 'w', encoding='utf-8') as f:
             f.write(header + text)
 
     except Exception as e:
@@ -669,58 +822,56 @@ async def process_incoming_file(
     )
 
 
-@router.post("/{client_code}/{req_id}/files/incoming/process-all")
-async def process_all_incoming_files(client_code: str, req_id: str):
-    """Process all files in the incoming folder."""
+@router.post("/{client_code}/{req_id}/files/batch/process-all")
+async def process_all_batch_files(client_code: str, req_id: str):
+    """Re-extract text for all unprocessed files across all batches."""
     req_root = get_requisition_root(client_code, req_id)
-    incoming_dir = req_root / "resumes" / "incoming"
-    processed_dir = req_root / "resumes" / "processed"
-
-    processed_dir.mkdir(parents=True, exist_ok=True)
+    batches_dir = req_root / "resumes" / "batches"
 
     processed_count = 0
-    errors = []
 
-    for file_path in incoming_dir.iterdir():
-        if not file_path.is_file():
-            continue
+    if batches_dir.exists():
+        for batch_dir in batches_dir.iterdir():
+            if not batch_dir.is_dir():
+                continue
+            originals_dir = batch_dir / "originals"
+            extracted_dir = batch_dir / "extracted"
+            if not originals_dir.exists():
+                continue
+            extracted_dir.mkdir(parents=True, exist_ok=True)
 
-        filename = file_path.name
-        normalized_name = normalize_filename(filename)
-        processed_path = processed_dir / f"{normalized_name}_resume.txt"
+            for file_path in originals_dir.iterdir():
+                if not file_path.is_file():
+                    continue
+                normalized_name = normalize_filename(file_path.name)
+                extracted_path = extracted_dir / f"{normalized_name}_resume.txt"
+                if extracted_path.exists():
+                    continue
 
-        # Skip if already processed
-        if processed_path.exists():
-            continue
+                try:
+                    if file_path.name.lower().endswith('.pdf'):
+                        from scripts.utils.pdf_reader import extract_text as extract_pdf_text
+                        text = extract_pdf_text(str(file_path))
+                    elif file_path.name.lower().endswith('.docx'):
+                        from scripts.utils.docx_reader import extract_text as extract_docx_text
+                        text = extract_docx_text(str(file_path))
+                    else:
+                        with open(file_path, 'rb') as f:
+                            text = f.read().decode('utf-8', errors='ignore')
 
-        try:
-            with open(file_path, 'rb') as f:
-                content = f.read()
-
-            if filename.lower().endswith('.pdf'):
-                from scripts.utils.pdf_reader import extract_text as extract_pdf_text
-                text = extract_pdf_text(str(file_path))
-            elif filename.lower().endswith('.docx'):
-                from scripts.utils.docx_reader import extract_text as extract_docx_text
-                text = extract_docx_text(str(file_path))
-            elif filename.lower().endswith('.txt'):
-                text = content.decode('utf-8', errors='ignore')
-            else:
-                text = content.decode('utf-8', errors='ignore')
-
-            header = f"""# Extracted Resume
-# Source: {filename}
+                    header = f"""# Extracted Resume
+# Source: {file_path.name}
+# Batch: {batch_dir.name}
 # Extracted: {datetime.now().strftime('%Y-%m-%d')}
 
 ---
 
 """
-            with open(processed_path, 'w') as f:
-                f.write(header + text)
-
-            processed_count += 1
-        except Exception as e:
-            errors.append(f"{filename}: {str(e)}")
+                    with open(extracted_path, 'w', encoding='utf-8') as f:
+                        f.write(header + text)
+                    processed_count += 1
+                except Exception:
+                    pass
 
     return RedirectResponse(
         url=f"/candidates/{client_code}/{req_id}/files/incoming?processed={processed_count}",
@@ -728,11 +879,15 @@ async def process_all_incoming_files(client_code: str, req_id: str):
     )
 
 
-@router.get("/{client_code}/{req_id}/files/incoming/download/{filename}")
-async def download_incoming_file(client_code: str, req_id: str, filename: str):
-    """Download a file from the incoming folder."""
+@router.get("/{client_code}/{req_id}/files/batch/download/{batch}/{filename}")
+async def download_batch_file(client_code: str, req_id: str, batch: str, filename: str):
+    """Download a file from a batch originals folder."""
     req_root = get_requisition_root(client_code, req_id)
-    file_path = req_root / "resumes" / "incoming" / filename
+
+    if batch == 'legacy':
+        file_path = req_root / "resumes" / "incoming" / filename
+    else:
+        file_path = req_root / "resumes" / "batches" / batch / "originals" / filename
 
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")

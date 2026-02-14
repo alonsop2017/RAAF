@@ -15,7 +15,7 @@ from fastapi.templating import Jinja2Templates
 
 from scripts.utils.client_utils import (
     get_requisition_root, get_requisition_config, get_client_info,
-    get_project_root
+    get_project_root, list_all_extracted_resumes,
 )
 
 # Alias for consistency
@@ -63,36 +63,44 @@ async def assessment_dashboard(request: Request, client_code: str, req_id: str):
 
     req_root = get_requisition_root(client_code, req_id)
     assessments_dir = req_root / "assessments" / "individual"
-    resumes_dir = req_root / "resumes" / "processed"
 
-    # Get all assessments with details
+    # Get all assessments with details - scan batches + legacy
     assessments = []
     pending = []
+    seen = set()
 
-    if resumes_dir.exists():
-        for resume_file in sorted(resumes_dir.glob("*.txt")):
-            name_normalized = resume_file.stem.replace("_resume", "")
-            assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
+    all_resumes = list_all_extracted_resumes(client_code, req_id)
+    # Also include legacy processed/
+    legacy_dir = req_root / "resumes" / "processed"
+    if legacy_dir.exists():
+        all_resumes.extend(sorted(legacy_dir.glob("*.txt")))
 
-            if assessment_file.exists():
-                with open(assessment_file, 'r') as f:
-                    assessment = json.load(f)
+    for resume_file in all_resumes:
+        name_normalized = resume_file.stem.replace("_resume", "")
+        if name_normalized in seen:
+            continue
+        seen.add(name_normalized)
+        assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
 
-                assessments.append({
-                    'name_normalized': name_normalized,
-                    'name': assessment.get('candidate', {}).get('name', name_normalized),
-                    'score': assessment.get('total_score', 0),
-                    'max_score': assessment.get('max_score', 100),
-                    'percentage': assessment.get('percentage', 0),
-                    'recommendation': assessment.get('recommendation', 'PENDING'),
-                    'assessed_at': assessment.get('metadata', {}).get('assessed_at', 'N/A'),
-                    'stability': assessment.get('scores', {}).get('job_stability', {}).get('tenure_analysis', {}).get('risk_level', 'N/A')
-                })
-            else:
-                pending.append({
-                    'name_normalized': name_normalized,
-                    'name': name_normalized.replace("_", " ").title()
-                })
+        if assessment_file.exists():
+            with open(assessment_file, 'r') as f:
+                assessment = json.load(f)
+
+            assessments.append({
+                'name_normalized': name_normalized,
+                'name': assessment.get('candidate', {}).get('name', name_normalized),
+                'score': assessment.get('total_score', 0),
+                'max_score': assessment.get('max_score', 100),
+                'percentage': assessment.get('percentage', 0),
+                'recommendation': assessment.get('recommendation', 'PENDING'),
+                'assessed_at': assessment.get('metadata', {}).get('assessed_at', 'N/A'),
+                'stability': assessment.get('scores', {}).get('job_stability', {}).get('tenure_analysis', {}).get('risk_level', 'N/A')
+            })
+        else:
+            pending.append({
+                'name_normalized': name_normalized,
+                'name': name_normalized.replace("_", " ").title()
+            })
 
     # Sort assessments by percentage descending
     assessments.sort(key=lambda x: x['percentage'], reverse=True)

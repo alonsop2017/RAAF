@@ -26,7 +26,8 @@ from utils.client_utils import (
     get_assessments_path,
     get_framework_path,
     normalize_candidate_name,
-    get_settings
+    get_settings,
+    list_all_extracted_resumes,
 )
 
 # Lazy import for Claude client
@@ -533,8 +534,12 @@ def assess_batch(
     if not batch_path.exists():
         raise FileNotFoundError(f"Batch not found: {batch_name}")
 
-    # Find resume files
-    resume_files = list(batch_path.glob("*.txt"))
+    # Find resume files in extracted/ subfolder (new structure) or directly (legacy)
+    extracted_dir = batch_path / "extracted"
+    if extracted_dir.exists():
+        resume_files = list(extracted_dir.glob("*.txt"))
+    else:
+        resume_files = list(batch_path.glob("*.txt"))
 
     print(f"Assessing batch: {batch_name}")
     print(f"  Candidates: {len(resume_files)}")
@@ -588,18 +593,24 @@ def assess_all_pending(
     use_ai: bool = False,
     ai_model: str = None
 ) -> dict:
-    """Assess all unprocessed resumes in processed folder."""
-    processed_path = get_resumes_path(client_code, req_id, "processed")
+    """Assess all unprocessed resumes across all batch folders and legacy processed/."""
     assessments_path = get_assessments_path(client_code, req_id, "individual")
 
     # Find already assessed
     existing = {f.stem.replace("_assessment", "") for f in assessments_path.glob("*_assessment.json")}
 
-    # Find pending
+    # Collect pending resumes from batch extracted/ folders
     resume_files = [
-        f for f in processed_path.glob("*.txt")
+        f for f in list_all_extracted_resumes(client_code, req_id)
         if f.stem.replace("_resume", "") not in existing
     ]
+
+    # Also check legacy processed/ folder
+    legacy_path = get_resumes_path(client_code, req_id, "processed")
+    if legacy_path.exists():
+        for f in legacy_path.glob("*.txt"):
+            if f.stem.replace("_resume", "") not in existing:
+                resume_files.append(f)
 
     print(f"Pending assessments: {len(resume_files)}")
     print(f"Mode: {'AI Assessment' if use_ai else 'Template'}")
@@ -639,10 +650,26 @@ def main():
 
     try:
         if args.resume:
+            resume_path = Path(args.resume)
+            # If the path doesn't exist, search in batch extracted/ folders and legacy processed/
+            if not resume_path.exists():
+                from utils.client_utils import find_resume_in_batches
+                name_norm = resume_path.stem.replace("_resume", "")
+                found = find_resume_in_batches(args.client, args.req, name_norm, "extracted")
+                if not found:
+                    # Try legacy processed/
+                    legacy = get_resumes_path(args.client, args.req, "processed") / args.resume
+                    if legacy.exists():
+                        found = legacy
+                if found:
+                    resume_path = found
+                else:
+                    print(f"Error: Resume not found: {args.resume}", file=sys.stderr)
+                    sys.exit(1)
             assess_candidate(
                 client_code=args.client,
                 req_id=args.req,
-                resume_file=args.resume,
+                resume_file=resume_path,
                 use_ai=args.use_ai,
                 ai_model=args.ai_model
             )

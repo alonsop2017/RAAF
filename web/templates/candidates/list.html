@@ -33,6 +33,7 @@
                 <tr>
                     <th>Rank</th>
                     <th>Candidate</th>
+                    <th>Batch</th>
                     <th>Score</th>
                     <th>%</th>
                     <th>Stability</th>
@@ -55,6 +56,11 @@
                            style="font-weight: 500; color: var(--primary-color); text-decoration: none;">
                             {{ candidate.name }}
                         </a>
+                    </td>
+                    <td>
+                        {% if candidate.batch %}
+                        <span class="badge badge-secondary" style="font-size: 0.7rem;">{{ candidate.batch }}</span>
+                        {% endif %}
                     </td>
                     <td>
                         {% if candidate.assessed %}
