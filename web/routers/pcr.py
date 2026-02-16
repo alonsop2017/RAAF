@@ -133,11 +133,11 @@ async def api_list_positions(request: Request, search: str = Query("")):
         first_results, total = fetch_page(1)
         if total is None:
             total = 5000  # conservative fallback
-        max_pages = min((total + 499) // 500, 10)
+        max_pages = (total + 499) // 500
         all_positions = list(first_results)
 
         if max_pages > 1:
-            with ThreadPoolExecutor(max_workers=9) as executor:
+            with ThreadPoolExecutor(max_workers=min(max_pages - 1, 20)) as executor:
                 extra_pages = list(executor.map(fetch_page, range(2, max_pages + 1)))
             for results, _ in extra_pages:
                 all_positions.extend(results)
