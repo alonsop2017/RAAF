@@ -320,7 +320,7 @@
                         </form>
                     </div>
                     <div id="pcrLoading" style="display:none;" class="mt-2">
-                        <span class="text-muted">Searching...</span>
+                        <span class="text-muted">Searching PCR positions (this may take a few seconds)...</span>
                     </div>
                     <div id="pcrError" style="display:none;" class="mt-2">
                         <span style="color:var(--danger-color);"></span>
@@ -433,14 +433,19 @@
 
         pcrSearchBtn.addEventListener('click', function() {
             var query = pcrSearchInput.value.trim();
+            if (!query) return;
             pcrLoading.style.display = 'block';
             pcrResults.style.display = 'none';
             pcrError.style.display = 'none';
+            pcrSearchBtn.disabled = true;
+            pcrSearchBtn.textContent = 'Searching...';
 
             fetch('/pcr/api/positions?search=' + encodeURIComponent(query))
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     pcrLoading.style.display = 'none';
+                    pcrSearchBtn.disabled = false;
+                    pcrSearchBtn.textContent = 'Search';
                     if (data.error) {
                         pcrError.querySelector('span').textContent = data.error;
                         pcrError.style.display = 'block';
@@ -459,6 +464,8 @@
                 })
                 .catch(function(err) {
                     pcrLoading.style.display = 'none';
+                    pcrSearchBtn.disabled = false;
+                    pcrSearchBtn.textContent = 'Search';
                     pcrError.querySelector('span').textContent = 'Failed to fetch positions: ' + err;
                     pcrError.style.display = 'block';
                 });

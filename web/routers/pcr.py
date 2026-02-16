@@ -99,20 +99,56 @@ async def test_connection(request: Request):
 
 @router.get("/api/positions")
 async def api_list_positions(request: Request, search: str = Query("")):
-    """Return PCR positions as JSON, optionally filtered by company name."""
+    """Return PCR positions as JSON, filtered by company name.
+
+    Fetches multiple pages in parallel since the PCR API does not support
+    server-side filtering by company name.
+    """
+    search_lower = search.strip().lower()
+    if not search_lower:
+        return JSONResponse([])
+
     try:
         from scripts.utils.pcr_client import PCRClient
+        from concurrent.futures import ThreadPoolExecutor
+        import requests as http_requests
+        from urllib.parse import urljoin
+
         client = PCRClient()
         client.ensure_authenticated()
-        positions = client.get_positions(status="Open", limit=200)
+        headers = client._get_headers()
+        url = urljoin(client.base_url + "/", "positions")
+
+        def fetch_page(page: int) -> tuple:
+            r = http_requests.get(
+                url,
+                headers=headers,
+                params={"ResultsPerPage": 500, "Page": page, "Status": "Open"},
+                timeout=30,
+            )
+            data = r.json()
+            return data.get("Results", []), data.get("TotalRecords")
+
+        # Fetch first page to get results and total count
+        first_results, total = fetch_page(1)
+        if total is None:
+            total = 5000  # conservative fallback
+        max_pages = min((total + 499) // 500, 10)
+        all_positions = list(first_results)
+
+        if max_pages > 1:
+            with ThreadPoolExecutor(max_workers=9) as executor:
+                extra_pages = list(executor.map(fetch_page, range(2, max_pages + 1)))
+            for results, _ in extra_pages:
+                all_positions.extend(results)
+
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
     results = []
-    search_lower = search.strip().lower()
-    for pos in positions:
-        company = pos.get("CompanyName", "")
-        if search_lower and search_lower not in company.lower():
+    for pos in all_positions:
+        company = pos.get("CompanyName", "") or ""
+        if search_lower not in company.lower():
             continue
         results.append({
             "job_id": pos.get("JobId", pos.get("PositionId", "")),
