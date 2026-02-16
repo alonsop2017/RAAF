@@ -591,9 +591,15 @@ def assess_all_pending(
     client_code: str,
     req_id: str,
     use_ai: bool = False,
-    ai_model: str = None
+    ai_model: str = None,
+    workers: int = 1
 ) -> dict:
-    """Assess all unprocessed resumes across all batch folders and legacy processed/."""
+    """Assess all unprocessed resumes across all batch folders and legacy processed/.
+
+    Args:
+        workers: Number of parallel assessment workers (default 1 = sequential).
+                 Each worker makes independent Claude API calls.
+    """
     assessments_path = get_assessments_path(client_code, req_id, "individual")
 
     # Find already assessed
@@ -614,19 +620,50 @@ def assess_all_pending(
 
     print(f"Pending assessments: {len(resume_files)}")
     print(f"Mode: {'AI Assessment' if use_ai else 'Template'}")
+    if workers > 1:
+        print(f"Workers: {workers} (parallel)")
 
     stats = {"total": len(resume_files), "assessed": 0, "errors": 0, "mode": "ai" if use_ai else "template"}
 
-    for resume_file in resume_files:
+    if not resume_files:
+        return stats
+
+    def _assess_one(resume_file):
+        """Assess a single candidate. Returns (success, resume_file, error)."""
         try:
             assess_candidate(
                 client_code, req_id, resume_file,
                 use_ai=use_ai, ai_model=ai_model
             )
-            stats["assessed"] += 1
+            return True, resume_file, None
         except Exception as e:
-            print(f"Error: {e}")
-            stats["errors"] += 1
+            return False, resume_file, str(e)
+
+    if workers <= 1:
+        # Sequential (original behavior)
+        for resume_file in resume_files:
+            ok, _, err = _assess_one(resume_file)
+            if ok:
+                stats["assessed"] += 1
+            else:
+                print(f"Error: {err}")
+                stats["errors"] += 1
+    else:
+        # Parallel execution
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(_assess_one, rf): rf for rf in resume_files}
+            for future in as_completed(futures):
+                ok, rf, err = future.result()
+                if ok:
+                    stats["assessed"] += 1
+                else:
+                    print(f"Error ({rf.stem}): {err}")
+                    stats["errors"] += 1
+                done = stats["assessed"] + stats["errors"]
+                if done % 5 == 0 or done == stats["total"]:
+                    print(f"  Progress: {done}/{stats['total']} "
+                          f"({stats['assessed']} assessed, {stats['errors']} errors)")
 
     return stats
 
@@ -646,6 +683,8 @@ def main():
     parser.add_argument("--use-ai", action="store_true",
                        help="Use Claude AI for assessment (requires API key)")
     parser.add_argument("--ai-model", help="Override AI model (e.g., claude-sonnet-4-20250514)")
+    parser.add_argument("--workers", "-w", type=int, default=4,
+                       help="Number of parallel assessment workers (default: 4)")
     args = parser.parse_args()
 
     try:
@@ -686,7 +725,8 @@ def main():
                 args.client,
                 args.req,
                 use_ai=args.use_ai,
-                ai_model=args.ai_model
+                ai_model=args.ai_model,
+                workers=args.workers
             )
         else:
             print("Specify --resume, --batch, or --all-pending")

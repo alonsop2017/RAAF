@@ -40,6 +40,31 @@ def run_pcr_script(script_name: str, *args):
     return result.returncode == 0, result.stdout, result.stderr
 
 
+def run_pcr_script_async(script_name: str, *args):
+    """Run a PCR script in the background. Returns the Popen object."""
+    import os
+    script_path = get_project_root() / "scripts" / "pcr" / script_name
+    log_dir = get_project_root() / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / "pcr_sync.log"
+
+    cmd = ["python3", str(script_path)] + list(args)
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+
+    with open(log_file, "a") as lf:
+        lf.write(f"\n[{__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+                 f"Starting: {script_name} {' '.join(args)}\n")
+        lf.flush()
+        proc = subprocess.Popen(
+            cmd,
+            stdout=lf,
+            stderr=subprocess.STDOUT,
+            cwd=str(get_project_root()),
+            env=env,
+        )
+    return proc
+
+
 def check_pcr_connection():
     """Check if PCR credentials are configured and connection works."""
     try:
@@ -199,20 +224,16 @@ async def sync_candidates(
     client_code: str = Form(...),
     req_id: str = Form(...)
 ):
-    """Sync candidates from PCR for a requisition."""
-    success, stdout, stderr = run_pcr_script(
+    """Sync candidates from PCR for a requisition (runs in background)."""
+    run_pcr_script_async(
         "sync_candidates.py",
         "--client", client_code,
         "--req", req_id
     )
-
-    if success:
-        return RedirectResponse(
-            url=f"/requisitions/{client_code}/{req_id}?pcr_sync=1",
-            status_code=303
-        )
-    else:
-        raise HTTPException(status_code=500, detail=stderr or "Sync failed")
+    return RedirectResponse(
+        url=f"/requisitions/{client_code}/{req_id}?pcr_sync=started",
+        status_code=303
+    )
 
 
 @router.post("/download-resumes")
@@ -221,20 +242,16 @@ async def download_resumes(
     client_code: str = Form(...),
     req_id: str = Form(...)
 ):
-    """Download resumes from PCR for a requisition."""
-    success, stdout, stderr = run_pcr_script(
+    """Download resumes from PCR for a requisition (runs in background)."""
+    run_pcr_script_async(
         "download_resumes.py",
         "--client", client_code,
         "--req", req_id
     )
-
-    if success:
-        return RedirectResponse(
-            url=f"/candidates/{client_code}/{req_id}?downloaded=1",
-            status_code=303
-        )
-    else:
-        raise HTTPException(status_code=500, detail=stderr or "Download failed")
+    return RedirectResponse(
+        url=f"/requisitions/{client_code}/{req_id}?download=started",
+        status_code=303
+    )
 
 
 @router.post("/push-scores")
