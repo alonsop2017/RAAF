@@ -7,8 +7,8 @@ from pathlib import Path
 from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from fastapi import APIRouter, Request, Form, HTTPException, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi import APIRouter, Request, Form, HTTPException, UploadFile, File, Query
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 import yaml
 import shutil
@@ -783,3 +783,58 @@ async def update_job_description(
         url=f"/requisitions/{client_code}/{req_id}?jd=updated",
         status_code=303,
     )
+
+
+@router.get("/{client_code}/{req_id}/sync-log")
+async def get_sync_log(
+    client_code: str,
+    req_id: str,
+    lines: int = Query(50, ge=1, le=500),
+):
+    """Return recent PCR sync log entries, filtered to this requisition."""
+    log_path = get_project_root() / "logs" / "pcr_sync.log"
+    if not log_path.exists():
+        return JSONResponse({"lines": [], "last_sync": None})
+
+    # Read last N*10 lines to have enough to filter from
+    req_filter = f"{client_code}/{req_id}"
+    all_lines = []
+    try:
+        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+            all_lines = f.readlines()
+    except Exception:
+        return JSONResponse({"lines": [], "last_sync": None})
+
+    # Collect lines relevant to this requisition plus global status lines
+    global_markers = (
+        "Starting PCR sync",
+        "Sync complete",
+        "OK:",
+        "ERROR:",
+        "SKIP:",
+        "Checking for new applicants",
+        "No new applicants",
+        "Total new applicants",
+    )
+    filtered = []
+    for line in all_lines:
+        stripped = line.rstrip()
+        if not stripped:
+            continue
+        if req_filter in stripped:
+            filtered.append(stripped)
+        elif any(m in stripped for m in global_markers):
+            filtered.append(stripped)
+
+    # Return last N lines
+    result = filtered[-lines:]
+
+    # Get last_sync from requisition config
+    last_sync = None
+    try:
+        req_config = get_requisition_config(client_code, req_id)
+        last_sync = req_config.get("pcr_integration", {}).get("last_sync")
+    except Exception:
+        pass
+
+    return JSONResponse({"lines": result, "last_sync": last_sync})

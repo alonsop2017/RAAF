@@ -288,6 +288,8 @@
                     <p class="mt-1"><strong>Company:</strong> {{ pcr_integration.company_name or 'N/A' }}</p>
                     <p class="mt-1"><strong>Job ID:</strong> {{ pcr_integration.job_id }}</p>
                     <p class="mt-1"><strong>Linked:</strong> {{ pcr_integration.linked_date or 'N/A' }}</p>
+                    <p class="mt-1"><strong>Last Sync:</strong> <span id="lastSyncTime">{{ pcr_integration.last_sync or 'Never' }}</span></p>
+                    <p class="mt-1 text-muted" style="font-size: 0.8rem;">Auto-sync runs every 15 minutes</p>
                     <div class="action-buttons mt-2">
                         <a href="/pcr/sync/{{ client_code }}/{{ req_id }}" class="btn btn-sm btn-primary">Sync Candidates</a>
                         <form action="/requisitions/{{ client_code }}/{{ req_id }}/unlink-pcr" method="POST" style="display:inline;">
@@ -329,6 +331,21 @@
                 {% endif %}
             </div>
         </div>
+
+        <!-- PCR Sync Log -->
+        {% if pcr_integration and pcr_integration.job_id %}
+        <div class="card">
+            <div class="card-header">
+                <h3>Sync Log</h3>
+                <button type="button" id="refreshLogBtn" class="btn btn-sm btn-outline">Refresh</button>
+            </div>
+            <div class="card-body">
+                <div id="syncLogContent" style="max-height: 250px; overflow-y: auto; font-family: monospace; font-size: 0.78rem; line-height: 1.5; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 4px; padding: 0.5rem;">
+                    <span class="text-muted">Loading sync log...</span>
+                </div>
+            </div>
+        </div>
+        {% endif %}
 
         <!-- Batches -->
         {% if batches %}
@@ -492,6 +509,62 @@
                 pcrSearchBtn.click();
             }
         });
+    }
+
+    // PCR Sync Log viewer
+    var syncLogContent = document.getElementById('syncLogContent');
+    var refreshLogBtn = document.getElementById('refreshLogBtn');
+    if (syncLogContent) {
+        function escapeHtml(text) {
+            var div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatLogLine(line) {
+            var escaped = escapeHtml(line);
+            if (escaped.indexOf('ERROR:') !== -1 || escaped.indexOf('failed') !== -1) {
+                return '<span style="color:var(--danger-color);">' + escaped + '</span>';
+            }
+            if (escaped.indexOf('OK:') !== -1 || escaped.indexOf('SUCCESS') !== -1) {
+                return '<span style="color:var(--success-color);">' + escaped + '</span>';
+            }
+            if (escaped.indexOf('SKIP:') !== -1) {
+                return '<span style="color:var(--warning-color);">' + escaped + '</span>';
+            }
+            if (escaped.indexOf('new applicant') !== -1) {
+                return '<span style="color:var(--primary-color); font-weight:600;">' + escaped + '</span>';
+            }
+            if (escaped.indexOf('==========') !== -1) {
+                return '<span style="color:var(--text-muted);">' + escaped + '</span>';
+            }
+            return escaped;
+        }
+
+        function loadSyncLog() {
+            fetch('/requisitions/{{ client_code }}/{{ req_id }}/sync-log?lines=30')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.lines && data.lines.length > 0) {
+                        syncLogContent.innerHTML = data.lines.map(formatLogLine).join('\n');
+                        syncLogContent.scrollTop = syncLogContent.scrollHeight;
+                    } else {
+                        syncLogContent.innerHTML = '<span class="text-muted">No sync activity recorded yet.</span>';
+                    }
+                    if (data.last_sync) {
+                        var el = document.getElementById('lastSyncTime');
+                        if (el) el.textContent = data.last_sync;
+                    }
+                })
+                .catch(function() {
+                    syncLogContent.innerHTML = '<span class="text-muted">Could not load sync log.</span>';
+                });
+        }
+
+        loadSyncLog();
+        refreshLogBtn.addEventListener('click', loadSyncLog);
+        // Auto-refresh every 60 seconds
+        setInterval(loadSyncLog, 60000);
     }
 })();
 </script>
