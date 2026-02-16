@@ -44,9 +44,6 @@ Thumbs.db
 *.temp
 *.bak
 
-# Generated assessment reports (contain client data)
-*_assessment_report_*.docx
-
 # Archive backups (keep archive/ but ignore backup zips in root)
 *.tar.gz
 *.zip
