@@ -40,40 +40,41 @@ def sync_candidates(
     # Load requisition config
     req_config = get_requisition_config(client_code, req_id)
     pcr_config = req_config.get("pcr_integration", {})
-    position_id = pcr_config.get("job_id")
 
-    if not position_id:
-        raise ValueError(f"No PCR job_id configured for requisition {req_id}")
+    # Support multi-position linking
+    position_ids = []
+    positions_list = pcr_config.get("positions", [])
+    if positions_list:
+        position_ids = [str(p.get("job_id")) for p in positions_list if p.get("job_id")]
+    elif pcr_config.get("job_id"):
+        position_ids = [str(pcr_config["job_id"])]
+
+    if not position_ids:
+        raise ValueError(f"No PCR position linked to requisition {req_id}")
 
     print(f"Syncing candidates for {req_id}...")
-    print(f"  PCR Position ID: {position_id}")
+    print(f"  PCR Position IDs: {', '.join(position_ids)}")
 
     # Connect to PCR
     client = PCRClient()
     client.ensure_authenticated()
 
-    # Fetch candidates
+    # Fetch candidates from all linked positions, deduplicating
     all_candidates = []
-    offset = 0
-    limit = 100
+    seen_ids = set()
+    for position_id in position_ids:
+        try:
+            candidates = client.get_position_candidates(position_id=position_id)
+            for c in candidates:
+                cid = c.get("CandidateId")
+                if cid and cid not in seen_ids:
+                    seen_ids.add(cid)
+                    all_candidates.append(c)
+            print(f"  Position {position_id}: {len(candidates)} candidate(s)")
+        except Exception as e:
+            print(f"  Position {position_id}: error - {e}")
 
-    while True:
-        candidates = client.get_position_candidates(
-            position_id=position_id,
-            limit=limit,
-            offset=offset
-        )
-
-        if not candidates:
-            break
-
-        all_candidates.extend(candidates)
-        offset += limit
-
-        if len(candidates) < limit:
-            break
-
-    print(f"  Retrieved {len(all_candidates)} candidates")
+    print(f"  Total unique candidates: {len(all_candidates)}")
 
     # Filter by last sync if requested
     last_sync = pcr_config.get("last_sync")
@@ -98,7 +99,7 @@ def sync_candidates(
     with open(candidates_file, "w") as f:
         json.dump({
             "synced_at": datetime.now().isoformat(),
-            "position_id": position_id,
+            "position_ids": position_ids,
             "count": len(all_candidates),
             "candidates": all_candidates
         }, f, indent=2, default=str)
@@ -107,9 +108,10 @@ def sync_candidates(
 
     # Output results
     if output_format == "json":
-        print(json.dumps(all_candidates, indent=2, default=str))
+        print(json.dumps(all_candidates, indent=2, default=str, ensure_ascii=True))
     else:
-        print(format_candidates_table(all_candidates))
+        table = format_candidates_table(all_candidates)
+        print(table.encode("utf-8", errors="replace").decode("utf-8"))
 
     return all_candidates
 

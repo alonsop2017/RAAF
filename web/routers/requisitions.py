@@ -585,7 +585,7 @@ async def link_pcr_position(
     job_title: str = Form(""),
     company_name: str = Form(""),
 ):
-    """Link a PCR position to this requisition."""
+    """Link a PCR position to this requisition (supports multiple positions)."""
     req_root = get_requisition_root(client_code, req_id)
     config_path = req_root / "requisition.yaml"
 
@@ -595,11 +595,34 @@ async def link_pcr_position(
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
 
+    pcr = config.get('pcr_integration', {})
+
+    # Migrate legacy single-position format to multi-position
+    positions = pcr.get('positions', [])
+    if not positions and pcr.get('job_id'):
+        positions = [{
+            'job_id': pcr['job_id'],
+            'job_title': pcr.get('job_title', ''),
+            'company_name': pcr.get('company_name', ''),
+            'linked_date': pcr.get('linked_date', ''),
+        }]
+
+    # Don't add duplicates
+    existing_ids = {str(p['job_id']) for p in positions}
+    if str(job_id) not in existing_ids:
+        positions.append({
+            'job_id': job_id,
+            'job_title': job_title,
+            'company_name': company_name,
+            'linked_date': datetime.now().strftime("%Y-%m-%d"),
+        })
+
+    # Keep legacy job_id pointing to first position for backward compat
     config['pcr_integration'] = {
-        'job_id': job_id,
-        'job_title': job_title,
-        'company_name': company_name,
-        'linked_date': datetime.now().strftime("%Y-%m-%d"),
+        'job_id': positions[0]['job_id'],
+        'positions': positions,
+        'linked_date': pcr.get('linked_date') or datetime.now().strftime("%Y-%m-%d"),
+        'last_sync': pcr.get('last_sync'),
     }
 
     with open(config_path, 'w') as f:
@@ -613,8 +636,9 @@ async def unlink_pcr_position(
     request: Request,
     client_code: str,
     req_id: str,
+    job_id: str = Form(None),
 ):
-    """Remove PCR position linkage from this requisition."""
+    """Remove PCR position linkage. If job_id given, remove just that one; otherwise remove all."""
     req_root = get_requisition_root(client_code, req_id)
     config_path = req_root / "requisition.yaml"
 
@@ -624,7 +648,19 @@ async def unlink_pcr_position(
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
 
-    config.pop('pcr_integration', None)
+    if job_id:
+        # Remove a single position
+        pcr = config.get('pcr_integration', {})
+        positions = pcr.get('positions', [])
+        positions = [p for p in positions if str(p['job_id']) != str(job_id)]
+        if positions:
+            pcr['positions'] = positions
+            pcr['job_id'] = positions[0]['job_id']
+            config['pcr_integration'] = pcr
+        else:
+            config.pop('pcr_integration', None)
+    else:
+        config.pop('pcr_integration', None)
 
     with open(config_path, 'w') as f:
         yaml.dump(config, f, default_flow_style=False)

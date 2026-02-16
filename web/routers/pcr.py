@@ -28,11 +28,13 @@ def run_pcr_script(script_name: str, *args):
     script_path = get_project_root() / "scripts" / "pcr" / script_name
 
     cmd = ["python3", str(script_path)] + list(args)
+    env = {**__import__('os').environ, "PYTHONIOENCODING": "utf-8"}
     result = subprocess.run(
         cmd,
         capture_output=True,
         text=True,
-        cwd=str(get_project_root())
+        cwd=str(get_project_root()),
+        env=env
     )
 
     return result.returncode == 0, result.stdout, result.stderr

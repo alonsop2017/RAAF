@@ -118,9 +118,17 @@ def check_requisition(
         return 0
 
     pcr_config = req_config.get("pcr_integration", {})
-    position_id = pcr_config.get("job_id")
 
-    if not position_id:
+    # Support multi-position linking: collect all position IDs
+    position_ids = []
+    positions_list = pcr_config.get("positions", [])
+    if positions_list:
+        position_ids = [str(p.get("job_id")) for p in positions_list if p.get("job_id")]
+    elif pcr_config.get("job_id"):
+        # Legacy single-position format
+        position_ids = [str(pcr_config["job_id"])]
+
+    if not position_ids:
         return 0
 
     last_sync = pcr_config.get("last_sync")
@@ -131,12 +139,23 @@ def check_requisition(
         except ValueError:
             pass
 
-    # Get candidates from pipeline
-    candidates = client.get_position_candidates(position_id)
+    # Get candidates from all linked positions
+    all_candidates = []
+    seen_ids = set()
+    for position_id in position_ids:
+        try:
+            candidates = client.get_position_candidates(position_id)
+            for c in candidates:
+                cid = c.get("CandidateId")
+                if cid and cid not in seen_ids:
+                    seen_ids.add(cid)
+                    all_candidates.append(c)
+        except Exception as e:
+            print(f"    Error fetching candidates for position {position_id}: {e}")
 
     # Filter to new candidates
     new_candidates = []
-    for c in candidates:
+    for c in all_candidates:
         date_added = c.get("DateAdded")
         if date_added and last_sync_dt:
             try:
@@ -170,7 +189,7 @@ def check_requisition(
         else:
             manifest = {
                 "synced_at": datetime.now().isoformat(),
-                "position_id": position_id,
+                "position_ids": position_ids,
                 "candidates": new_candidates
             }
 
