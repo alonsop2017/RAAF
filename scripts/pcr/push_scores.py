@@ -144,23 +144,17 @@ def push_scores(
             continue
 
         try:
-            # Update candidate with assessment score
-            client.set_assessment_score(
-                candidate_id=pcr_id,
-                score=percentage,
-                recommendation=recommendation
-            )
-
-            # Add assessment note
+            # Add assessment note as a NOTE activity on the candidate
             note_text = (
-                f"Assessment Score: {score}/100 ({percentage}%)\n"
+                f"RAAF Assessment Score: {score}/100 ({percentage}%)\n"
                 f"Recommendation: {recommendation}\n\n"
                 f"Summary: {summary}"
             )
-            client.add_candidate_note(
+            client.add_candidate_activity(
                 candidate_id=pcr_id,
-                note=note_text,
-                note_type="Assessment"
+                activity_type="NOTE",
+                notes=note_text,
+                subject=f"RAAF Assessment: {recommendation}"
             )
 
             # Update pipeline status so manual PCR users see the result

@@ -391,14 +391,26 @@ class PCRClient:
         self.ensure_authenticated()
         return self._make_request("PUT", f"/candidates/{candidate_id}", data=data)
 
-    def add_candidate_note(self, candidate_id: str, note: str, note_type: str = "General") -> dict:
-        """Add a note to a candidate record."""
+    def add_candidate_activity(
+        self,
+        candidate_id: str,
+        activity_type: str = "NOTE",
+        notes: str = "",
+        subject: str = ""
+    ) -> dict:
+        """Add an activity (note) to a candidate record.
+
+        Uses POST /candidates/{id}/activities which is the working
+        endpoint for adding notes in PCR API v2.
+        """
         self.ensure_authenticated()
         data = {
-            "NoteType": note_type,
-            "NoteText": note
+            "ActivityType": activity_type,
+            "Notes": notes,
         }
-        return self._make_request("POST", f"/candidates/{candidate_id}/notes", data=data)
+        if subject:
+            data["Subject"] = subject
+        return self._make_request("POST", f"/candidates/{candidate_id}/activities", data=data)
 
     # ========== Resume/Document Methods ==========
 
