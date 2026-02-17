@@ -86,6 +86,16 @@
                             </p>
                         </div>
                     </label>
+                    <label style="cursor: pointer; display: flex; align-items: flex-start; gap: 0.5rem;">
+                        <input type="radio" name="framework_source" value="generate" id="fw-pcr"
+                               onchange="toggleFrameworkSource()">
+                        <div>
+                            <strong>Pull from PCR Position</strong>
+                            <p class="form-hint" style="margin: 0.2rem 0 0;">
+                                Search for a PCR position, pull its job description, and generate an AI assessment framework.
+                            </p>
+                        </div>
+                    </label>
                 </div>
             </div>
 
@@ -96,6 +106,33 @@
                     <option value="{{ t.value }}">{{ t.label }}</option>
                     {% endfor %}
                 </select>
+            </div>
+
+            <!-- PCR Position Search (shown when "Pull from PCR" is selected) -->
+            <div id="pcr-position-group" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label">Search PCR Positions</label>
+                    <div style="display:flex; gap:0.5rem;">
+                        <input type="text" id="pcrNewSearch" class="form-input" style="flex:1;" placeholder="Company name...">
+                        <button type="button" id="pcrNewSearchBtn" class="btn btn-sm btn-primary">Search</button>
+                    </div>
+                </div>
+                <div id="pcrNewLoading" style="display:none;" class="mt-1">
+                    <span class="text-muted">Searching PCR positions (this may take a few seconds)...</span>
+                </div>
+                <div id="pcrNewError" style="display:none;" class="mt-1 alert alert-danger">
+                    <span></span>
+                </div>
+                <div id="pcrNewResults" style="display:none;" class="mt-1">
+                    <div class="form-group">
+                        <label class="form-label">Select a Position</label>
+                        <div id="pcrNewList" style="max-height:250px; overflow-y:auto; border:1px solid var(--border-color); border-radius:6px; padding:0.5rem;"></div>
+                    </div>
+                </div>
+                <div id="pcrSelectedInfo" style="display:none;" class="mt-1 alert alert-info">
+                    <strong>Selected:</strong> <span id="pcrSelectedName"></span>
+                </div>
+                <input type="hidden" name="pcr_job_id" id="pcr_job_id" value="">
             </div>
 
             <div id="generate-info" class="alert alert-info" style="margin-top: 0.5rem;">
@@ -218,8 +255,11 @@
 <script>
 function toggleFrameworkSource() {
     var isTemplate = document.getElementById('fw-template').checked;
+    var isGenerate = document.getElementById('fw-generate').checked;
+    var isPCR = document.getElementById('fw-pcr').checked;
     document.getElementById('template-select-group').style.display = isTemplate ? 'block' : 'none';
-    document.getElementById('generate-info').style.display = isTemplate ? 'none' : 'block';
+    document.getElementById('pcr-position-group').style.display = isPCR ? 'block' : 'none';
+    document.getElementById('generate-info').style.display = (isGenerate || isPCR) ? 'block' : 'none';
 }
 
 function handleJDUpload(input) {
@@ -229,13 +269,110 @@ function handleJDUpload(input) {
     }
 }
 
+// PCR position search for new requisition form
+(function() {
+    var searchBtn = document.getElementById('pcrNewSearchBtn');
+    var searchInput = document.getElementById('pcrNewSearch');
+    var loading = document.getElementById('pcrNewLoading');
+    var errorEl = document.getElementById('pcrNewError');
+    var resultsEl = document.getElementById('pcrNewResults');
+    var listEl = document.getElementById('pcrNewList');
+    var selectedInfo = document.getElementById('pcrSelectedInfo');
+    var selectedName = document.getElementById('pcrSelectedName');
+    var hiddenInput = document.getElementById('pcr_job_id');
+
+    searchBtn.addEventListener('click', function() {
+        var query = searchInput.value.trim();
+        if (!query) return;
+        loading.style.display = 'block';
+        resultsEl.style.display = 'none';
+        errorEl.style.display = 'none';
+        searchBtn.disabled = true;
+        searchBtn.textContent = 'Searching...';
+
+        fetch('/pcr/api/positions?search=' + encodeURIComponent(query))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                loading.style.display = 'none';
+                searchBtn.disabled = false;
+                searchBtn.textContent = 'Search';
+                if (data.error) {
+                    errorEl.querySelector('span').textContent = data.error;
+                    errorEl.style.display = 'block';
+                    return;
+                }
+                listEl.innerHTML = '';
+                if (data.length === 0) {
+                    listEl.innerHTML = '<span class="text-muted">No positions found.</span>';
+                    resultsEl.style.display = 'block';
+                    return;
+                }
+                data.forEach(function(pos) {
+                    var row = document.createElement('label');
+                    row.style.cssText = 'display:flex; align-items:center; gap:0.5rem; padding:0.4rem 0.25rem; border-bottom:1px solid var(--border-color); cursor:pointer;';
+                    row.innerHTML =
+                        '<input type="radio" name="pcr_position_radio" value="' + pos.job_id + '" ' +
+                        'data-title="' + (pos.title || '').replace(/"/g, '&quot;') + '" ' +
+                        'data-location="' + (pos.location || '').replace(/"/g, '&quot;') + '" ' +
+                        'data-company="' + (pos.company || '').replace(/"/g, '&quot;') + '">' +
+                        '<span style="flex:1;"><strong>' + (pos.title || 'Untitled') + '</strong>' +
+                        '<br><span class="text-muted" style="font-size:0.85rem;">' + (pos.company || '') +
+                        (pos.location ? ' &middot; ' + pos.location : '') +
+                        ' &middot; ID: ' + pos.job_id + '</span></span>';
+                    listEl.appendChild(row);
+                });
+                resultsEl.style.display = 'block';
+
+                // Handle radio selection
+                listEl.querySelectorAll('input[name="pcr_position_radio"]').forEach(function(radio) {
+                    radio.addEventListener('change', function() {
+                        hiddenInput.value = this.value;
+                        var posTitle = this.getAttribute('data-title');
+                        var posLocation = this.getAttribute('data-location');
+                        var posCompany = this.getAttribute('data-company');
+                        selectedName.textContent = posTitle + ' (' + posCompany + ')';
+                        selectedInfo.style.display = 'block';
+
+                        // Auto-fill form fields if empty
+                        var titleInput = document.getElementById('title');
+                        var locationInput = document.getElementById('location');
+                        if (titleInput && !titleInput.value) titleInput.value = posTitle;
+                        if (locationInput && !locationInput.value) locationInput.value = posLocation;
+                    });
+                });
+            })
+            .catch(function(err) {
+                loading.style.display = 'none';
+                searchBtn.disabled = false;
+                searchBtn.textContent = 'Search';
+                errorEl.querySelector('span').textContent = 'Failed to fetch positions: ' + err;
+                errorEl.style.display = 'block';
+            });
+    });
+
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            searchBtn.click();
+        }
+    });
+})();
+
 document.querySelector('form').addEventListener('submit', function(e) {
     var isGenerate = document.getElementById('fw-generate').checked;
+    var isPCR = document.getElementById('fw-pcr').checked;
     var jdInput = document.getElementById('job_description');
+    var pcrJobId = document.getElementById('pcr_job_id').value;
 
     if (isGenerate && (!jdInput.files || jdInput.files.length === 0)) {
         e.preventDefault();
         alert('Please upload a job description file to generate an assessment framework, or select "Use Existing Template" instead.');
+        return;
+    }
+
+    if (isPCR && !pcrJobId) {
+        e.preventDefault();
+        alert('Please search and select a PCR position to pull the job description from.');
         return;
     }
 
@@ -253,7 +390,14 @@ document.querySelector('form').addEventListener('submit', function(e) {
 
     // Define steps based on mode
     var steps;
-    if (isGenerate) {
+    if (isPCR) {
+        steps = [
+            { label: 'Creating requisition folder structure', duration: 1500 },
+            { label: 'Fetching job description from PCR', duration: 4000 },
+            { label: 'Generating AI assessment framework', duration: 25000 },
+            { label: 'Saving framework and configuration', duration: 5000 },
+        ];
+    } else if (isGenerate) {
         steps = [
             { label: 'Creating requisition folder structure', duration: 1500 },
             { label: 'Uploading job description', duration: 2000 },

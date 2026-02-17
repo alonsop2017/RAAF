@@ -281,6 +281,38 @@ class PCRClient:
         self.ensure_authenticated()
         return self._make_request("GET", f"/positions/{position_id}")
 
+    def get_position_description(self, position_id: str) -> str:
+        """Fetch a position's job description as plain text.
+
+        Retrieves the position record and extracts the JobDescription field,
+        stripping HTML tags to return clean plain text.
+
+        Args:
+            position_id: PCR position/job ID
+
+        Returns:
+            Plain text job description
+        """
+        import re as _re
+        position = self.get_position(position_id)
+        raw_html = position.get("JobDescription", "") or ""
+        # Decode HTML entities
+        text = html.unescape(raw_html)
+        # Replace <br>, <p>, <div> tags with newlines for readability
+        text = _re.sub(r'<br\s*/?>', '\n', text, flags=_re.IGNORECASE)
+        text = _re.sub(r'</(p|div|li|tr|h[1-6])>', '\n', text, flags=_re.IGNORECASE)
+        text = _re.sub(r'<li[^>]*>', '- ', text, flags=_re.IGNORECASE)
+        # Strip remaining HTML tags
+        text = _re.sub(r'<[^>]+>', '', text)
+        # Collapse excessive whitespace but preserve paragraph breaks
+        lines = []
+        for line in text.splitlines():
+            lines.append(line.strip())
+        text = '\n'.join(lines)
+        # Collapse 3+ consecutive newlines to 2
+        text = _re.sub(r'\n{3,}', '\n\n', text)
+        return text.strip()
+
     def get_position_candidates(
         self,
         position_id: str,

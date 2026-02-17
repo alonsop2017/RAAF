@@ -172,29 +172,19 @@ def list_batches(client_code: str, req_id: str) -> list[str]:
 
 
 def get_next_batch_name(client_code: str, req_id: str) -> str:
-    """Determine the next batch name in YYYY-MM-DD-NNN format."""
-    from datetime import date
-    today = date.today().isoformat()  # YYYY-MM-DD
+    """Determine the next batch name in YYYY-MM-DD-HH-MM format."""
+    from datetime import datetime as _dt
+    timestamp = _dt.now().strftime("%Y-%m-%d-%H-%M")
     batches_dir = get_resumes_path(client_code, req_id, "batches")
     batches_dir.mkdir(parents=True, exist_ok=True)
 
-    # Find existing batches for today
-    existing = [
-        d.name for d in batches_dir.iterdir()
-        if d.is_dir() and d.name.startswith(today)
-    ]
-    if existing:
-        # Extract max sequence number
-        max_seq = 0
-        for name in existing:
-            parts = name.rsplit('-', 1)
-            if len(parts) == 2:
-                try:
-                    max_seq = max(max_seq, int(parts[1]))
-                except ValueError:
-                    pass
-        return f"{today}-{max_seq + 1:03d}"
-    return f"{today}-001"
+    # If a folder with the same timestamp already exists, append -2, -3, etc.
+    candidate = timestamp
+    suffix = 2
+    while (batches_dir / candidate).exists():
+        candidate = f"{timestamp}-{suffix}"
+        suffix += 1
+    return candidate
 
 
 def create_batch_folder(client_code: str, req_id: str, batch_name: str = None) -> Path:

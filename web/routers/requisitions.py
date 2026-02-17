@@ -97,6 +97,26 @@ async def list_all_requisitions(request: Request, status: str = None):
     })
 
 
+@router.get("/api/pcr-jd")
+async def get_pcr_jd(job_id: str = Query(...)):
+    """Fetch job description text and metadata from a PCR position."""
+    try:
+        from scripts.utils.pcr_client import PCRClient
+        client = PCRClient()
+        client.ensure_authenticated()
+        position = client.get_position(job_id)
+        jd_text = client.get_position_description(job_id)
+        return JSONResponse({
+            "jd_text": jd_text,
+            "title": position.get("JobTitle", position.get("Title", "")),
+            "location": position.get("City", ""),
+            "salary_min": position.get("SalaryLow", 0) or 0,
+            "salary_max": position.get("SalaryHigh", 0) or 0,
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @router.get("/new", response_class=HTMLResponse)
 async def new_requisition_form(request: Request, client_code: str = None):
     """Show form to create a new requisition."""
@@ -129,6 +149,7 @@ async def create_requisition(
     template: str = Form("base_framework"),
     notes: str = Form(""),
     job_description: UploadFile = File(None),
+    pcr_job_id: str = Form(""),
 ):
     """Create a new requisition."""
     # Validate client exists
@@ -158,6 +179,8 @@ async def create_requisition(
 
     # Save uploaded job description if provided
     jd_text = None
+    pcr_job_id = pcr_job_id.strip() if pcr_job_id else ""
+
     if job_description and job_description.filename:
         jd_content = await job_description.read()
         if jd_content:
@@ -184,6 +207,20 @@ async def create_requisition(
             except Exception as e:
                 logger.warning(f"Failed to extract JD text: {e}")
                 jd_text = None
+
+    # Pull JD from PCR position if pcr_job_id is provided and no file was uploaded
+    if pcr_job_id and not jd_text and framework_source == "generate":
+        try:
+            from scripts.utils.pcr_client import PCRClient
+            pcr_client = PCRClient()
+            pcr_client.ensure_authenticated()
+            jd_text = pcr_client.get_position_description(pcr_job_id)
+            if jd_text:
+                jd_text = jd_text.strip()
+                logger.info(f"Fetched {len(jd_text)} chars from PCR position {pcr_job_id}")
+        except Exception as e:
+            logger.warning(f"Failed to fetch JD from PCR position {pcr_job_id}: {e}")
+            jd_text = None
 
     # Create requisition.yaml
     req_config = {
@@ -221,6 +258,18 @@ async def create_requisition(
     if job_description and job_description.filename:
         req_config['job']['description_file'] = job_description.filename
 
+    # Set up PCR integration if pcr_job_id was provided
+    if pcr_job_id:
+        req_config['pcr_integration'] = {
+            'job_id': pcr_job_id,
+            'positions': [{
+                'job_id': pcr_job_id,
+                'job_title': title,
+                'linked_date': datetime.now().strftime("%Y-%m-%d"),
+            }],
+            'linked_date': datetime.now().strftime("%Y-%m-%d"),
+        }
+
     with open(req_root / "requisition.yaml", 'w') as f:
         yaml.dump(req_config, f, default_flow_style=False)
 
@@ -249,9 +298,13 @@ async def create_requisition(
                 logger.info(f"Generated AI assessment framework for {req_id}")
 
                 # Save extracted JD text for reference
+                jd_source = (
+                    f"PCR Position {pcr_job_id}" if pcr_job_id and not (job_description and job_description.filename)
+                    else (job_description.filename if job_description and job_description.filename else "unknown")
+                )
                 with open(req_root / "framework" / "job_description_text.txt", "w", encoding="utf-8") as f:
                     f.write(f"# Extracted Job Description Text\n")
-                    f.write(f"# Source: {job_description.filename}\n")
+                    f.write(f"# Source: {jd_source}\n")
                     f.write(f"# Extracted: {datetime.now().strftime('%Y-%m-%d')}\n\n")
                     f.write(jd_text)
 

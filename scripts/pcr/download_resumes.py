@@ -25,7 +25,8 @@ def download_resumes(
     client_code: str,
     req_id: str,
     overwrite: bool = False,
-    candidate_ids: list[str] = None
+    candidate_ids: list[str] = None,
+    auto_assess: bool = False
 ) -> dict:
     """
     Download resumes for candidates from PCR into a new batch folder.
@@ -35,6 +36,7 @@ def download_resumes(
         req_id: Requisition ID
         overwrite: Overwrite existing files
         candidate_ids: Specific candidate IDs to download (None = all)
+        auto_assess: Automatically run AI assessments after download
 
     Returns:
         Dictionary with download statistics
@@ -217,6 +219,21 @@ def download_resumes(
     print(f"  No resume found: {stats['no_resume']}")
     print(f"  Errors: {stats['errors']}")
 
+    # Auto-assess if enabled and we downloaded at least one resume
+    if auto_assess and stats['downloaded'] > 0:
+        try:
+            from assess_candidate import assess_all_pending
+            print(f"\nRunning auto-assessment for {req_id}...")
+            result = assess_all_pending(
+                client_code, req_id, use_ai=True, workers=4
+            )
+            assessed = result.get("assessed", 0)
+            print(f"Auto-assessment complete: {assessed} candidates assessed")
+            stats["auto_assessed"] = assessed
+        except Exception as e:
+            print(f"Auto-assessment error: {e}")
+            stats["auto_assess_error"] = str(e)
+
     return stats
 
 
@@ -230,6 +247,8 @@ def main():
                        help="Overwrite existing files")
     parser.add_argument("--candidate-id", action="append",
                        help="Specific candidate ID(s) to download")
+    parser.add_argument("--auto-assess", action="store_true",
+                       help="Automatically run AI assessments after download")
     args = parser.parse_args()
 
     try:
@@ -237,7 +256,8 @@ def main():
             client_code=args.client,
             req_id=args.req,
             overwrite=args.overwrite,
-            candidate_ids=args.candidate_id
+            candidate_ids=args.candidate_id,
+            auto_assess=args.auto_assess
         )
     except (PCRClientError, FileNotFoundError) as e:
         print(f"Error: {e}", file=sys.stderr)

@@ -242,11 +242,12 @@ async def download_resumes(
     client_code: str = Form(...),
     req_id: str = Form(...)
 ):
-    """Download resumes from PCR for a requisition (runs in background)."""
+    """Download resumes from PCR for a requisition (runs in background with auto-assess)."""
     run_pcr_script_async(
         "download_resumes.py",
         "--client", client_code,
-        "--req", req_id
+        "--req", req_id,
+        "--auto-assess"
     )
     return RedirectResponse(
         url=f"/requisitions/{client_code}/{req_id}?download=started",

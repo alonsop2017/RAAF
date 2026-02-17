@@ -30,7 +30,7 @@ cd "$PROJECT_ROOT" || {
     exit 1
 }
 
-"$VENV_PYTHON" "$SCRIPT" --once --auto-download >> "$LOGFILE" 2>&1
+"$VENV_PYTHON" "$SCRIPT" --once --auto-download --auto-assess >> "$LOGFILE" 2>&1
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -eq 0 ]; then
