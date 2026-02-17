@@ -50,17 +50,18 @@ def push_scores(
     with open(manifest_file, "r") as f:
         manifest = json.load(f)
 
-    # Build candidate ID mapping (normalized name -> PCR ID)
+    # Build candidate ID mapping (normalized name -> {CandidateId, SendoutId})
     candidate_map = {}
     for c in manifest.get("candidates", []):
         name = f"{c.get('FirstName', '')} {c.get('LastName', '')}".strip().lower()
         name_normalized = name.replace(" ", "_")
-        candidate_map[name_normalized] = c.get("CandidateId")
+        entry = {"CandidateId": c.get("CandidateId"), "SendoutId": c.get("SendoutId")}
+        candidate_map[name_normalized] = entry
         # Also map by lastname_firstname
         parts = name.split()
         if len(parts) >= 2:
             alt_name = f"{parts[-1]}_{parts[0]}"
-            candidate_map[alt_name] = c.get("CandidateId")
+            candidate_map[alt_name] = entry
 
     # Load assessments
     assessments_path = get_assessments_path(client_code, req_id, "individual")
@@ -99,24 +100,36 @@ def push_scores(
         name = candidate_info.get("name", "Unknown")
         name_normalized = candidate_info.get("name_normalized", "")
 
-        # Find PCR candidate ID
-        pcr_id = candidate_map.get(name_normalized)
-        if not pcr_id:
+        # Find PCR candidate entry
+        pcr_entry = candidate_map.get(name_normalized)
+        if not pcr_entry:
             # Try variations
             for key in candidate_map:
                 if name_normalized in key or key in name_normalized:
-                    pcr_id = candidate_map[key]
+                    pcr_entry = candidate_map[key]
                     break
 
-        if not pcr_id:
+        if not pcr_entry:
             print(f"  {name}: No PCR ID found - skipped")
             stats["skipped"] += 1
             continue
+
+        pcr_id = pcr_entry["CandidateId"]
+        sendout_id = pcr_entry.get("SendoutId")
 
         score = assessment.get("total_score", 0)
         percentage = assessment.get("percentage", 0)
         recommendation = assessment.get("recommendation", "")
         summary = assessment.get("summary", "")
+
+        # Map recommendation to a pipeline status label
+        pipeline_status_map = {
+            "STRONG RECOMMEND": "Assessed - Strong Recommend",
+            "RECOMMEND": "Assessed - Recommend",
+            "CONDITIONAL": "Assessed - Conditional",
+            "DO NOT RECOMMEND": "Assessed - Do Not Recommend",
+        }
+        pipeline_status = pipeline_status_map.get(recommendation, f"Assessed ({percentage}%)")
 
         print(f"  {name} ({pcr_id}): {score}/100 ({percentage}%) - {recommendation}")
 
@@ -132,7 +145,6 @@ def push_scores(
 
         try:
             # Update candidate with assessment score
-            # Note: Field names may need to be customized based on PCR configuration
             client.set_assessment_score(
                 candidate_id=pcr_id,
                 score=percentage,
@@ -150,6 +162,16 @@ def push_scores(
                 note=note_text,
                 note_type="Assessment"
             )
+
+            # Update pipeline status so manual PCR users see the result
+            if sendout_id:
+                try:
+                    client.update_pipeline_interview(
+                        sendout_id=str(sendout_id),
+                        status=pipeline_status
+                    )
+                except PCRClientError:
+                    pass  # Non-critical
 
             stats["updated"] += 1
             stats["details"].append({

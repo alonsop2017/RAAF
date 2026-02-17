@@ -445,35 +445,29 @@ class PCRClient:
 
     # ========== Pipeline Methods ==========
 
-    def update_pipeline_status(
+    def update_pipeline_interview(
         self,
-        position_id: str,
-        candidate_id: str,
-        status: str,
-        notes: Optional[str] = None
+        sendout_id: str,
+        status: str = None,
+        notes: str = None
     ) -> dict:
         """
-        Update a candidate's status in a position pipeline.
+        Update a PipelineInterview record (candidate's pipeline entry).
 
         Args:
-            position_id: Position/job ID
-            candidate_id: Candidate ID
-            status: New pipeline status
-            notes: Optional notes about the status change
+            sendout_id: The SendoutId / activity ID of the pipeline entry
+            status: New InterviewStatus value (e.g., "Resume Reviewed", "Assessed")
+            notes: Optional notes to append
         """
         self.ensure_authenticated()
 
-        data = {
-            "Status": status
-        }
+        data = {}
+        if status:
+            data["InterviewStatus"] = status
         if notes:
             data["Notes"] = notes
 
-        return self._make_request(
-            "PUT",
-            f"/positions/{position_id}/candidates/{candidate_id}",
-            data=data
-        )
+        return self._make_request("PUT", f"/PipelineInterviews/{sendout_id}", data=data)
 
     # ========== Company Methods ==========
 

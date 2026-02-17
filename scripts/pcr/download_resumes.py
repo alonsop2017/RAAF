@@ -176,6 +176,17 @@ def download_resumes(
                 "source": filename
             })
 
+            # Update pipeline status in PCR so manual users see it's been processed
+            sendout_id = candidate.get("SendoutId")
+            if sendout_id:
+                try:
+                    client.update_pipeline_interview(
+                        sendout_id=str(sendout_id),
+                        status="Resume Reviewed"
+                    )
+                except PCRClientError:
+                    pass  # Non-critical — don't fail the download
+
         except PCRClientError as e:
             print(f"    Error: {e}")
             stats["errors"] += 1
