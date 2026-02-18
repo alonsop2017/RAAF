@@ -15,7 +15,7 @@ from fastapi.templating import Jinja2Templates
 
 from scripts.utils.client_utils import (
     get_requisition_root, get_requisition_config, get_client_info,
-    get_project_root
+    get_project_root, list_all_extracted_resumes,
 )
 
 # Alias for consistency
@@ -48,8 +48,47 @@ def run_assessment(
     if use_ai:
         cmd.append("--use-ai")
 
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(get_project_root()))
+    env = {**__import__('os').environ, "PYTHONIOENCODING": "utf-8"}
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(get_project_root()), env=env)
     return result.returncode == 0, result.stdout, result.stderr
+
+
+def run_assessment_async(
+    client_code: str,
+    req_id: str,
+    candidate_name: str = None,
+    batch_name: str = None,
+    use_ai: bool = True
+):
+    """Run assessment script in the background (non-blocking)."""
+    import os
+    script_path = get_project_root() / "scripts" / "assess_candidate.py"
+    log_dir = get_project_root() / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / "assessment.log"
+
+    cmd = ["python3", str(script_path), "--client", client_code, "--req", req_id]
+
+    if candidate_name:
+        cmd.extend(["--resume", f"{candidate_name}_resume.txt"])
+    elif batch_name:
+        cmd.extend(["--batch", batch_name])
+    else:
+        cmd.append("--all-pending")
+
+    if use_ai:
+        cmd.append("--use-ai")
+
+    cmd.extend(["--workers", "4"])
+
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    with open(log_file, "a") as lf:
+        lf.write(f"\n[{__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+                 f"Starting assessment: {' '.join(cmd)}\n")
+        lf.flush()
+        subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT,
+                         cwd=str(get_project_root()), env=env)
+    return True
 
 
 @router.get("/{client_code}/{req_id}", response_class=HTMLResponse)
@@ -63,36 +102,44 @@ async def assessment_dashboard(request: Request, client_code: str, req_id: str):
 
     req_root = get_requisition_root(client_code, req_id)
     assessments_dir = req_root / "assessments" / "individual"
-    resumes_dir = req_root / "resumes" / "processed"
 
-    # Get all assessments with details
+    # Get all assessments with details - scan batches + legacy
     assessments = []
     pending = []
+    seen = set()
 
-    if resumes_dir.exists():
-        for resume_file in sorted(resumes_dir.glob("*.txt")):
-            name_normalized = resume_file.stem.replace("_resume", "")
-            assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
+    all_resumes = list_all_extracted_resumes(client_code, req_id)
+    # Also include legacy processed/
+    legacy_dir = req_root / "resumes" / "processed"
+    if legacy_dir.exists():
+        all_resumes.extend(sorted(legacy_dir.glob("*.txt")))
 
-            if assessment_file.exists():
-                with open(assessment_file, 'r') as f:
-                    assessment = json.load(f)
+    for resume_file in all_resumes:
+        name_normalized = resume_file.stem.replace("_resume", "")
+        if name_normalized in seen:
+            continue
+        seen.add(name_normalized)
+        assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
 
-                assessments.append({
-                    'name_normalized': name_normalized,
-                    'name': assessment.get('candidate', {}).get('name', name_normalized),
-                    'score': assessment.get('total_score', 0),
-                    'max_score': assessment.get('max_score', 100),
-                    'percentage': assessment.get('percentage', 0),
-                    'recommendation': assessment.get('recommendation', 'PENDING'),
-                    'assessed_at': assessment.get('metadata', {}).get('assessed_at', 'N/A'),
-                    'stability': assessment.get('scores', {}).get('job_stability', {}).get('tenure_analysis', {}).get('risk_level', 'N/A')
-                })
-            else:
-                pending.append({
-                    'name_normalized': name_normalized,
-                    'name': name_normalized.replace("_", " ").title()
-                })
+        if assessment_file.exists():
+            with open(assessment_file, 'r') as f:
+                assessment = json.load(f)
+
+            assessments.append({
+                'name_normalized': name_normalized,
+                'name': assessment.get('candidate', {}).get('name', name_normalized),
+                'score': assessment.get('total_score', 0),
+                'max_score': assessment.get('max_score', 100),
+                'percentage': assessment.get('percentage', 0),
+                'recommendation': assessment.get('recommendation', 'PENDING'),
+                'assessed_at': assessment.get('metadata', {}).get('assessed_at', 'N/A'),
+                'stability': assessment.get('scores', {}).get('job_stability', {}).get('tenure_analysis', {}).get('risk_level', 'N/A')
+            })
+        else:
+            pending.append({
+                'name_normalized': name_normalized,
+                'name': name_normalized.replace("_", " ").title()
+            })
 
     # Sort assessments by percentage descending
     assessments.sort(key=lambda x: x['percentage'], reverse=True)
@@ -134,26 +181,14 @@ async def run_all_assessments(
     background_tasks: BackgroundTasks,
     use_ai: str = Form(default="true")
 ):
-    """Run assessments for all pending candidates."""
-    # Default to AI assessment (use_ai=true unless explicitly set to false)
+    """Run assessments for all pending candidates (runs in background)."""
     use_ai_bool = use_ai.lower() not in ("false", "0", "off", "no")
-    success, stdout, stderr = run_assessment(client_code, req_id, use_ai=use_ai_bool)
-
-    if success:
-        mode = "ai" if use_ai_bool else "manual"
-        return RedirectResponse(
-            url=f"/assessments/{client_code}/{req_id}?success=1&mode={mode}",
-            status_code=303
-        )
-    else:
-        return templates.TemplateResponse("assessments/error.html", {
-            "request": request,
-            "user": getattr(request.state, 'user', None),
-            "client_code": client_code,
-            "req_id": req_id,
-            "error": stderr or "Assessment failed",
-            "output": stdout
-        })
+    run_assessment_async(client_code, req_id, use_ai=use_ai_bool)
+    mode = "ai" if use_ai_bool else "manual"
+    return RedirectResponse(
+        url=f"/assessments/{client_code}/{req_id}?started=1&mode={mode}",
+        status_code=303
+    )
 
 
 @router.post("/{client_code}/{req_id}/{name_normalized}/run")

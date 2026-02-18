@@ -171,6 +171,103 @@ def list_batches(client_code: str, req_id: str) -> list[str]:
     return sorted([d.name for d in batches_dir.iterdir() if d.is_dir()])
 
 
+def get_next_batch_name(client_code: str, req_id: str) -> str:
+    """Determine the next batch name in YYYY-MM-DD-HH-MM format."""
+    from datetime import datetime as _dt
+    timestamp = _dt.now().strftime("%Y-%m-%d-%H-%M")
+    batches_dir = get_resumes_path(client_code, req_id, "batches")
+    batches_dir.mkdir(parents=True, exist_ok=True)
+
+    # If a folder with the same timestamp already exists, append -2, -3, etc.
+    candidate = timestamp
+    suffix = 2
+    while (batches_dir / candidate).exists():
+        candidate = f"{timestamp}-{suffix}"
+        suffix += 1
+    return candidate
+
+
+def create_batch_folder(client_code: str, req_id: str, batch_name: str = None) -> Path:
+    """Create a new batch folder with originals/ and extracted/ subdirectories.
+
+    Returns the batch folder path.
+    """
+    if batch_name is None:
+        batch_name = get_next_batch_name(client_code, req_id)
+    batch_dir = get_resumes_path(client_code, req_id, "batches") / batch_name
+    (batch_dir / "originals").mkdir(parents=True, exist_ok=True)
+    (batch_dir / "extracted").mkdir(parents=True, exist_ok=True)
+    return batch_dir
+
+
+def list_all_extracted_resumes(client_code: str, req_id: str) -> list[Path]:
+    """Find all extracted TXT resume files across all batches."""
+    batches_dir = get_resumes_path(client_code, req_id, "batches")
+    if not batches_dir.exists():
+        return []
+    results = []
+    for batch_dir in sorted(batches_dir.iterdir()):
+        if batch_dir.is_dir():
+            extracted_dir = batch_dir / "extracted"
+            if extracted_dir.exists():
+                results.extend(sorted(extracted_dir.glob("*.txt")))
+    return results
+
+
+def find_resume_in_batches(
+    client_code: str, req_id: str, name_normalized: str, subfolder: str = "extracted"
+) -> Optional[Path]:
+    """Find a resume file across all batch folders.
+
+    Args:
+        subfolder: 'extracted' to find TXT files, 'originals' to find original uploads
+    """
+    batches_dir = get_resumes_path(client_code, req_id, "batches")
+    if not batches_dir.exists():
+        return None
+    for batch_dir in sorted(batches_dir.iterdir()):
+        if not batch_dir.is_dir():
+            continue
+        target_dir = batch_dir / subfolder
+        if not target_dir.exists():
+            continue
+        if subfolder == "extracted":
+            candidate = target_dir / f"{name_normalized}_resume.txt"
+            if candidate.exists():
+                return candidate
+        else:
+            # originals - match by normalized filename
+            for f in target_dir.iterdir():
+                if f.is_file():
+                    # Inline normalization to avoid circular import
+                    n = f.name.rsplit('.', 1)[0].lower().replace(" ", "_").replace("-", "_")
+                    n = ''.join(c for c in n if c.isalnum() or c == '_')
+                    if n.endswith('_resume'):
+                        n = n[:-7]
+                    elif n.endswith('resume'):
+                        n = n[:-6]
+                    n = n.rstrip('_')
+                    if n == name_normalized:
+                        return f
+    return None
+
+
+def get_batch_for_resume(client_code: str, req_id: str, name_normalized: str) -> Optional[str]:
+    """Get the batch name that contains a given resume."""
+    batches_dir = get_resumes_path(client_code, req_id, "batches")
+    if not batches_dir.exists():
+        return None
+    for batch_dir in sorted(batches_dir.iterdir()):
+        if not batch_dir.is_dir():
+            continue
+        extracted_dir = batch_dir / "extracted"
+        if extracted_dir.exists():
+            candidate = extracted_dir / f"{name_normalized}_resume.txt"
+            if candidate.exists():
+                return batch_dir.name
+    return None
+
+
 def normalize_candidate_name(name: str) -> str:
     """Normalize a candidate name to lastname_firstname format."""
     # Remove extra whitespace and split

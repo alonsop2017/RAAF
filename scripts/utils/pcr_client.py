@@ -6,6 +6,7 @@ Handles authentication, session management, and API calls to PCR.
 API Documentation: https://www.pcrecruiter.net/apidocs_v2/
 """
 
+import html
 import json
 import time
 from datetime import datetime, timedelta
@@ -280,26 +281,98 @@ class PCRClient:
         self.ensure_authenticated()
         return self._make_request("GET", f"/positions/{position_id}")
 
+    def get_position_description(self, position_id: str) -> str:
+        """Fetch a position's job description as plain text.
+
+        Retrieves the position record and extracts the JobDescription field,
+        stripping HTML tags to return clean plain text.
+
+        Args:
+            position_id: PCR position/job ID
+
+        Returns:
+            Plain text job description
+        """
+        import re as _re
+        position = self.get_position(position_id)
+        raw_html = position.get("JobDescription", "") or ""
+        # Decode HTML entities
+        text = html.unescape(raw_html)
+        # Replace <br>, <p>, <div> tags with newlines for readability
+        text = _re.sub(r'<br\s*/?>', '\n', text, flags=_re.IGNORECASE)
+        text = _re.sub(r'</(p|div|li|tr|h[1-6])>', '\n', text, flags=_re.IGNORECASE)
+        text = _re.sub(r'<li[^>]*>', '- ', text, flags=_re.IGNORECASE)
+        # Strip remaining HTML tags
+        text = _re.sub(r'<[^>]+>', '', text)
+        # Collapse excessive whitespace but preserve paragraph breaks
+        lines = []
+        for line in text.splitlines():
+            lines.append(line.strip())
+        text = '\n'.join(lines)
+        # Collapse 3+ consecutive newlines to 2
+        text = _re.sub(r'\n{3,}', '\n\n', text)
+        return text.strip()
+
     def get_position_candidates(
         self,
         position_id: str,
         limit: int = 100,
         offset: int = 0
     ) -> list[dict]:
-        """Get candidates in a position's pipeline."""
+        """Get candidates in a position's pipeline.
+
+        Uses position activities (INQUIRY type) to find applicants,
+        then fetches PipelineInterviews to get CandidateId for each.
+        The /positions/{id}/candidates endpoint does not exist in PCR API v2.
+        """
         self.ensure_authenticated()
 
-        params = {
-            "ResultsPerPage": limit,
-            "Page": (offset // limit) + 1
-        }
-
+        # Step 1: Get all INQUIRY activities for this position
         response = self._make_request(
             "GET",
-            f"/positions/{position_id}/candidates",
-            params=params
+            f"/positions/{position_id}/activities",
+            params={"ResultsPerPage": 500}
         )
-        return response.get("Results", [])
+        activities = response.get("Results", [])
+        inquiry_ids = [
+            a["ActivityId"] for a in activities
+            if a.get("ActivityType") == "INQUIRY"
+        ]
+
+        if not inquiry_ids:
+            return []
+
+        # Step 2: For each activity, get the PipelineInterview to obtain CandidateId
+        candidates = []
+        seen_candidate_ids = set()
+        for act_id in inquiry_ids:
+            try:
+                pi = self._make_request("GET", f"/PipelineInterviews/{act_id}")
+                cid = pi.get("CandidateId")
+                if cid and cid not in seen_candidate_ids:
+                    seen_candidate_ids.add(cid)
+                    # PCR returns HTML-encoded names with double-encoded UTF-8;
+                    # decode HTML entities, then fix the mojibake
+                    raw_name = html.unescape(pi.get("CandidateName", "") or "")
+                    try:
+                        raw_name = raw_name.encode("latin-1").decode("utf-8")
+                    except (UnicodeDecodeError, UnicodeEncodeError):
+                        pass
+                    parts = raw_name.split(None, 1)
+                    candidates.append({
+                        "CandidateId": cid,
+                        "FirstName": parts[0] if parts else "",
+                        "LastName": parts[1] if len(parts) > 1 else "",
+                        "CandidateName": raw_name,
+                        "DateAdded": pi.get("AppointmentDate", ""),
+                        "PipelineStatus": pi.get("InterviewStatus", ""),
+                        "SendoutId": pi.get("SendoutId"),
+                        "JobId": pi.get("JobId"),
+                    })
+            except PCRClientError:
+                continue
+
+        return candidates
 
     # ========== Candidate Methods ==========
 
@@ -350,76 +423,95 @@ class PCRClient:
         self.ensure_authenticated()
         return self._make_request("PUT", f"/candidates/{candidate_id}", data=data)
 
-    def add_candidate_note(self, candidate_id: str, note: str, note_type: str = "General") -> dict:
-        """Add a note to a candidate record."""
+    def add_candidate_activity(
+        self,
+        candidate_id: str,
+        activity_type: str = "NOTE",
+        notes: str = "",
+        subject: str = ""
+    ) -> dict:
+        """Add an activity (note) to a candidate record.
+
+        Uses POST /candidates/{id}/activities which is the working
+        endpoint for adding notes in PCR API v2.
+        """
         self.ensure_authenticated()
         data = {
-            "NoteType": note_type,
-            "NoteText": note
+            "ActivityType": activity_type,
+            "Notes": notes,
         }
-        return self._make_request("POST", f"/candidates/{candidate_id}/notes", data=data)
+        if subject:
+            data["Subject"] = subject
+        return self._make_request("POST", f"/candidates/{candidate_id}/activities", data=data)
 
     # ========== Resume/Document Methods ==========
 
     def get_candidate_documents(self, candidate_id: str) -> list[dict]:
-        """Get list of documents attached to a candidate."""
+        """Get list of attachments for a candidate.
+
+        PCR API v2 uses /candidates/{id}/attachments (not /documents).
+        Maps attachment fields to the document field names used by callers.
+        """
         self.ensure_authenticated()
-        response = self._make_request("GET", f"/candidates/{candidate_id}/documents")
-        return response.get("Results", [])
+        response = self._make_request("GET", f"/candidates/{candidate_id}/attachments")
+        results = response.get("Results", [])
+        # Map attachment fields to expected document field names
+        return [
+            {
+                "DocumentId": att.get("AttachmentId"),
+                "FileName": att.get("Name", ""),
+                "DocumentType": att.get("Description", ""),
+                "Size": att.get("Size", 0),
+                "Date": att.get("Date", ""),
+            }
+            for att in results
+        ]
 
     def download_document(self, candidate_id: str, document_id: str) -> bytes:
         """
-        Download a document file.
+        Download an attachment file.
+
+        Fetches /candidates/{id}/attachments/{id} which returns JSON
+        with base64-encoded Data field.
 
         Returns:
             Document content as bytes
         """
+        import base64
         self.ensure_authenticated()
-
-        url = urljoin(
-            self.base_url + "/",
-            f"candidates/{candidate_id}/documents/{document_id}/content"
+        response = self._make_request(
+            "GET", f"/candidates/{candidate_id}/attachments/{document_id}"
         )
-        headers = self._get_headers()
-
-        response = requests.get(url, headers=headers, timeout=60)
-
-        if response.status_code >= 400:
-            raise PCRAPIError(f"Failed to download document: {response.status_code}")
-
-        return response.content
+        data_b64 = response.get("Data", "")
+        if not data_b64:
+            raise PCRAPIError(f"No data in attachment {document_id}")
+        return base64.b64decode(data_b64)
 
     # ========== Pipeline Methods ==========
 
-    def update_pipeline_status(
+    def update_pipeline_interview(
         self,
-        position_id: str,
-        candidate_id: str,
-        status: str,
-        notes: Optional[str] = None
+        sendout_id: str,
+        status: str = None,
+        notes: str = None
     ) -> dict:
         """
-        Update a candidate's status in a position pipeline.
+        Update a PipelineInterview record (candidate's pipeline entry).
 
         Args:
-            position_id: Position/job ID
-            candidate_id: Candidate ID
-            status: New pipeline status
-            notes: Optional notes about the status change
+            sendout_id: The SendoutId / activity ID of the pipeline entry
+            status: New InterviewStatus value (e.g., "Resume Reviewed", "Assessed")
+            notes: Optional notes to append
         """
         self.ensure_authenticated()
 
-        data = {
-            "Status": status
-        }
+        data = {}
+        if status:
+            data["InterviewStatus"] = status
         if notes:
             data["Notes"] = notes
 
-        return self._make_request(
-            "PUT",
-            f"/positions/{position_id}/candidates/{candidate_id}",
-            data=data
-        )
+        return self._make_request("PUT", f"/PipelineInterviews/{sendout_id}", data=data)
 
     # ========== Company Methods ==========
 

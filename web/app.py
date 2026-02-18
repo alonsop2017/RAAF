@@ -120,9 +120,18 @@ async def dashboard(request: Request):
                     from scripts.utils.client_utils import get_requisition_root
                     req_root = get_requisition_root(client_code, req_id)
 
-                    # Count resumes
-                    resumes_dir = req_root / "resumes" / "processed"
-                    candidate_count = len(list(resumes_dir.glob("*.txt"))) if resumes_dir.exists() else 0
+                    # Count resumes from batch extracted/ folders + legacy processed/
+                    candidate_count = 0
+                    batches_dir = req_root / "resumes" / "batches"
+                    if batches_dir.exists():
+                        for batch_d in batches_dir.iterdir():
+                            if batch_d.is_dir():
+                                ext_dir = batch_d / "extracted"
+                                if ext_dir.exists():
+                                    candidate_count += len(list(ext_dir.glob("*.txt")))
+                    legacy_dir = req_root / "resumes" / "processed"
+                    if legacy_dir.exists():
+                        candidate_count += len(list(legacy_dir.glob("*.txt")))
 
                     # Count assessments
                     assessments_dir = req_root / "assessments" / "individual"

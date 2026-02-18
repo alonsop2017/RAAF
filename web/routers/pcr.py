@@ -28,14 +28,41 @@ def run_pcr_script(script_name: str, *args):
     script_path = get_project_root() / "scripts" / "pcr" / script_name
 
     cmd = ["python3", str(script_path)] + list(args)
+    env = {**__import__('os').environ, "PYTHONIOENCODING": "utf-8"}
     result = subprocess.run(
         cmd,
         capture_output=True,
         text=True,
-        cwd=str(get_project_root())
+        cwd=str(get_project_root()),
+        env=env
     )
 
     return result.returncode == 0, result.stdout, result.stderr
+
+
+def run_pcr_script_async(script_name: str, *args):
+    """Run a PCR script in the background. Returns the Popen object."""
+    import os
+    script_path = get_project_root() / "scripts" / "pcr" / script_name
+    log_dir = get_project_root() / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / "pcr_sync.log"
+
+    cmd = ["python3", str(script_path)] + list(args)
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+
+    with open(log_file, "a") as lf:
+        lf.write(f"\n[{__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+                 f"Starting: {script_name} {' '.join(args)}\n")
+        lf.flush()
+        proc = subprocess.Popen(
+            cmd,
+            stdout=lf,
+            stderr=subprocess.STDOUT,
+            cwd=str(get_project_root()),
+            env=env,
+        )
+    return proc
 
 
 def check_pcr_connection():
@@ -99,27 +126,66 @@ async def test_connection(request: Request):
 
 @router.get("/api/positions")
 async def api_list_positions(request: Request, search: str = Query("")):
-    """Return PCR positions as JSON, optionally filtered by company name."""
+    """Return PCR positions as JSON, filtered by company name.
+
+    Fetches multiple pages in parallel since the PCR API does not support
+    server-side filtering by company name.
+    """
+    search_lower = search.strip().lower()
+    if not search_lower:
+        return JSONResponse([])
+
     try:
         from scripts.utils.pcr_client import PCRClient
+        from concurrent.futures import ThreadPoolExecutor
+        import requests as http_requests
+        from urllib.parse import urljoin
+
         client = PCRClient()
         client.ensure_authenticated()
-        positions = client.get_positions(status="Open", limit=200)
+        headers = client._get_headers()
+        url = urljoin(client.base_url + "/", "positions")
+
+        def fetch_page(page: int) -> tuple:
+            r = http_requests.get(
+                url,
+                headers=headers,
+                params={"ResultsPerPage": 500, "Page": page, "Status": "Open"},
+                timeout=30,
+            )
+            data = r.json()
+            return data.get("Results", []), data.get("TotalRecords")
+
+        # Fetch first page to get results and total count
+        first_results, total = fetch_page(1)
+        if total is None:
+            total = 5000  # conservative fallback
+        max_pages = (total + 499) // 500
+        all_positions = list(first_results)
+
+        if max_pages > 1:
+            with ThreadPoolExecutor(max_workers=min(max_pages - 1, 20)) as executor:
+                extra_pages = list(executor.map(fetch_page, range(2, max_pages + 1)))
+            for results, _ in extra_pages:
+                all_positions.extend(results)
+
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
     results = []
-    search_lower = search.strip().lower()
-    for pos in positions:
-        company = pos.get("CompanyName", "")
-        if search_lower and search_lower not in company.lower():
+    for pos in all_positions:
+        company = pos.get("CompanyName", "") or ""
+        if search_lower not in company.lower():
+            continue
+        status = (pos.get("Status", "") or "").strip()
+        if status.lower() not in ("open", "active"):
             continue
         results.append({
             "job_id": pos.get("JobId", pos.get("PositionId", "")),
             "title": pos.get("JobTitle", pos.get("Title", "")),
             "company": company,
             "location": pos.get("City", ""),
-            "status": pos.get("Status", ""),
+            "status": status,
         })
 
     return JSONResponse(results)
@@ -161,20 +227,16 @@ async def sync_candidates(
     client_code: str = Form(...),
     req_id: str = Form(...)
 ):
-    """Sync candidates from PCR for a requisition."""
-    success, stdout, stderr = run_pcr_script(
+    """Sync candidates from PCR for a requisition (runs in background)."""
+    run_pcr_script_async(
         "sync_candidates.py",
         "--client", client_code,
         "--req", req_id
     )
-
-    if success:
-        return RedirectResponse(
-            url=f"/requisitions/{client_code}/{req_id}?pcr_sync=1",
-            status_code=303
-        )
-    else:
-        raise HTTPException(status_code=500, detail=stderr or "Sync failed")
+    return RedirectResponse(
+        url=f"/requisitions/{client_code}/{req_id}?pcr_sync=started",
+        status_code=303
+    )
 
 
 @router.post("/download-resumes")
@@ -183,20 +245,17 @@ async def download_resumes(
     client_code: str = Form(...),
     req_id: str = Form(...)
 ):
-    """Download resumes from PCR for a requisition."""
-    success, stdout, stderr = run_pcr_script(
+    """Download resumes from PCR for a requisition (runs in background with auto-assess)."""
+    run_pcr_script_async(
         "download_resumes.py",
         "--client", client_code,
-        "--req", req_id
+        "--req", req_id,
+        "--auto-assess"
     )
-
-    if success:
-        return RedirectResponse(
-            url=f"/candidates/{client_code}/{req_id}?downloaded=1",
-            status_code=303
-        )
-    else:
-        raise HTTPException(status_code=500, detail=stderr or "Download failed")
+    return RedirectResponse(
+        url=f"/requisitions/{client_code}/{req_id}?download=started",
+        status_code=303
+    )
 
 
 @router.post("/push-scores")

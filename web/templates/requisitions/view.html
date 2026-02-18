@@ -28,6 +28,33 @@
     </div>
 </div>
 
+<!-- Framework alerts -->
+{% if request.query_params.get('framework') == 'generated' %}
+<div class="alert alert-success">Assessment framework was successfully generated from the job description.</div>
+{% elif request.query_params.get('framework') == 'regenerated' %}
+<div class="alert alert-success">Assessment framework was successfully regenerated from the job description.</div>
+{% elif request.query_params.get('framework') == 'extraction_failed' %}
+<div class="alert alert-warning">
+    <strong>Warning:</strong> Could not extract text from the uploaded job description. A generic template was used instead.
+    <form action="/requisitions/{{ client_code }}/{{ req_id }}/regenerate-framework" method="POST" style="display:inline; margin-left: 0.5rem;">
+        <button type="submit" class="btn btn-sm btn-primary">Retry Framework Generation</button>
+    </form>
+</div>
+{% elif request.query_params.get('framework') == 'generation_failed' %}
+<div class="alert alert-warning">
+    <strong>Warning:</strong> AI framework generation failed. A generic template was used instead.
+    <form action="/requisitions/{{ client_code }}/{{ req_id }}/regenerate-framework" method="POST" style="display:inline; margin-left: 0.5rem;">
+        <button type="submit" class="btn btn-sm btn-primary">Retry Framework Generation</button>
+    </form>
+</div>
+{% endif %}
+
+{% if request.query_params.get('jd') == 'updated' %}
+<div class="alert alert-success">Job description has been updated successfully.</div>
+{% elif request.query_params.get('jd') == 'empty' %}
+<div class="alert alert-warning">The uploaded file was empty. Job description was not updated.</div>
+{% endif %}
+
 <!-- Stats -->
 <div class="stats-grid">
     <div class="stat-card">
@@ -215,29 +242,95 @@
             </div>
         </div>
 
+        <!-- Job Description -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Job Description</h3>
+            </div>
+            <div class="card-body">
+                {% if has_job_description %}
+                <p><strong>File:</strong> {{ jd_filename }}</p>
+                <div class="action-buttons mt-2">
+                    <a href="/requisitions/{{ client_code }}/{{ req_id }}/download-jd" class="btn btn-sm btn-primary">Download</a>
+                </div>
+                <hr style="margin: 1rem 0; border-color: var(--border-color);">
+                <p class="text-muted" style="font-size: 0.85rem; margin-bottom: 0.5rem;">Replace job description:</p>
+                <form action="/requisitions/{{ client_code }}/{{ req_id }}/update-jd" method="POST" enctype="multipart/form-data">
+                    <div class="form-group" style="margin-bottom: 0.5rem;">
+                        <input type="file" name="job_description" class="form-input" accept=".pdf,.docx" required>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-outline">Upload & Replace</button>
+                </form>
+                {% else %}
+                <div class="empty-state" style="padding: 1rem 0;">
+                    <p class="text-muted">No job description uploaded.</p>
+                    <form action="/requisitions/{{ client_code }}/{{ req_id }}/update-jd" method="POST" enctype="multipart/form-data" class="mt-2">
+                        <div class="form-group" style="margin-bottom: 0.5rem;">
+                            <input type="file" name="job_description" class="form-input" accept=".pdf,.docx" required>
+                        </div>
+                        <button type="submit" class="btn btn-sm btn-primary">Upload Job Description</button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
         <!-- PCR Integration -->
         <div class="card">
             <div class="card-header">
                 <h3>PCR Integration</h3>
             </div>
             <div class="card-body">
-                {% if pcr_integration and pcr_integration.job_id %}
-                <!-- Linked state -->
+                {% set positions = pcr_integration.get('positions', []) if pcr_integration else [] %}
+                {% if pcr_integration and (pcr_integration.job_id or pcr_integration.get('positions', [])) %}
+                <!-- Linked positions -->
                 <div class="pcr-linked">
-                    <p><strong>Position:</strong> {{ pcr_integration.job_title or 'N/A' }}</p>
-                    <p class="mt-1"><strong>Company:</strong> {{ pcr_integration.company_name or 'N/A' }}</p>
-                    <p class="mt-1"><strong>Job ID:</strong> {{ pcr_integration.job_id }}</p>
-                    <p class="mt-1"><strong>Linked:</strong> {{ pcr_integration.linked_date or 'N/A' }}</p>
+                    {% if positions %}
+                    <table style="width:100%; font-size:0.85rem; border-collapse:collapse;" class="mb-2">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--border-color);">
+                                <th style="text-align:left; padding:0.3rem 0.5rem;">Position</th>
+                                <th style="text-align:left; padding:0.3rem 0.5rem;">Company</th>
+                                <th style="text-align:left; padding:0.3rem 0.5rem;">Job ID</th>
+                                <th style="padding:0.3rem 0.5rem;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for pos in positions %}
+                            <tr style="border-bottom:1px solid var(--border-color);">
+                                <td style="padding:0.3rem 0.5rem;">{{ pos.job_title or 'N/A' }}</td>
+                                <td style="padding:0.3rem 0.5rem;">{{ pos.company_name or 'N/A' }}</td>
+                                <td style="padding:0.3rem 0.5rem;">{{ pos.job_id }}</td>
+                                <td style="padding:0.3rem 0.5rem; text-align:right;">
+                                    <form action="/requisitions/{{ client_code }}/{{ req_id }}/unlink-pcr" method="POST" style="display:inline;">
+                                        <input type="hidden" name="job_id" value="{{ pos.job_id }}">
+                                        <button type="submit" class="btn btn-sm btn-outline" style="padding:0.1rem 0.4rem; font-size:0.75rem;" onclick="return confirm('Unlink position {{ pos.job_id }}?')">Remove</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <p><strong>Job ID:</strong> {{ pcr_integration.job_id }}</p>
+                    {% endif %}
+                    <p class="mt-1"><strong>Last Sync:</strong> <span id="lastSyncTime">{{ pcr_integration.last_sync or 'Never' }}</span></p>
+                    <p class="mt-1 text-muted" style="font-size: 0.8rem;">Auto-sync runs every 15 minutes</p>
                     <div class="action-buttons mt-2">
                         <a href="/pcr/sync/{{ client_code }}/{{ req_id }}" class="btn btn-sm btn-primary">Sync Candidates</a>
                         <form action="/requisitions/{{ client_code }}/{{ req_id }}/unlink-pcr" method="POST" style="display:inline;">
-                            <button type="submit" class="btn btn-sm btn-outline" onclick="return confirm('Unlink this PCR position?')">Unlink</button>
+                            <button type="submit" class="btn btn-sm btn-outline" onclick="return confirm('Unlink ALL PCR positions?')">Unlink All</button>
                         </form>
                     </div>
                 </div>
-                {% else %}
-                <!-- Not linked — search and link -->
-                <div class="pcr-search">
+                {% endif %}
+
+                <!-- Search and link (always shown so more positions can be added) -->
+                <div class="pcr-search {% if pcr_integration and (pcr_integration.job_id or pcr_integration.get('positions', [])) %}mt-2{% endif %}">
+                    {% if pcr_integration and (pcr_integration.job_id or pcr_integration.get('positions', [])) %}
+                    <hr style="border-color:var(--border-color); margin:0.5rem 0;">
+                    <p class="text-muted" style="font-size:0.8rem; margin-bottom:0.5rem;">Link additional positions:</p>
+                    {% endif %}
                     <div class="form-group">
                         <label class="form-label" for="pcrSearch">Search PCR Positions</label>
                         <div style="display:flex; gap:0.5rem;">
@@ -247,28 +340,35 @@
                     </div>
                     <div id="pcrResults" style="display:none;" class="mt-2">
                         <div class="form-group">
-                            <label class="form-label" for="pcrSelect">Select Position</label>
-                            <select id="pcrSelect" class="form-select">
-                                <option value="">-- Select a position --</option>
-                            </select>
+                            <label class="form-label">Select Positions</label>
+                            <div id="pcrCheckboxList" style="max-height:300px; overflow-y:auto; border:1px solid var(--border-color); border-radius:4px; padding:0.5rem; font-size:0.85rem;"></div>
                         </div>
-                        <form action="/requisitions/{{ client_code }}/{{ req_id }}/link-pcr" method="POST" id="pcrLinkForm" class="mt-1">
-                            <input type="hidden" name="job_id" id="pcrJobId">
-                            <input type="hidden" name="job_title" id="pcrJobTitle">
-                            <input type="hidden" name="company_name" id="pcrCompanyName">
-                            <button type="submit" class="btn btn-sm btn-primary" id="pcrLinkBtn" disabled>Link Position</button>
-                        </form>
+                        <button type="button" class="btn btn-sm btn-primary mt-1" id="pcrLinkBtn" disabled>Link Selected</button>
                     </div>
                     <div id="pcrLoading" style="display:none;" class="mt-2">
-                        <span class="text-muted">Searching...</span>
+                        <span class="text-muted">Searching PCR positions (this may take a few seconds)...</span>
                     </div>
                     <div id="pcrError" style="display:none;" class="mt-2">
                         <span style="color:var(--danger-color);"></span>
                     </div>
                 </div>
-                {% endif %}
             </div>
         </div>
+
+        <!-- PCR Sync Log -->
+        {% if pcr_integration and (pcr_integration.job_id or pcr_integration.get('positions', [])) %}
+        <div class="card">
+            <div class="card-header">
+                <h3>Sync Log</h3>
+                <button type="button" id="refreshLogBtn" class="btn btn-sm btn-outline">Refresh</button>
+            </div>
+            <div class="card-body">
+                <div id="syncLogContent" style="max-height: 250px; overflow-y: auto; font-family: monospace; font-size: 0.78rem; line-height: 1.5; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 4px; padding: 0.5rem;">
+                    <span class="text-muted">Loading sync log...</span>
+                </div>
+            </div>
+        </div>
+        {% endif %}
 
         <!-- Batches -->
         {% if batches %}
@@ -362,61 +462,126 @@
     if (pcrSearchBtn) {
         var pcrSearchInput = document.getElementById('pcrSearch');
         var pcrResults = document.getElementById('pcrResults');
-        var pcrSelect = document.getElementById('pcrSelect');
+        var pcrCheckboxList = document.getElementById('pcrCheckboxList');
         var pcrLoading = document.getElementById('pcrLoading');
         var pcrError = document.getElementById('pcrError');
         var pcrLinkBtn = document.getElementById('pcrLinkBtn');
-        var pcrJobId = document.getElementById('pcrJobId');
-        var pcrJobTitle = document.getElementById('pcrJobTitle');
-        var pcrCompanyName = document.getElementById('pcrCompanyName');
         var positionsData = [];
+
+        // IDs already linked (to mark them in the list)
+        var linkedIds = new Set();
+        {% if pcr_integration and pcr_integration.get('positions') %}
+        {% for pos in pcr_integration.positions %}
+        linkedIds.add('{{ pos.job_id }}');
+        {% endfor %}
+        {% elif pcr_integration and pcr_integration.job_id %}
+        linkedIds.add('{{ pcr_integration.job_id }}');
+        {% endif %}
+
+        function updateLinkBtn() {
+            var checked = pcrCheckboxList.querySelectorAll('input[type=checkbox]:checked');
+            pcrLinkBtn.disabled = (checked.length === 0);
+            pcrLinkBtn.textContent = checked.length > 0
+                ? 'Link Selected (' + checked.length + ')'
+                : 'Link Selected';
+        }
 
         pcrSearchBtn.addEventListener('click', function() {
             var query = pcrSearchInput.value.trim();
+            if (!query) return;
             pcrLoading.style.display = 'block';
             pcrResults.style.display = 'none';
             pcrError.style.display = 'none';
+            pcrSearchBtn.disabled = true;
+            pcrSearchBtn.textContent = 'Searching...';
 
             fetch('/pcr/api/positions?search=' + encodeURIComponent(query))
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     pcrLoading.style.display = 'none';
+                    pcrSearchBtn.disabled = false;
+                    pcrSearchBtn.textContent = 'Search';
                     if (data.error) {
                         pcrError.querySelector('span').textContent = data.error;
                         pcrError.style.display = 'block';
                         return;
                     }
                     positionsData = data;
-                    pcrSelect.innerHTML = '<option value="">-- Select a position (' + data.length + ' found) --</option>';
+                    pcrCheckboxList.innerHTML = '';
+                    if (data.length === 0) {
+                        pcrCheckboxList.innerHTML = '<span class="text-muted">No positions found.</span>';
+                        pcrResults.style.display = 'block';
+                        pcrLinkBtn.disabled = true;
+                        return;
+                    }
+                    var heading = document.createElement('div');
+                    heading.style.cssText = 'font-size:0.8rem; color:var(--text-muted); margin-bottom:0.4rem;';
+                    heading.textContent = data.length + ' position(s) found:';
+                    pcrCheckboxList.appendChild(heading);
+
                     data.forEach(function(pos) {
-                        var opt = document.createElement('option');
-                        opt.value = pos.job_id;
-                        opt.textContent = pos.title + ' - ' + pos.company + ' (' + pos.job_id + ')';
-                        pcrSelect.appendChild(opt);
+                        var already = linkedIds.has(String(pos.job_id));
+                        var row = document.createElement('label');
+                        row.style.cssText = 'display:flex; align-items:flex-start; gap:0.5rem; padding:0.35rem 0.25rem; border-bottom:1px solid var(--border-color); cursor:pointer;' + (already ? 'opacity:0.5;' : '');
+                        var cb = document.createElement('input');
+                        cb.type = 'checkbox';
+                        cb.value = pos.job_id;
+                        cb.dataset.title = pos.title;
+                        cb.dataset.company = pos.company;
+                        cb.style.marginTop = '0.2rem';
+                        if (already) { cb.disabled = true; }
+                        cb.addEventListener('change', updateLinkBtn);
+                        var text = document.createElement('span');
+                        text.innerHTML = '<strong>' + escapeHtml(pos.title) + '</strong><br>' +
+                            '<span style="font-size:0.8rem;">' + escapeHtml(pos.company) +
+                            ' &middot; ' + escapeHtml(pos.location || '') +
+                            ' &middot; ' + escapeHtml(pos.status || '') +
+                            ' &middot; <code style="font-size:0.75rem;">' + escapeHtml(String(pos.job_id)) + '</code>' +
+                            (already ? ' <em>(already linked)</em>' : '') +
+                            '</span>';
+                        row.appendChild(cb);
+                        row.appendChild(text);
+                        pcrCheckboxList.appendChild(row);
                     });
                     pcrResults.style.display = 'block';
                     pcrLinkBtn.disabled = true;
                 })
                 .catch(function(err) {
                     pcrLoading.style.display = 'none';
+                    pcrSearchBtn.disabled = false;
+                    pcrSearchBtn.textContent = 'Search';
                     pcrError.querySelector('span').textContent = 'Failed to fetch positions: ' + err;
                     pcrError.style.display = 'block';
                 });
         });
 
-        pcrSelect.addEventListener('change', function() {
-            var selected = this.value;
-            if (!selected) {
-                pcrLinkBtn.disabled = true;
-                return;
-            }
-            var pos = positionsData.find(function(p) { return String(p.job_id) === String(selected); });
-            if (pos) {
-                pcrJobId.value = pos.job_id;
-                pcrJobTitle.value = pos.title;
-                pcrCompanyName.value = pos.company;
-                pcrLinkBtn.disabled = false;
-            }
+        // Link selected positions one by one via fetch
+        pcrLinkBtn.addEventListener('click', function() {
+            var checked = pcrCheckboxList.querySelectorAll('input[type=checkbox]:checked');
+            if (checked.length === 0) return;
+            pcrLinkBtn.disabled = true;
+            pcrLinkBtn.textContent = 'Linking...';
+
+            var promises = [];
+            checked.forEach(function(cb) {
+                var body = new URLSearchParams();
+                body.append('job_id', cb.value);
+                body.append('job_title', cb.dataset.title || '');
+                body.append('company_name', cb.dataset.company || '');
+                promises.push(
+                    fetch('/requisitions/{{ client_code }}/{{ req_id }}/link-pcr', {
+                        method: 'POST',
+                        body: body,
+                        redirect: 'manual'
+                    })
+                );
+            });
+
+            Promise.all(promises).then(function() {
+                window.location.reload();
+            }).catch(function() {
+                window.location.reload();
+            });
         });
 
         pcrSearchInput.addEventListener('keydown', function(e) {
@@ -425,6 +590,68 @@
                 pcrSearchBtn.click();
             }
         });
+
+        function escapeHtml(text) {
+            var div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    }
+
+    // PCR Sync Log viewer
+    var syncLogContent = document.getElementById('syncLogContent');
+    var refreshLogBtn = document.getElementById('refreshLogBtn');
+    if (syncLogContent) {
+        function escapeHtml(text) {
+            var div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatLogLine(line) {
+            var escaped = escapeHtml(line);
+            if (escaped.indexOf('ERROR:') !== -1 || escaped.indexOf('failed') !== -1) {
+                return '<span style="color:var(--danger-color);">' + escaped + '</span>';
+            }
+            if (escaped.indexOf('OK:') !== -1 || escaped.indexOf('SUCCESS') !== -1) {
+                return '<span style="color:var(--success-color);">' + escaped + '</span>';
+            }
+            if (escaped.indexOf('SKIP:') !== -1) {
+                return '<span style="color:var(--warning-color);">' + escaped + '</span>';
+            }
+            if (escaped.indexOf('new applicant') !== -1) {
+                return '<span style="color:var(--primary-color); font-weight:600;">' + escaped + '</span>';
+            }
+            if (escaped.indexOf('==========') !== -1) {
+                return '<span style="color:var(--text-muted);">' + escaped + '</span>';
+            }
+            return escaped;
+        }
+
+        function loadSyncLog() {
+            fetch('/requisitions/{{ client_code }}/{{ req_id }}/sync-log?lines=30')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.lines && data.lines.length > 0) {
+                        syncLogContent.innerHTML = data.lines.map(formatLogLine).join('\n');
+                        syncLogContent.scrollTop = syncLogContent.scrollHeight;
+                    } else {
+                        syncLogContent.innerHTML = '<span class="text-muted">No sync activity recorded yet.</span>';
+                    }
+                    if (data.last_sync) {
+                        var el = document.getElementById('lastSyncTime');
+                        if (el) el.textContent = data.last_sync;
+                    }
+                })
+                .catch(function() {
+                    syncLogContent.innerHTML = '<span class="text-muted">Could not load sync log.</span>';
+                });
+        }
+
+        loadSyncLog();
+        refreshLogBtn.addEventListener('click', loadSyncLog);
+        // Auto-refresh every 60 seconds
+        setInterval(loadSyncLog, 60000);
     }
 })();
 </script>

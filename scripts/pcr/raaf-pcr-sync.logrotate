@@ -1,0 +1,11 @@
+/home/alonsop/RAAF/logs/pcr_sync.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 alonsop alonsop
+    dateext
+    dateformat -%Y%m%d
+}

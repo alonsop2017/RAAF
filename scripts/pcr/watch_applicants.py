@@ -27,6 +27,7 @@ def watch_applicants(
     req_id: str = None,
     interval: int = 15,
     auto_download: bool = False,
+    auto_assess: bool = False,
     once: bool = False
 ):
     """
@@ -37,6 +38,7 @@ def watch_applicants(
         req_id: Specific requisition to watch (None = all active)
         interval: Check interval in minutes
         auto_download: Automatically download new resumes
+        auto_assess: Automatically run AI assessments after download
         once: Run once and exit (don't loop)
     """
     print("Starting applicant watcher...")
@@ -46,6 +48,7 @@ def watch_applicants(
     if req_id:
         print(f"  Requisition filter: {req_id}")
     print(f"  Auto-download resumes: {auto_download}")
+    print(f"  Auto-assess candidates: {auto_assess}")
     print("-" * 50)
 
     client = PCRClient()
@@ -73,7 +76,7 @@ def watch_applicants(
 
             for cc, rid in reqs_to_check:
                 try:
-                    new_count = check_requisition(client, cc, rid, auto_download)
+                    new_count = check_requisition(client, cc, rid, auto_download, auto_assess)
                     total_new += new_count
                 except Exception as e:
                     print(f"  Error checking {cc}/{rid}: {e}")
@@ -104,7 +107,8 @@ def check_requisition(
     client: PCRClient,
     client_code: str,
     req_id: str,
-    auto_download: bool
+    auto_download: bool,
+    auto_assess: bool = False
 ) -> int:
     """
     Check a single requisition for new applicants.
@@ -118,9 +122,17 @@ def check_requisition(
         return 0
 
     pcr_config = req_config.get("pcr_integration", {})
-    position_id = pcr_config.get("job_id")
 
-    if not position_id:
+    # Support multi-position linking: collect all position IDs
+    position_ids = []
+    positions_list = pcr_config.get("positions", [])
+    if positions_list:
+        position_ids = [str(p.get("job_id")) for p in positions_list if p.get("job_id")]
+    elif pcr_config.get("job_id"):
+        # Legacy single-position format
+        position_ids = [str(pcr_config["job_id"])]
+
+    if not position_ids:
         return 0
 
     last_sync = pcr_config.get("last_sync")
@@ -131,12 +143,23 @@ def check_requisition(
         except ValueError:
             pass
 
-    # Get candidates from pipeline
-    candidates = client.get_position_candidates(position_id)
+    # Get candidates from all linked positions
+    all_candidates = []
+    seen_ids = set()
+    for position_id in position_ids:
+        try:
+            candidates = client.get_position_candidates(position_id)
+            for c in candidates:
+                cid = c.get("CandidateId")
+                if cid and cid not in seen_ids:
+                    seen_ids.add(cid)
+                    all_candidates.append(c)
+        except Exception as e:
+            print(f"    Error fetching candidates for position {position_id}: {e}")
 
     # Filter to new candidates
     new_candidates = []
-    for c in candidates:
+    for c in all_candidates:
         date_added = c.get("DateAdded")
         if date_added and last_sync_dt:
             try:
@@ -170,7 +193,7 @@ def check_requisition(
         else:
             manifest = {
                 "synced_at": datetime.now().isoformat(),
-                "position_id": position_id,
+                "position_ids": position_ids,
                 "candidates": new_candidates
             }
 
@@ -191,6 +214,20 @@ def check_requisition(
             new_ids = [c.get("CandidateId") for c in new_candidates]
             download_resumes(client_code, req_id, candidate_ids=new_ids)
 
+            # Auto-assess if enabled (requires download to have run first)
+            if auto_assess:
+                try:
+                    sys.path.insert(0, str(Path(__file__).parent.parent))
+                    from assess_candidate import assess_all_pending
+                    print(f"  Running auto-assessment for {client_code}/{req_id}...")
+                    result = assess_all_pending(
+                        client_code, req_id, use_ai=True, workers=4
+                    )
+                    assessed = result.get("assessed", 0)
+                    print(f"  Auto-assessment complete: {assessed} candidates assessed")
+                except Exception as e:
+                    print(f"  Auto-assessment error: {e}")
+
     return len(new_candidates)
 
 
@@ -204,6 +241,8 @@ def main():
                        help="Check interval in minutes (default: 15)")
     parser.add_argument("--auto-download", action="store_true",
                        help="Automatically download new resumes")
+    parser.add_argument("--auto-assess", action="store_true",
+                       help="Automatically run AI assessments after download")
     parser.add_argument("--once", action="store_true",
                        help="Run once and exit")
     args = parser.parse_args()
@@ -213,6 +252,7 @@ def main():
         req_id=args.req,
         interval=args.interval,
         auto_download=args.auto_download,
+        auto_assess=args.auto_assess,
         once=args.once
     )
 
