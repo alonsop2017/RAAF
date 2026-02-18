@@ -315,10 +315,12 @@ function handleJDUpload(input) {
                         'data-title="' + (pos.title || '').replace(/"/g, '&quot;') + '" ' +
                         'data-location="' + (pos.location || '').replace(/"/g, '&quot;') + '" ' +
                         'data-company="' + (pos.company || '').replace(/"/g, '&quot;') + '">' +
-                        '<span style="flex:1;"><strong>' + (pos.title || 'Untitled') + '</strong>' +
+                        '<span style="flex:1;">' +
+                        '<span style="display:inline-block; background:var(--accent-color,#0d6efd); color:#fff; font-size:0.75rem; font-weight:600; border-radius:3px; padding:1px 6px; margin-right:6px; vertical-align:middle; font-family:monospace;">#' + pos.job_id + '</span>' +
+                        '<strong>' + (pos.title || 'Untitled') + '</strong>' +
                         '<br><span class="text-muted" style="font-size:0.85rem;">' + (pos.company || '') +
                         (pos.location ? ' &middot; ' + pos.location : '') +
-                        ' &middot; ID: ' + pos.job_id + '</span></span>';
+                        ' &middot; ' + (pos.status || 'Open') + '</span></span>';
                     listEl.appendChild(row);
                 });
                 resultsEl.style.display = 'block';

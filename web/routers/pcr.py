@@ -177,12 +177,15 @@ async def api_list_positions(request: Request, search: str = Query("")):
         company = pos.get("CompanyName", "") or ""
         if search_lower not in company.lower():
             continue
+        status = (pos.get("Status", "") or "").strip()
+        if status.lower() not in ("open", "active"):
+            continue
         results.append({
             "job_id": pos.get("JobId", pos.get("PositionId", "")),
             "title": pos.get("JobTitle", pos.get("Title", "")),
             "company": company,
             "location": pos.get("City", ""),
-            "status": pos.get("Status", ""),
+            "status": status,
         })
 
     return JSONResponse(results)
