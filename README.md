@@ -10,6 +10,42 @@ A comprehensive automation framework for recruitment firms to assess candidate r
 
 ---
 
+## Screenshots
+
+### Dashboard
+![Dashboard](docs/screenshots/dashboard.png)
+
+### Requisition Detail
+![Requisition Detail](docs/screenshots/requisition_detail.png)
+
+### Assessments
+![Assessments](docs/screenshots/assessments.png)
+
+### PCR Integration
+![PCR Integration](docs/screenshots/pcr.png)
+
+<details>
+<summary>More screenshots</summary>
+
+### Clients
+![Clients](docs/screenshots/clients.png)
+
+### Requisitions
+![Requisitions](docs/screenshots/requisitions.png)
+
+### Candidates
+![Candidates](docs/screenshots/candidates.png)
+
+### Reports
+![Reports](docs/screenshots/reports.png)
+
+### Search
+![Search](docs/screenshots/search.png)
+
+</details>
+
+---
+
 ## Overview
 
 RAAF transforms the labor-intensive process of evaluating candidate resumes into a systematic, documented, and scalable operation. It integrates directly with **PCRecruiter (PCR)** to provide seamless candidate flow from job posting through Indeed to final assessment delivery.
