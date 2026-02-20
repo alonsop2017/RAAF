@@ -11,6 +11,9 @@ auth:
     cookie_name: "raaf_session"
     max_age_hours: 8
   allowed_domains: []  # Optional: ["archtekt.ca"] to restrict login
+  allowed_emails:    # Specific email whitelist (empty = allow all; checked after domains)
+    - "charles@peoplefindinc.com"
+    - "alonso@peoplefindinc.com"
 
 # Default assessment settings (can be overridden per requisition)
 assessment:
@@ -60,7 +63,7 @@ pcr:
   api_base_url: "https://www2.pcrecruiter.net/rest/api"
   api_version: "v2"
   session_timeout_minutes: 60
-  sync_interval_minutes: 15
+  sync_interval_minutes: 60
   default_pipeline_statuses:
     new: "New Applicant"
     assessed: "Assessed"
