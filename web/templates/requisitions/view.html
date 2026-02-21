@@ -531,8 +531,9 @@
                         cb.style.marginTop = '0.2rem';
                         if (already) { cb.disabled = true; }
                         cb.addEventListener('change', updateLinkBtn);
+                        var displayId = pos.position_id || String(pos.job_id);
                         var text = document.createElement('span');
-                        text.innerHTML = '<code style="font-size:0.75rem; background:var(--bg-color); border:1px solid var(--border-color); padding:0.1rem 0.35rem; border-radius:3px; margin-right:0.4rem; color:var(--primary-color);">' + escapeHtml(String(pos.job_id)) + '</code>' +
+                        text.innerHTML = '<code style="font-size:0.75rem; background:var(--bg-color); border:1px solid var(--border-color); padding:0.1rem 0.35rem; border-radius:3px; margin-right:0.4rem; color:var(--primary-color);">' + escapeHtml(displayId) + '</code>' +
                             '<strong>' + escapeHtml(pos.title) + '</strong>' +
                             (already ? ' <em style="font-size:0.8rem;">(already linked)</em>' : '') +
                             '<br><span style="font-size:0.8rem; color:var(--text-muted);">' + escapeHtml(pos.company) +
