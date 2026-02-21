@@ -327,7 +327,10 @@ class PCRClient:
         """
         self.ensure_authenticated()
 
-        # Step 1: Get all INQUIRY activities for this position
+        # Step 1: Get all candidate-related activities for this position.
+        # PCR creates an INQUIRY activity when a candidate applies and an
+        # INTERVIEW activity when the recruiter formally adds them to the
+        # pipeline.  Both map to PipelineInterview records with a CandidateId.
         response = self._make_request(
             "GET",
             f"/positions/{position_id}/activities",
@@ -336,7 +339,7 @@ class PCRClient:
         activities = response.get("Results", [])
         inquiry_ids = [
             a["ActivityId"] for a in activities
-            if a.get("ActivityType") == "INQUIRY"
+            if a.get("ActivityType") in ("INQUIRY", "INTERVIEW")
         ]
 
         if not inquiry_ids:
