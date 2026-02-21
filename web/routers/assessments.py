@@ -159,6 +159,11 @@ async def assessment_dashboard(request: Request, client_code: str, req_id: str):
         'pending': len(pending)
     }
 
+    # Split into visible (non-DNR) and hidden (DNR) for dashboard display
+    _good = ('STRONG RECOMMEND', 'RECOMMEND', 'CONDITIONAL')
+    non_dnr_assessments = [a for a in assessments if a['recommendation'] in _good]
+    dnr_assessments = [a for a in assessments if a['recommendation'] not in _good]
+
     return templates.TemplateResponse("assessments/dashboard.html", {
         "request": request,
         "user": getattr(request.state, 'user', None),
@@ -167,6 +172,8 @@ async def assessment_dashboard(request: Request, client_code: str, req_id: str):
         "client_name": client_config.get('company_name', client_code),
         "req_title": req_config.get('job', {}).get('title', req_id),
         "assessments": assessments,
+        "non_dnr_assessments": non_dnr_assessments,
+        "dnr_assessments": dnr_assessments,
         "pending": pending,
         "summary": summary,
         "thresholds": thresholds
@@ -216,6 +223,38 @@ async def run_single_assessment(
         )
     else:
         raise HTTPException(status_code=500, detail=stderr or "Assessment failed")
+
+
+@router.get("/{client_code}/{req_id}/status")
+async def get_assessment_status(client_code: str, req_id: str):
+    """Return current assessed/pending counts as JSON for live progress polling."""
+    try:
+        req_root = get_requisition_root(client_code, req_id)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    assessments_dir = req_root / "assessments" / "individual"
+    assessed = 0
+    pending = 0
+    seen: set = set()
+
+    all_resumes = list_all_extracted_resumes(client_code, req_id)
+    legacy_dir = req_root / "resumes" / "processed"
+    if legacy_dir.exists():
+        all_resumes.extend(sorted(legacy_dir.glob("*.txt")))
+
+    for resume_file in all_resumes:
+        name_normalized = resume_file.stem.replace("_resume", "")
+        if name_normalized in seen:
+            continue
+        seen.add(name_normalized)
+        assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
+        if assessment_file.exists():
+            assessed += 1
+        else:
+            pending += 1
+
+    return JSONResponse(content={"assessed": assessed, "pending": pending, "total": assessed + pending})
 
 
 @router.get("/{client_code}/{req_id}/{name_normalized}", response_class=HTMLResponse)
