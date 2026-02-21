@@ -172,10 +172,33 @@ async def api_list_positions(request: Request, search: str = Query("")):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
+    import fnmatch
+
+    def _matches(company: str, pattern: str) -> bool:
+        """Match company name against pattern.
+
+        Supports explicit wildcards (* and ?) via fnmatch.  When no wildcards
+        are present every space-separated word in the pattern must appear
+        somewhere in the company name (case-insensitive), so a search like
+        "Cataldi Fresh Market" will match "Cataldi Fresh Markets Ltd".
+        """
+        c = company.lower()
+        p = pattern.lower().strip()
+        if not p:
+            return True
+        if "*" in p or "?" in p:
+            # Wrap with * so the pattern is a contains-style glob
+            glob = p if p.startswith("*") else "*" + p
+            if not glob.endswith("*"):
+                glob += "*"
+            return fnmatch.fnmatch(c, glob)
+        # Word-based: every token must appear in the company name
+        return all(word in c for word in p.split())
+
     results = []
     for pos in all_positions:
         company = pos.get("CompanyName", "") or ""
-        if search_lower not in company.lower():
+        if not _matches(company, search_lower):
             continue
         status = (pos.get("Status", "") or "").strip()
         if status.lower() not in ("open", "active"):

@@ -315,7 +315,7 @@
                     <p><strong>Job ID:</strong> {{ pcr_integration.job_id }}</p>
                     {% endif %}
                     <p class="mt-1"><strong>Last Sync:</strong> <span id="lastSyncTime">{{ pcr_integration.last_sync or 'Never' }}</span></p>
-                    <p class="mt-1 text-muted" style="font-size: 0.8rem;">Auto-sync runs every 15 minutes</p>
+                    <p class="mt-1 text-muted" style="font-size: 0.8rem;">Auto-sync runs every hour</p>
                     <div class="action-buttons mt-2">
                         <a href="/pcr/sync/{{ client_code }}/{{ req_id }}" class="btn btn-sm btn-primary">Sync Candidates</a>
                         <form action="/requisitions/{{ client_code }}/{{ req_id }}/unlink-pcr" method="POST" style="display:inline;">
@@ -532,12 +532,12 @@
                         if (already) { cb.disabled = true; }
                         cb.addEventListener('change', updateLinkBtn);
                         var text = document.createElement('span');
-                        text.innerHTML = '<strong>' + escapeHtml(pos.title) + '</strong><br>' +
-                            '<span style="font-size:0.8rem;">' + escapeHtml(pos.company) +
+                        text.innerHTML = '<code style="font-size:0.75rem; background:var(--bg-color); border:1px solid var(--border-color); padding:0.1rem 0.35rem; border-radius:3px; margin-right:0.4rem; color:var(--primary-color);">' + escapeHtml(String(pos.job_id)) + '</code>' +
+                            '<strong>' + escapeHtml(pos.title) + '</strong>' +
+                            (already ? ' <em style="font-size:0.8rem;">(already linked)</em>' : '') +
+                            '<br><span style="font-size:0.8rem; color:var(--text-muted);">' + escapeHtml(pos.company) +
                             ' &middot; ' + escapeHtml(pos.location || '') +
                             ' &middot; ' + escapeHtml(pos.status || '') +
-                            ' &middot; <code style="font-size:0.75rem;">' + escapeHtml(String(pos.job_id)) + '</code>' +
-                            (already ? ' <em>(already linked)</em>' : '') +
                             '</span>';
                         row.appendChild(cb);
                         row.appendChild(text);
