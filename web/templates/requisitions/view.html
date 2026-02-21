@@ -337,6 +337,10 @@
                             <input type="text" id="pcrSearch" class="form-input" style="flex:1;" placeholder="Company name..." value="{{ pcr_company_name }}">
                             <button type="button" id="pcrSearchBtn" class="btn btn-sm btn-primary">Search</button>
                         </div>
+                        <label style="display:flex; align-items:center; gap:0.4rem; margin-top:0.4rem; font-size:0.85rem; cursor:pointer; color:var(--text-muted);">
+                            <input type="checkbox" id="pcrIncludeClosed" style="width:14px; height:14px;">
+                            Include closed positions
+                        </label>
                     </div>
                     <div id="pcrResults" style="display:none;" class="mt-2">
                         <div class="form-group">
@@ -495,7 +499,8 @@
             pcrSearchBtn.disabled = true;
             pcrSearchBtn.textContent = 'Searching...';
 
-            fetch('/pcr/api/positions?search=' + encodeURIComponent(query))
+            var includeClosed = document.getElementById('pcrIncludeClosed').checked;
+            fetch('/pcr/api/positions?search=' + encodeURIComponent(query) + '&include_closed=' + includeClosed)
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     pcrLoading.style.display = 'none';

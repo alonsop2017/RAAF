@@ -125,11 +125,12 @@ async def test_connection(request: Request):
 
 
 @router.get("/api/positions")
-async def api_list_positions(request: Request, search: str = Query("")):
+async def api_list_positions(request: Request, search: str = Query(""), include_closed: bool = Query(False)):
     """Return PCR positions as JSON, filtered by company name.
 
     Fetches multiple pages in parallel since the PCR API does not support
-    server-side filtering by company name.
+    server-side filtering by company name.  Closed positions are excluded
+    by default; pass include_closed=true to show them.
     """
     search_lower = search.strip().lower()
     if not search_lower:
@@ -237,6 +238,9 @@ async def api_list_positions(request: Request, search: str = Query("")):
 
     with ThreadPoolExecutor(max_workers=min(len(matched), 20)) as executor:
         results = list(executor.map(fetch_detail, matched))
+
+    if not include_closed:
+        results = [r for r in results if (r.get("status") or "").lower() != "closed"]
 
     return JSONResponse(results)
 
