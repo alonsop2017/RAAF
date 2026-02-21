@@ -195,7 +195,8 @@ async def api_list_positions(request: Request, search: str = Query("")):
         # Word-based: every token must appear in the company name
         return all(word in c for word in p.split())
 
-    results = []
+    # Filter by company name first so we only detail-fetch the matches
+    matched = []
     for pos in all_positions:
         company = pos.get("CompanyName", "") or ""
         if not _matches(company, search_lower):
@@ -205,13 +206,37 @@ async def api_list_positions(request: Request, search: str = Query("")):
         status = (pos.get("Status") or "").strip()
         if status and status.lower() not in ("open", "active"):
             continue
-        results.append({
-            "job_id": pos.get("JobId", pos.get("PositionId", "")),
+        matched.append(pos)
+
+    # Fetch position details in parallel to get the human-readable PositionId
+    # (e.g. "SIC0001234") which is what PCR shows in its UI.  The list
+    # endpoint only returns the internal JobId numeric key.
+    def fetch_detail(pos: dict) -> dict:
+        job_id = pos.get("JobId", "")
+        position_id = ""
+        detail_status = (pos.get("Status") or "").strip()
+        if job_id:
+            try:
+                from urllib.parse import urljoin as _urljoin
+                detail_url = _urljoin(client.base_url + "/", f"positions/{job_id}")
+                r = http_requests.get(detail_url, headers=headers, timeout=15)
+                detail = r.json()
+                position_id = detail.get("PositionId") or ""
+                detail_status = (detail.get("Status") or detail_status).strip()
+            except Exception:
+                pass
+        company = pos.get("CompanyName", "") or ""
+        return {
+            "job_id": job_id,
+            "position_id": position_id,
             "title": pos.get("JobTitle", pos.get("Title", "")),
             "company": company,
             "location": pos.get("City", ""),
-            "status": status,
-        })
+            "status": detail_status,
+        }
+
+    with ThreadPoolExecutor(max_workers=min(len(matched), 20)) as executor:
+        results = list(executor.map(fetch_detail, matched))
 
     return JSONResponse(results)
 
