@@ -533,6 +533,13 @@ async def view_candidate(request: Request, client_code: str, req_id: str, name_n
         with open(assessment_file, 'r') as f:
             assessment = json.load(f)
 
+    # Load lifecycle status if present
+    lifecycle = ""
+    lifecycle_file = assessments_dir / f"{name_normalized}_lifecycle.json"
+    if lifecycle_file.exists():
+        with open(lifecycle_file) as lf:
+            lifecycle = json.load(lf).get("status", "")
+
     # Get requisition info
     req_config = get_requisition_config(client_code, req_id)
     client_config = get_client_config(client_code)
@@ -547,7 +554,8 @@ async def view_candidate(request: Request, client_code: str, req_id: str, name_n
         "name_normalized": name_normalized,
         "name": assessment.get('candidate', {}).get('name', name_normalized.replace("_", " ").title()) if assessment else name_normalized.replace("_", " ").title(),
         "resume_text": resume_text,
-        "assessment": assessment
+        "assessment": assessment,
+        "lifecycle": lifecycle,
     })
 
 

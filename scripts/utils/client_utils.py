@@ -200,6 +200,18 @@ def create_batch_folder(client_code: str, req_id: str, batch_name: str = None) -
     return batch_dir
 
 
+def count_unique_candidates(client_code: str, req_id: str) -> int:
+    """Count unique candidates (deduplicated by name) across all batches + legacy folder."""
+    seen = set()
+    for f in list_all_extracted_resumes(client_code, req_id):
+        seen.add(f.stem.replace("_resume", ""))
+    legacy_dir = get_requisition_root(client_code, req_id) / "resumes" / "processed"
+    if legacy_dir.exists():
+        for f in legacy_dir.glob("*.txt"):
+            seen.add(f.stem.replace("_resume", ""))
+    return len(seen)
+
+
 def list_all_extracted_resumes(client_code: str, req_id: str) -> list[Path]:
     """Find all extracted TXT resume files across all batches."""
     batches_dir = get_resumes_path(client_code, req_id, "batches")

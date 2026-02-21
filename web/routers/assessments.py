@@ -125,6 +125,13 @@ async def assessment_dashboard(request: Request, client_code: str, req_id: str):
             with open(assessment_file, 'r') as f:
                 assessment = json.load(f)
 
+            # Load lifecycle status if present
+            lifecycle_file = assessments_dir / f"{name_normalized}_lifecycle.json"
+            lifecycle = ""
+            if lifecycle_file.exists():
+                with open(lifecycle_file) as lf:
+                    lifecycle = json.load(lf).get("status", "")
+
             assessments.append({
                 'name_normalized': name_normalized,
                 'name': assessment.get('candidate', {}).get('name', name_normalized),
@@ -133,7 +140,8 @@ async def assessment_dashboard(request: Request, client_code: str, req_id: str):
                 'percentage': assessment.get('percentage', 0),
                 'recommendation': assessment.get('recommendation', 'PENDING'),
                 'assessed_at': assessment.get('metadata', {}).get('assessed_at', 'N/A'),
-                'stability': assessment.get('scores', {}).get('job_stability', {}).get('tenure_analysis', {}).get('risk_level', 'N/A')
+                'stability': assessment.get('scores', {}).get('job_stability', {}).get('tenure_analysis', {}).get('risk_level', 'N/A'),
+                'lifecycle': lifecycle,
             })
         else:
             pending.append({
@@ -156,7 +164,11 @@ async def assessment_dashboard(request: Request, client_code: str, req_id: str):
         'recommend': sum(1 for a in assessments if thresholds['recommend'] <= a['percentage'] < thresholds['strong_recommend']),
         'conditional': sum(1 for a in assessments if thresholds['conditional'] <= a['percentage'] < thresholds['recommend']),
         'do_not_recommend': sum(1 for a in assessments if a['percentage'] < thresholds['conditional'] and a['recommendation'] != 'PENDING'),
-        'pending': len(pending)
+        'pending': len(pending),
+        'interview_recommended': sum(1 for a in assessments if a.get('lifecycle') == 'interview_recommended'),
+        'offered': sum(1 for a in assessments if a.get('lifecycle') == 'offered'),
+        'accepted': sum(1 for a in assessments if a.get('lifecycle') == 'accepted'),
+        'future_opportunities': sum(1 for a in assessments if a.get('lifecycle') == 'future_opportunities'),
     }
 
     # Split into visible (non-DNR) and hidden (DNR) for dashboard display
@@ -225,6 +237,41 @@ async def run_single_assessment(
         raise HTTPException(status_code=500, detail=stderr or "Assessment failed")
 
 
+_LIFECYCLE_STATUSES = ("interview_recommended", "offered", "accepted", "future_opportunities", "")
+
+
+@router.post("/{client_code}/{req_id}/{name_normalized}/lifecycle")
+async def set_lifecycle_status(
+    request: Request,
+    client_code: str,
+    req_id: str,
+    name_normalized: str,
+    status: str = Form(""),
+):
+    """Set the hiring pipeline / lifecycle status for a candidate."""
+    if status not in _LIFECYCLE_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid lifecycle status: {status!r}")
+
+    req_root = get_requisition_root(client_code, req_id)
+    lifecycle_file = req_root / "assessments" / "individual" / f"{name_normalized}_lifecycle.json"
+    lifecycle_file.parent.mkdir(parents=True, exist_ok=True)
+
+    if status:
+        data = {
+            "name_normalized": name_normalized,
+            "status": status,
+            "updated_at": datetime.now().isoformat(),
+            "updated_by": getattr(request.state, 'user', {}).get('email', 'system'),
+        }
+        with open(lifecycle_file, 'w') as f:
+            json.dump(data, f, indent=2)
+    elif lifecycle_file.exists():
+        lifecycle_file.unlink()
+
+    referer = request.headers.get("referer", f"/assessments/{client_code}/{req_id}")
+    return RedirectResponse(url=referer, status_code=303)
+
+
 @router.get("/{client_code}/{req_id}/status")
 async def get_assessment_status(client_code: str, req_id: str):
     """Return current assessed/pending counts as JSON for live progress polling."""
@@ -272,6 +319,12 @@ async def view_assessment(request: Request, client_code: str, req_id: str, name_
     req_config = get_requisition_config(client_code, req_id)
     client_config = get_client_config(client_code)
 
+    lifecycle_file = req_root / "assessments" / "individual" / f"{name_normalized}_lifecycle.json"
+    lifecycle = ""
+    if lifecycle_file.exists():
+        with open(lifecycle_file) as lf:
+            lifecycle = json.load(lf).get("status", "")
+
     return templates.TemplateResponse("assessments/view.html", {
         "request": request,
         "user": getattr(request.state, 'user', None),
@@ -280,7 +333,8 @@ async def view_assessment(request: Request, client_code: str, req_id: str, name_
         "client_name": client_config.get('company_name', client_code),
         "req_title": req_config.get('job', {}).get('title', req_id),
         "name_normalized": name_normalized,
-        "assessment": assessment
+        "assessment": assessment,
+        "lifecycle": lifecycle,
     })
 
 

@@ -78,6 +78,28 @@
     </div>
 </div>
 
+<!-- Pipeline / Lifecycle Stats -->
+{% if summary.interview_recommended or summary.offered or summary.accepted or summary.future_opportunities %}
+<div class="stats-grid" style="margin-top: 0.5rem;">
+    <div class="stat-card" style="border-left: 3px solid var(--primary-color);">
+        <div class="stat-value" style="color: var(--primary-color);">{{ summary.interview_recommended }}</div>
+        <div class="stat-label">For Interview</div>
+    </div>
+    <div class="stat-card" style="border-left: 3px solid var(--warning-color);">
+        <div class="stat-value" style="color: var(--warning-color);">{{ summary.offered }}</div>
+        <div class="stat-label">Offered</div>
+    </div>
+    <div class="stat-card" style="border-left: 3px solid var(--success-color);">
+        <div class="stat-value" style="color: var(--success-color);">{{ summary.accepted }}</div>
+        <div class="stat-label">Accepted</div>
+    </div>
+    <div class="stat-card" style="border-left: 3px solid #8b5cf6;">
+        <div class="stat-value" style="color: #8b5cf6;">{{ summary.future_opportunities }}</div>
+        <div class="stat-label">Skills Mktg</div>
+    </div>
+</div>
+{% endif %}
+
 <!-- Thresholds Info -->
 <div class="alert alert-info">
     <strong>Thresholds:</strong>
@@ -105,6 +127,7 @@
                             <th>%</th>
                             <th>Stability</th>
                             <th>Recommendation</th>
+                            <th>Pipeline</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -129,6 +152,16 @@
                                 {% else %}
                                 <span class="badge rec-conditional">CONDITIONAL</span>
                                 {% endif %}
+                            </td>
+                            <td>
+                                <select onchange="setLifecycle('{{ client_code }}', '{{ req_id }}', '{{ a.name_normalized }}', this.value, this)"
+                                        style="font-size: 0.8rem; padding: 2px 6px; border-radius: 4px; border: 1px solid #d1d5db; background: white; cursor: pointer;">
+                                    <option value="" {% if not a.lifecycle %}selected{% endif %}>—</option>
+                                    <option value="interview_recommended" {% if a.lifecycle == 'interview_recommended' %}selected{% endif %}>Interview</option>
+                                    <option value="offered" {% if a.lifecycle == 'offered' %}selected{% endif %}>Offered</option>
+                                    <option value="accepted" {% if a.lifecycle == 'accepted' %}selected{% endif %}>Accepted</option>
+                                    <option value="future_opportunities" {% if a.lifecycle == 'future_opportunities' %}selected{% endif %}>Skills Mktg</option>
+                                </select>
                             </td>
                             <td>
                                 <div class="action-buttons">
@@ -156,6 +189,16 @@
                             <td style="color: #6b7280;">{{ a.stability }}</td>
                             <td><span class="badge rec-dnr">DNR</span></td>
                             <td>
+                                <select onchange="setLifecycle('{{ client_code }}', '{{ req_id }}', '{{ a.name_normalized }}', this.value, this)"
+                                        style="font-size: 0.8rem; padding: 2px 6px; border-radius: 4px; border: 1px solid #d1d5db; background: white; cursor: pointer;">
+                                    <option value="" {% if not a.lifecycle %}selected{% endif %}>—</option>
+                                    <option value="interview_recommended" {% if a.lifecycle == 'interview_recommended' %}selected{% endif %}>Interview</option>
+                                    <option value="offered" {% if a.lifecycle == 'offered' %}selected{% endif %}>Offered</option>
+                                    <option value="accepted" {% if a.lifecycle == 'accepted' %}selected{% endif %}>Accepted</option>
+                                    <option value="future_opportunities" {% if a.lifecycle == 'future_opportunities' %}selected{% endif %}>Skills Mktg</option>
+                                </select>
+                            </td>
+                            <td>
                                 <div class="action-buttons">
                                     <a href="/assessments/{{ client_code }}/{{ req_id }}/{{ a.name_normalized }}"
                                        class="btn btn-sm btn-outline">View</a>
@@ -169,7 +212,7 @@
                     </tbody>
                     <tfoot>
                         <tr>
-                            <td colspan="7" style="padding: 0.6rem 1rem; border-top: 1px solid #e5e7eb; background: #f9fafb; text-align: center;">
+                            <td colspan="8" style="padding: 0.6rem 1rem; border-top: 1px solid #e5e7eb; background: #f9fafb; text-align: center;">
                                 {% if dnr_assessments %}
                                 <span class="badge rec-dnr" style="margin-right: 0.75rem;">{{ dnr_assessments|length }} Do Not Recommend</span>
                                 <a href="#" id="toggle-dnr-link" onclick="toggleDNR(event)"
@@ -235,6 +278,25 @@
 </div>
 
 <script>
+function setLifecycle(clientCode, reqId, nameNorm, status, el) {
+    const formData = new FormData();
+    formData.append('status', status);
+    fetch('/assessments/' + clientCode + '/' + reqId + '/' + nameNorm + '/lifecycle', {
+        method: 'POST',
+        body: formData,
+        redirect: 'follow'
+    }).then(function(r) {
+        if (r.ok || r.redirected) {
+            el.style.outline = '2px solid var(--success-color)';
+            setTimeout(function() { el.style.outline = ''; }, 1200);
+        } else {
+            el.style.outline = '2px solid #ef4444';
+        }
+    }).catch(function() {
+        el.style.outline = '2px solid #ef4444';
+    });
+}
+
 function toggleDNR(event) {
     event.preventDefault();
     const rows = document.querySelectorAll('.dnr-hidden-row');

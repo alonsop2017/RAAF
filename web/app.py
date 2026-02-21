@@ -117,25 +117,15 @@ async def dashboard(request: Request):
                     req_config = get_requisition_config(client_code, req_id)
 
                     # Count candidates and assessments
-                    from scripts.utils.client_utils import get_requisition_root
+                    from scripts.utils.client_utils import get_requisition_root, count_unique_candidates
                     req_root = get_requisition_root(client_code, req_id)
 
-                    # Count resumes from batch extracted/ folders + legacy processed/
-                    candidate_count = 0
-                    batches_dir = req_root / "resumes" / "batches"
-                    if batches_dir.exists():
-                        for batch_d in batches_dir.iterdir():
-                            if batch_d.is_dir():
-                                ext_dir = batch_d / "extracted"
-                                if ext_dir.exists():
-                                    candidate_count += len(list(ext_dir.glob("*.txt")))
-                    legacy_dir = req_root / "resumes" / "processed"
-                    if legacy_dir.exists():
-                        candidate_count += len(list(legacy_dir.glob("*.txt")))
+                    # Deduplicated count across all batches + legacy folder
+                    candidate_count = count_unique_candidates(client_code, req_id)
 
-                    # Count assessments
+                    # Count assessments (exclude lifecycle JSON files)
                     assessments_dir = req_root / "assessments" / "individual"
-                    assessed_count = len(list(assessments_dir.glob("*.json"))) if assessments_dir.exists() else 0
+                    assessed_count = len([f for f in assessments_dir.glob("*.json") if not f.stem.endswith("_lifecycle")]) if assessments_dir.exists() else 0
 
                     total_candidates += candidate_count
                     total_assessed += assessed_count

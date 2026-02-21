@@ -158,6 +158,56 @@
         </div>
         {% endif %}
 
+        <!-- Pipeline Status -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Pipeline Status</h3>
+            </div>
+            <div class="card-body">
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                    <form action="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/lifecycle" method="POST" style="display: inline;">
+                        <input type="hidden" name="status" value="interview_recommended">
+                        <button type="submit" class="btn btn-sm {% if lifecycle == 'interview_recommended' %}btn-primary{% else %}btn-outline{% endif %}">
+                            Interview Recommended
+                        </button>
+                    </form>
+                    <form action="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/lifecycle" method="POST" style="display: inline;">
+                        <input type="hidden" name="status" value="offered">
+                        <button type="submit" class="btn btn-sm {% if lifecycle == 'offered' %}btn-primary{% else %}btn-outline{% endif %}">
+                            Offered
+                        </button>
+                    </form>
+                    <form action="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/lifecycle" method="POST" style="display: inline;">
+                        <input type="hidden" name="status" value="accepted">
+                        <button type="submit" class="btn btn-sm {% if lifecycle == 'accepted' %}btn-primary{% else %}btn-outline{% endif %}">
+                            Accepted
+                        </button>
+                    </form>
+                    <form action="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/lifecycle" method="POST" style="display: inline;">
+                        <input type="hidden" name="status" value="future_opportunities">
+                        <button type="submit" class="btn btn-sm {% if lifecycle == 'future_opportunities' %}btn-primary{% else %}btn-outline{% endif %}">
+                            Skills Marketing
+                        </button>
+                    </form>
+                    {% if lifecycle %}
+                    <form action="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/lifecycle" method="POST" style="display: inline;">
+                        <input type="hidden" name="status" value="">
+                        <button type="submit" class="btn btn-sm btn-outline" style="color: #ef4444; border-color: #ef4444;">
+                            Clear
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% if lifecycle %}
+                <p class="mt-2" style="font-size: 0.875rem; color: #6b7280;">
+                    Current: <strong>{{ lifecycle.replace('_', ' ').title() }}</strong>
+                </p>
+                {% else %}
+                <p class="mt-2" style="font-size: 0.875rem; color: #9ca3af;">No pipeline status set.</p>
+                {% endif %}
+            </div>
+        </div>
+
         <!-- Candidate Info -->
         <div class="card">
             <div class="card-header">

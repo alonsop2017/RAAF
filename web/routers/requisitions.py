@@ -56,22 +56,13 @@ async def list_all_requisitions(request: Request, status: str = None):
                     req_config = get_requisition_config(client_code, req_id)
                     req_root = get_requisition_root(client_code, req_id)
 
-                    # Count candidates from batch extracted/ folders + legacy processed/
-                    candidate_count = 0
-                    batches_dir = req_root / "resumes" / "batches"
-                    if batches_dir.exists():
-                        for batch_d in batches_dir.iterdir():
-                            if batch_d.is_dir():
-                                ext_dir = batch_d / "extracted"
-                                if ext_dir.exists():
-                                    candidate_count += len(list(ext_dir.glob("*.txt")))
-                    legacy_dir = req_root / "resumes" / "processed"
-                    if legacy_dir.exists():
-                        candidate_count += len(list(legacy_dir.glob("*.txt")))
+                    # Deduplicated candidate count across all batches + legacy folder
+                    from scripts.utils.client_utils import count_unique_candidates
+                    candidate_count = count_unique_candidates(client_code, req_id)
 
-                    # Count assessments
+                    # Count assessments (exclude lifecycle JSON files)
                     assessments_dir = req_root / "assessments" / "individual"
-                    assessed_count = len(list(assessments_dir.glob("*.json"))) if assessments_dir.exists() else 0
+                    assessed_count = len([f for f in assessments_dir.glob("*.json") if not f.stem.endswith("_lifecycle")]) if assessments_dir.exists() else 0
 
                     reqs_data.append({
                         'client_code': client_code,
