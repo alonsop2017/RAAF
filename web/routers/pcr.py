@@ -200,8 +200,10 @@ async def api_list_positions(request: Request, search: str = Query("")):
         company = pos.get("CompanyName", "") or ""
         if not _matches(company, search_lower):
             continue
-        status = (pos.get("Status", "") or "").strip()
-        if status.lower() not in ("open", "active"):
+        # Only filter by status when the API actually returns the field;
+        # PCR position records often omit it entirely (returns None).
+        status = (pos.get("Status") or "").strip()
+        if status and status.lower() not in ("open", "active"):
             continue
         results.append({
             "job_id": pos.get("JobId", pos.get("PositionId", "")),
