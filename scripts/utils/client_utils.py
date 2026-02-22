@@ -139,7 +139,7 @@ def list_clients() -> list[str]:
     clients_dir = get_project_root() / "clients"
     if not clients_dir.exists():
         return []
-    return [d.name for d in clients_dir.iterdir() if d.is_dir()]
+    return [d.name for d in clients_dir.iterdir() if d.is_dir() and not d.name.startswith('.')]
 
 
 def list_requisitions(client_code: str, status: Optional[str] = None) -> list[str]:
