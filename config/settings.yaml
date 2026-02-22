@@ -6,6 +6,7 @@ auth:
   google:
     client_id: "344797612488-91k92gaufbvhbutq4j0ouof9u0qhmu80.apps.googleusercontent.com"
     client_secret_env: "GOOGLE_CLIENT_SECRET"
+    redirect_uri: "https://raaf.genapex.org/auth/callback"  # Must match Google Cloud Console exactly
   session:
     secret_key_env: "SESSION_SECRET_KEY"
     cookie_name: "raaf_session"
@@ -14,6 +15,7 @@ auth:
   allowed_emails:    # Specific email whitelist (empty = allow all; checked after domains)
     - "charles@peoplefindinc.com"
     - "alonso@peoplefindinc.com"
+    - "alonso.perez@archtektconsultinginc.com"
 
 # Default assessment settings (can be overridden per requisition)
 assessment:

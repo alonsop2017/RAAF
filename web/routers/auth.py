@@ -12,7 +12,7 @@ from pathlib import Path
 
 from web.auth.oauth import oauth
 from web.auth.session import session_manager
-from web.auth.config import get_allowed_domains, get_google_client_id, get_google_client_secret
+from web.auth.config import get_allowed_domains, get_allowed_emails, get_google_client_id, get_google_client_secret, get_google_redirect_uri
 from web.auth.token_store import store_token, get_token, remove_token, is_token_expired
 
 router = APIRouter()
@@ -37,8 +37,8 @@ async def login_page(request: Request):
 @router.get("/login/google")
 async def login_google(request: Request):
     """Initiate Google OAuth flow."""
-    # Build callback URL
-    redirect_uri = str(request.url_for("auth_callback"))
+    # Use fixed redirect URI from config if set, otherwise fall back to dynamic URL
+    redirect_uri = get_google_redirect_uri() or str(request.url_for("auth_callback"))
 
     return await oauth.google.authorize_redirect(
         request, redirect_uri,
@@ -77,6 +77,15 @@ async def auth_callback(request: Request):
                 status_code=302
             )
 
+    # Check allowed emails whitelist if configured
+    allowed_emails = get_allowed_emails()
+    if allowed_emails:
+        if user_info.get('email', '').lower() not in allowed_emails:
+            return RedirectResponse(
+                url="/auth/login?error=Email+not+authorized",
+                status_code=302
+            )
+
     # Create session data
     user_data = {
         'email': user_info.get('email'),
@@ -109,7 +118,7 @@ async def auth_callback(request: Request):
         max_age=session_manager.max_age,
         httponly=True,
         samesite="lax",
-        secure=False  # Set to True in production with HTTPS
+        secure=request.headers.get("x-forwarded-proto") == "https"
     )
 
     return response

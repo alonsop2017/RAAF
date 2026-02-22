@@ -40,6 +40,12 @@ def get_google_client_id() -> str:
     return config.get('google', {}).get('client_id', '')
 
 
+def get_google_redirect_uri() -> str:
+    """Get the fixed OAuth redirect URI (must match Google Cloud Console)."""
+    config = get_auth_config()
+    return config.get('google', {}).get('redirect_uri', '')
+
+
 def get_google_client_secret() -> str:
     """Get the Google OAuth client secret from environment."""
     config = get_auth_config()
@@ -69,3 +75,9 @@ def get_allowed_domains() -> list:
     """Get list of allowed email domains (empty = allow all)."""
     config = get_auth_config()
     return config.get('allowed_domains', [])
+
+
+def get_allowed_emails() -> list:
+    """Get list of explicitly allowed email addresses (empty = allow all)."""
+    config = get_auth_config()
+    return [e.strip().lower() for e in config.get('allowed_emails', [])]
