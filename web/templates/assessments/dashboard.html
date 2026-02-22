@@ -310,6 +310,8 @@ function toggleDNR(event) {
 
 {% if request.query_params.get('started') == '1' %}
 (function() {
+    var PAGE_CLIENT_CODE = {{ client_code | tojson }};
+    var PAGE_REQ_ID = {{ req_id | tojson }};
     const totalCandidates = {{ assessments|length + pending|length }};
 
     function updateBanner(assessed, total, pending) {
@@ -337,7 +339,7 @@ function toggleDNR(event) {
             }
             if (label) label.textContent = 'All candidates assessed — refreshing\u2026';
             setTimeout(function() {
-                window.location.href = '/assessments/{{ client_code }}/{{ req_id }}';
+                window.location.href = '/assessments/' + PAGE_CLIENT_CODE + '/' + PAGE_REQ_ID;
             }, 1800);
         } else {
             const remaining = pending !== undefined ? pending : (total - assessed);
@@ -346,7 +348,7 @@ function toggleDNR(event) {
     }
 
     function poll() {
-        fetch('/assessments/{{ client_code }}/{{ req_id }}/status')
+        fetch('/assessments/' + PAGE_CLIENT_CODE + '/' + PAGE_REQ_ID + '/status')
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 updateBanner(data.assessed, data.total, data.pending);
