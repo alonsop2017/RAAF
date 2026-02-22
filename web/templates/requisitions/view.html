@@ -420,6 +420,10 @@
 </div>
 
 <script>
+// Safe JS variables — avoids Jinja2 HTML-escaping special chars (e.g. & in req_id)
+var PAGE_CLIENT_CODE = {{ client_code | tojson }};
+var PAGE_REQ_ID = {{ req_id | tojson }};
+
 (function() {
     const statusSelect = document.getElementById('statusSelect');
     const statusForm = document.getElementById('statusForm');
@@ -575,7 +579,7 @@
                 body.append('job_title', cb.dataset.title || '');
                 body.append('company_name', cb.dataset.company || '');
                 promises.push(
-                    fetch('/requisitions/{{ client_code }}/{{ req_id }}/link-pcr', {
+                    fetch('/requisitions/' + PAGE_CLIENT_CODE + '/' + PAGE_REQ_ID + '/link-pcr', {
                         method: 'POST',
                         body: body,
                         redirect: 'manual'
@@ -635,7 +639,7 @@
         }
 
         function loadSyncLog() {
-            fetch('/requisitions/{{ client_code }}/{{ req_id }}/sync-log?lines=30')
+            fetch('/requisitions/' + PAGE_CLIENT_CODE + '/' + PAGE_REQ_ID + '/sync-log?lines=30')
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     if (data.lines && data.lines.length > 0) {
