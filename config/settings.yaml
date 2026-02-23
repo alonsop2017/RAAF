@@ -87,6 +87,14 @@ logging:
   rotate_size_mb: 10
   backup_count: 5
 
+# Recruiter details (used in interview invitation email drafts)
+recruiter:
+  name: "Alonso Perez"
+  title: "Senior Recruitment Consultant"
+  email: "alonso@peoplefindinc.com"
+  phone: "+1 905-477-9330 x 30"
+  agency: "Archtekt Consulting Inc."
+
 # Claude API settings (for AI-powered assessments)
 claude:
   default_model: "claude-sonnet-4-20250514"

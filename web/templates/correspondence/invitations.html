@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block title %}Interview Invitations - {{ req_title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+.tier-badge-1 { background: #16a34a; color: #fff; }
+.tier-badge-2 { background: #2563eb; color: #fff; }
+.tier-badge-3 { background: #d97706; color: #fff; }
+.candidate-list { max-height: 220px; overflow-y: auto; }
+.candidate-row { display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.5rem; border-bottom: 1px solid #f1f5f9; font-size: 0.875rem; }
+.candidate-row:last-child { border-bottom: none; }
+.pct-pill { font-size: 0.75rem; padding: 0.15rem 0.45rem; border-radius: 20px; font-weight: 600; }
+.file-row td { font-size: 0.875rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> /
+    <a href="/clients/{{ client_code }}">{{ client_name }}</a> /
+    <a href="/requisitions/{{ client_code }}/{{ req_id }}">{{ req_id }}</a> /
+    <span>Interview Invitations</span>
+</div>
+
+<div class="page-header">
+    <h1>Interview Invitations</h1>
+    <p class="subtitle">{{ req_title }} | {{ client_name }}</p>
+</div>
+
+<!-- Tier Summary -->
+<div class="stats-grid" style="grid-template-columns: repeat(4, 1fr);">
+    <div class="stat-card">
+        <div class="stat-value">{{ total_assessed }}</div>
+        <div class="stat-label">Total Assessed</div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-value">{{ tier_counts[1] }}</div>
+        <div class="stat-label">Strong Recommend</div>
+    </div>
+    <div class="stat-card info">
+        <div class="stat-value">{{ tier_counts[2] }}</div>
+        <div class="stat-label">Recommend</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-value">{{ tier_counts[3] }}</div>
+        <div class="stat-label">Conditional</div>
+    </div>
+</div>
+
+<div class="two-column">
+    <!-- Generation Form -->
+    <div>
+        <div class="card">
+            <div class="card-header">
+                <h3>Generate Invitation Drafts</h3>
+            </div>
+            <div class="card-body">
+                <form action="/correspondence/{{ client_code }}/{{ req_id }}/invitations/generate" method="POST">
+
+                    <div class="form-group">
+                        <label class="form-label">Candidate Selection</label>
+                        <select name="min_tier" class="form-select" id="tierSelect" onchange="updatePreview(this.value)">
+                            <option value="1">Strong Recommend only ({{ tier_counts[1] }} candidates)</option>
+                            <option value="2" selected>Recommend &amp; above ({{ tier_counts[1] + tier_counts[2] }} candidates)</option>
+                            <option value="3">Conditional &amp; above ({{ tier_counts[1] + tier_counts[2] + tier_counts[3] }} candidates)</option>
+                        </select>
+                        <small class="text-muted">Select which assessment tiers to include in the invitation batch.</small>
+                    </div>
+
+                    <!-- Candidate preview by tier -->
+                    <div id="candidatePreview" style="margin-bottom: 1rem;">
+                        {% for tier_num in [1, 2, 3] %}
+                        <div id="preview-tier-{{ tier_num }}" style="display: {% if tier_num == 2 %}block{% else %}none{% endif %};">
+                            {% set cands = candidates_by_tier[tier_num] %}
+                            {% if cands %}
+                            <div class="candidate-list" style="border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc;">
+                                {% for c in cands %}
+                                <div class="candidate-row">
+                                    <span>{{ c.candidate.name }}</span>
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <span class="pct-pill {% if c.recommendation_tier == 1 %}tier-badge-1{% elif c.recommendation_tier == 2 %}tier-badge-2{% else %}tier-badge-3{% endif %}">
+                                            {{ c.percentage | int }}%
+                                        </span>
+                                        <span class="text-muted" style="font-size: 0.75rem;">{{ c.candidate.email or '—' }}</span>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <p class="text-muted" style="font-size: 0.875rem;">No candidates at this tier.</p>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Output Format</label>
+                        <select name="output_format" class="form-select">
+                            <option value="both" selected>Both (individual + combined file)</option>
+                            <option value="combined">Combined file only</option>
+                            <option value="individual">Individual files only</option>
+                        </select>
+                    </div>
+
+                    <hr style="margin: 1.25rem 0; border-color: #e2e8f0;">
+                    <p class="text-muted" style="font-size: 0.875rem; margin-bottom: 0.75rem;">
+                        <strong>Recruiter details</strong> — leave blank to use defaults from settings.
+                    </p>
+
+                    <div class="form-group">
+                        <label class="form-label">Your Name</label>
+                        <input type="text" name="recruiter_name" class="form-input"
+                               placeholder="{{ recruiter.name or 'e.g., Jane Smith' }}"
+                               value="{{ recruiter.name if recruiter.name and not recruiter.name.startswith('[') else '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Your Email</label>
+                        <input type="email" name="recruiter_email" class="form-input"
+                               placeholder="{{ recruiter.email or 'recruiter@archtektconsultinginc.com' }}"
+                               value="{{ recruiter.email if recruiter.email and not recruiter.email.startswith('[') else '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Your Phone <span class="text-muted">(optional)</span></label>
+                        <input type="text" name="recruiter_phone" class="form-input"
+                               placeholder="{{ recruiter.phone or 'e.g., 416-555-1234' }}"
+                               value="{{ recruiter.phone or '' }}">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;">
+                        Generate Invitation Drafts
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Existing Files -->
+    <div>
+        <div class="card">
+            <div class="card-header">
+                <h3>Saved Invitation Files</h3>
+            </div>
+            {% if existing_files %}
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>File</th>
+                            <th>Created</th>
+                            <th>Size</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for file in existing_files %}
+                        <tr class="file-row">
+                            <td style="word-break: break-all;">{{ file.filename }}</td>
+                            <td>{{ file.created }}</td>
+                            <td>{{ file.size }}</td>
+                            <td>
+                                <a href="/correspondence/{{ client_code }}/{{ req_id }}/invitations/download/{{ file.path }}"
+                                   class="btn btn-sm btn-primary">Download</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="card-body">
+                <div class="empty-state">
+                    <p>No invitation files saved yet.</p>
+                    <p class="text-muted">Use the form to generate drafts.</p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Instructions -->
+        <div class="card" style="margin-top: 1rem;">
+            <div class="card-header">
+                <h3>How to Use</h3>
+            </div>
+            <div class="card-body" style="font-size: 0.875rem; line-height: 1.7;">
+                <ol style="padding-left: 1.25rem; margin: 0;">
+                    <li>Select the candidate tier and recruiter details above.</li>
+                    <li>Click <strong>Generate Invitation Drafts</strong>.</li>
+                    <li>Review the generated drafts on the next screen.</li>
+                    <li>Copy each email and paste it into your email client.</li>
+                    <li>Personalize as needed before sending.</li>
+                </ol>
+                <p style="margin-top: 0.75rem;" class="text-muted">
+                    Files are also saved to the requisition's
+                    <code>correspondence/interview_invitations/</code> folder.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function updatePreview(tier) {
+    [1, 2, 3].forEach(function(t) {
+        document.getElementById('preview-tier-' + t).style.display = (t == tier) ? 'block' : 'none';
+    });
+}
+</script>
+{% endblock %}

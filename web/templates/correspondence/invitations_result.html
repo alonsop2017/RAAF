@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}Invitation Drafts - {{ req_title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+.draft-card { border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 1.5rem; overflow: hidden; }
+.draft-header { background: #f1f5f9; padding: 0.75rem 1rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; }
+.draft-header-left { display: flex; align-items: center; gap: 0.75rem; }
+.draft-email-body { font-family: 'Courier New', Courier, monospace; font-size: 0.8rem; line-height: 1.6; padding: 1rem; background: #fff; white-space: pre-wrap; word-break: break-word; max-height: 420px; overflow-y: auto; border: none; resize: none; width: 100%; box-sizing: border-box; color: #1e293b; }
+.draft-actions { padding: 0.6rem 1rem; background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; gap: 0.5rem; align-items: center; }
+.copy-btn { cursor: pointer; }
+.copy-btn.copied { background: #16a34a !important; }
+.saved-files-list { list-style: none; padding: 0; margin: 0; }
+.saved-files-list li { padding: 0.35rem 0; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; font-size: 0.875rem; }
+.saved-files-list li:last-child { border-bottom: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> /
+    <a href="/clients/{{ client_code }}">{{ client_name }}</a> /
+    <a href="/requisitions/{{ client_code }}/{{ req_id }}">{{ req_id }}</a> /
+    <a href="/correspondence/{{ client_code }}/{{ req_id }}/invitations">Interview Invitations</a> /
+    <span>Drafts</span>
+</div>
+
+<div class="page-header">
+    <div class="flex flex-between flex-center">
+        <div>
+            <h1>{{ total }} Invitation Draft{{ 's' if total != 1 else '' }} Generated</h1>
+            <p class="subtitle">{{ req_title }} | {{ client_name }}</p>
+        </div>
+        <a href="/correspondence/{{ client_code }}/{{ req_id }}/invitations" class="btn btn-secondary">
+            &larr; Back
+        </a>
+    </div>
+</div>
+
+{% if saved_filenames %}
+<div class="card" style="margin-bottom: 1.5rem;">
+    <div class="card-header">
+        <h3>Saved Files</h3>
+    </div>
+    <div class="card-body">
+        <ul class="saved-files-list">
+            {% for fname in saved_filenames %}
+            <li>
+                <span>{{ fname }}</span>
+                <a href="/correspondence/{{ client_code }}/{{ req_id }}/invitations/download/{{ fname }}"
+                   class="btn btn-sm btn-primary">Download</a>
+            </li>
+            {% endfor %}
+        </ul>
+        <p class="text-muted" style="font-size: 0.8rem; margin-top: 0.5rem;">
+            Files saved to <code>correspondence/interview_invitations/</code>
+        </p>
+    </div>
+</div>
+{% endif %}
+
+<p style="margin-bottom: 1rem; font-size: 0.9rem; color: #475569;">
+    Review each draft below. Copy the email body and paste directly into your email client.
+    Personalize as needed before sending.
+</p>
+
+{% for draft in drafts %}
+<div class="draft-card">
+    <div class="draft-header">
+        <div class="draft-header-left">
+            <strong>{{ draft.name }}</strong>
+            <span class="text-muted" style="font-size: 0.875rem;">{{ draft.email }}</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+            {% if draft.recommendation == 'STRONG RECOMMEND' %}
+            <span class="badge rec-strong">STRONG</span>
+            {% elif draft.recommendation == 'RECOMMEND' %}
+            <span class="badge rec-recommend">REC</span>
+            {% elif draft.recommendation == 'CONDITIONAL' %}
+            <span class="badge rec-conditional">COND</span>
+            {% else %}
+            <span class="badge rec-dnr">DNR</span>
+            {% endif %}
+            <span class="text-muted" style="font-size: 0.875rem;">{{ draft.percentage | int }}%</span>
+        </div>
+    </div>
+    <textarea
+        id="draft-{{ loop.index }}"
+        class="draft-email-body"
+        readonly
+        spellcheck="false"
+    >{{ draft.text }}</textarea>
+    <div class="draft-actions">
+        <button
+            class="btn btn-sm btn-primary copy-btn"
+            onclick="copyDraft({{ loop.index }}, this)"
+        >
+            Copy to Clipboard
+        </button>
+        {% if draft.name_normalized %}
+        <a href="/correspondence/{{ client_code }}/{{ req_id }}/invitations/download/{{ draft.name_normalized }}_invitation_{{ 'today' }}.txt"
+           class="btn btn-sm btn-secondary" style="display: none;">Download</a>
+        {% endif %}
+        <span style="font-size: 0.8rem; color: #94a3b8; margin-left: auto;">
+            Candidate {{ loop.index }} of {{ total }}
+        </span>
+    </div>
+</div>
+{% endfor %}
+
+<div style="text-align: center; margin: 2rem 0;">
+    <a href="/correspondence/{{ client_code }}/{{ req_id }}/invitations" class="btn btn-secondary">
+        &larr; Generate More
+    </a>
+    <a href="/assessments/{{ client_code }}/{{ req_id }}" class="btn btn-secondary" style="margin-left: 0.5rem;">
+        View Assessments
+    </a>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function copyDraft(index, btn) {
+    const textarea = document.getElementById('draft-' + index);
+    textarea.select();
+    textarea.setSelectionRange(0, 99999);
+    try {
+        navigator.clipboard.writeText(textarea.value).then(function() {
+            btn.textContent = 'Copied!';
+            btn.classList.add('copied');
+            setTimeout(function() {
+                btn.textContent = 'Copy to Clipboard';
+                btn.classList.remove('copied');
+            }, 2000);
+        });
+    } catch (e) {
+        document.execCommand('copy');
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(function() {
+            btn.textContent = 'Copy to Clipboard';
+            btn.classList.remove('copied');
+        }, 2000);
+    }
+}
+</script>
+{% endblock %}
