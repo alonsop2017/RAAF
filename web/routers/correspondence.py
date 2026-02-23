@@ -7,6 +7,9 @@ import sys
 import json
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
+
+import yaml
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -21,6 +24,7 @@ from scripts.utils.client_utils import (
     get_assessments_path,
     get_correspondence_path,
     get_settings,
+    get_config_path,
 )
 
 # Import invitation generation logic from the CLI script
@@ -29,6 +33,7 @@ from generate_interview_invitations import (
     load_assessments,
     filter_assessments,
     generate_email_draft,
+    get_default_template,
     save_invitations,
     TIER_NAMES,
     TIER_BY_NAME,
@@ -78,6 +83,10 @@ async def invitations_dashboard(request: Request, client_code: str, req_id: str)
             })
 
     recruiter = settings.get("recruiter", {})
+    # Merge saved template with defaults so all keys are always present
+    tmpl_defaults = get_default_template()
+    tmpl_saved = settings.get("invitation_template", {})
+    invitation_template = {**tmpl_defaults, **{k: v for k, v in tmpl_saved.items() if v}}
 
     return templates.TemplateResponse(
         "correspondence/invitations.html",
@@ -93,6 +102,7 @@ async def invitations_dashboard(request: Request, client_code: str, req_id: str)
             "total_assessed": len(all_assessments),
             "existing_files": existing_files,
             "recruiter": recruiter,
+            "invitation_template": invitation_template,
         },
     )
 
@@ -138,9 +148,10 @@ async def generate_invitations(
     }
 
     # Generate drafts
+    template = settings.get("invitation_template", {})
     drafts = []
     for assessment in selected:
-        email_text = generate_email_draft(assessment, req_config, client_info, recruiter)
+        email_text = generate_email_draft(assessment, req_config, client_info, recruiter, template)
         drafts.append((assessment, email_text))
 
     # Save files
@@ -185,6 +196,66 @@ async def generate_invitations(
             "total": len(drafts),
         },
     )
+
+
+@router.post("/settings")
+async def save_invitation_settings(
+    request: Request,
+    redirect_to: str = Form(""),
+    recruiter_name: str = Form(""),
+    recruiter_title: str = Form(""),
+    recruiter_email: str = Form(""),
+    recruiter_phone: str = Form(""),
+    recruiter_agency: str = Form(""),
+    tmpl_subject: str = Form(""),
+    tmpl_opening: str = Form(""),
+    tmpl_call_to_action: str = Form(""),
+    tmpl_not_interested: str = Form(""),
+    tmpl_closing: str = Form(""),
+):
+    """Save recruiter details and email template config to settings.yaml."""
+    settings_path = get_config_path() / "settings.yaml"
+
+    with open(settings_path, "r") as f:
+        settings = yaml.safe_load(f) or {}
+
+    # Update recruiter section
+    recruiter = settings.get("recruiter", {})
+    if recruiter_name.strip():
+        recruiter["name"] = recruiter_name.strip()
+    if recruiter_title.strip():
+        recruiter["title"] = recruiter_title.strip()
+    if recruiter_email.strip():
+        recruiter["email"] = recruiter_email.strip()
+    # Allow clearing phone by submitting empty string
+    recruiter["phone"] = recruiter_phone.strip()
+    if recruiter_agency.strip():
+        recruiter["agency"] = recruiter_agency.strip()
+    settings["recruiter"] = recruiter
+
+    # Update invitation_template section
+    defaults = get_default_template()
+    tmpl = settings.get("invitation_template", {})
+    field_map = {
+        "subject": tmpl_subject,
+        "opening": tmpl_opening,
+        "call_to_action": tmpl_call_to_action,
+        "not_interested": tmpl_not_interested,
+        "closing": tmpl_closing,
+    }
+    for key, val in field_map.items():
+        stripped = val.strip()
+        if stripped:
+            tmpl[key] = stripped
+        else:
+            # Reset to default if cleared
+            tmpl[key] = defaults[key]
+    settings["invitation_template"] = tmpl
+
+    with open(settings_path, "w") as f:
+        yaml.dump(settings, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+    return RedirectResponse(url=redirect_to or "/", status_code=303)
 
 
 @router.get("/{client_code}/{req_id}/invitations/download/{filename}")

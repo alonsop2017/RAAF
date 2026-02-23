@@ -123,11 +123,31 @@ def format_salary(salary_range: dict) -> str:
     return "Competitive"
 
 
+def get_default_template() -> dict:
+    """Return the built-in default template strings."""
+    return {
+        "subject": "Opportunity: {job_title} at {company_name} - Are You Available for a Brief Call?",
+        "opening": "I hope this message finds you well.",
+        "call_to_action": (
+            "If this sounds like something you would be open to exploring, please reply "
+            "to this email with a few times that work for you this week or next, and we "
+            "will arrange a convenient time to connect."
+        ),
+        "not_interested": (
+            "If the timing or opportunity isn't the right fit at this stage, please feel "
+            "free to let us know - we appreciate your transparency and would welcome the "
+            "chance to stay in touch for future opportunities."
+        ),
+        "closing": "We look forward to hearing from you.",
+    }
+
+
 def generate_email_draft(
     assessment: dict,
     req_config: dict,
     client_info: dict,
     recruiter: dict,
+    template: Optional[dict] = None,
 ) -> str:
     """Generate a personalized interview invitation email draft for one candidate.
 
@@ -136,6 +156,8 @@ def generate_email_draft(
         req_config: Requisition config (requisition.yaml).
         client_info: Client info (client_info.yaml).
         recruiter: Recruiter details dict (name, email, phone, agency, title).
+        template: Optional dict of template text overrides (subject, opening,
+                  call_to_action, not_interested, closing).
 
     Returns:
         Formatted email draft as a plain-text string.
@@ -205,6 +227,21 @@ def generate_email_draft(
             "relevant experience, career goals, and availability."
         )
 
+    # --- Merge template with defaults ---
+    tmpl = dict(get_default_template())
+    if template:
+        for key, val in template.items():
+            if val and str(val).strip():
+                tmpl[key] = str(val).strip()
+
+    # --- Render subject (supports {job_title}, {company_name} placeholders) ---
+    subject = tmpl["subject"].format(
+        job_title=job_title,
+        company_name=company_name,
+        recruiter_name=recruiter_name,
+        agency_name=agency_display,
+    )
+
     # --- Optional fields ---
     location_line = f"\n  • Location:       {location}" if location else ""
     salary_line = f"\n  • Compensation:   {salary_str}" if salary_str else ""
@@ -223,13 +260,13 @@ Assessment: {recommendation} ({percentage:.0f}%)
 Generated:  {today}
 {divider}
 
-SUBJECT: Opportunity: {job_title} at {company_name} — Are You Available for a Brief Call?
+SUBJECT: {subject}
 
 ---
 
 Dear {first_name},
 
-I hope this message finds you well. My name is {recruiter_name}, and I am a recruitment consultant with {agency_display}. I am reaching out on behalf of {company_name}{industry_suffix} regarding an exciting opportunity that may be a strong match for your background and career goals.
+{tmpl["opening"]} My name is {recruiter_name}, and I am a recruitment consultant with {agency_display}. I am reaching out on behalf of {company_name}{industry_suffix} regarding an exciting opportunity that may be a strong match for your background and career goals.
 
 {personalization}
 
@@ -244,11 +281,11 @@ We would like to invite you to a brief preliminary conversation (approximately 2
 
 {discussion_section}
 
-If this sounds like something you would be open to exploring, please reply to this email with a few times that work for you this week or next, and we will arrange a convenient time to connect.
+{tmpl["call_to_action"]}
 
-If the timing or opportunity isn't the right fit at this stage, please feel free to let us know — we appreciate your transparency and would welcome the chance to stay in touch for future opportunities.
+{tmpl["not_interested"]}
 
-We look forward to hearing from you.
+{tmpl["closing"]}
 
 Warm regards,
 
@@ -454,9 +491,10 @@ def main():
 
     # Generate drafts
     print(f"\nGenerating {len(selected)} email draft(s)...")
+    template = settings.get("invitation_template", {})
     drafts = []
     for assessment in selected:
-        email_text = generate_email_draft(assessment, req_config, client_info, recruiter)
+        email_text = generate_email_draft(assessment, req_config, client_info, recruiter, template)
         drafts.append((assessment, email_text))
 
     if args.dry_run:

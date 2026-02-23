@@ -12,6 +12,89 @@
 .candidate-row:last-child { border-bottom: none; }
 .pct-pill { font-size: 0.75rem; padding: 0.15rem 0.45rem; border-radius: 20px; font-weight: 600; }
 .file-row td { font-size: 0.875rem; }
+
+/* Modal */
+.modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal-box {
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    width: 100%;
+    max-width: 620px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.modal-header {
+    padding: 1rem 1.25rem 0.75rem;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.modal-header h2 { margin: 0; font-size: 1.1rem; }
+.modal-close {
+    background: none; border: none; cursor: pointer;
+    font-size: 1.4rem; color: #6b7280; line-height: 1;
+    padding: 0 0.25rem;
+}
+.modal-close:hover { color: #111; }
+.modal-tabs {
+    display: flex;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+.modal-tab {
+    padding: 0.6rem 1.25rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #6b7280;
+    cursor: pointer;
+    border: none;
+    background: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+}
+.modal-tab.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+    background: #fff;
+}
+.modal-body {
+    padding: 1.25rem;
+    overflow-y: auto;
+    flex: 1;
+}
+.modal-tab-panel { display: none; }
+.modal-tab-panel.active { display: block; }
+.modal-footer {
+    padding: 0.75rem 1.25rem;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    background: #f8fafc;
+}
+.field-hint {
+    font-size: 0.775rem;
+    color: #94a3b8;
+    margin-top: 0.2rem;
+    line-height: 1.4;
+}
+.modal-body textarea.form-input {
+    font-family: inherit;
+    resize: vertical;
+    min-height: 72px;
+}
 </style>
 {% endblock %}
 
@@ -24,8 +107,13 @@
 </div>
 
 <div class="page-header">
-    <h1>Interview Invitations</h1>
-    <p class="subtitle">{{ req_title }} | {{ client_name }}</p>
+    <div class="flex flex-between flex-center">
+        <div>
+            <h1>Interview Invitations</h1>
+            <p class="subtitle">{{ req_title }} | {{ client_name }}</p>
+        </div>
+        <button class="btn btn-outline" onclick="openModal()">&#9881; Edit Settings &amp; Template</button>
+    </div>
 </div>
 
 <!-- Tier Summary -->
@@ -103,39 +191,30 @@
                         </select>
                     </div>
 
-                    <hr style="margin: 1.25rem 0; border-color: #e2e8f0;">
-                    <p class="text-muted" style="font-size: 0.875rem; margin-bottom: 0.75rem;">
-                        <strong>Recruiter details</strong> — leave blank to use defaults from settings.
-                    </p>
-
-                    <div class="form-group">
-                        <label class="form-label">Your Name</label>
-                        <input type="text" name="recruiter_name" class="form-input"
-                               placeholder="{{ recruiter.name or 'e.g., Jane Smith' }}"
-                               value="{{ recruiter.name if recruiter.name and not recruiter.name.startswith('[') else '' }}">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Your Email</label>
-                        <input type="email" name="recruiter_email" class="form-input"
-                               placeholder="{{ recruiter.email or 'recruiter@archtektconsultinginc.com' }}"
-                               value="{{ recruiter.email if recruiter.email and not recruiter.email.startswith('[') else '' }}">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Your Phone <span class="text-muted">(optional)</span></label>
-                        <input type="text" name="recruiter_phone" class="form-input"
-                               placeholder="{{ recruiter.phone or 'e.g., 416-555-1234' }}"
-                               value="{{ recruiter.phone or '' }}">
-                    </div>
-
                     <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;">
                         Generate Invitation Drafts
                     </button>
                 </form>
             </div>
         </div>
+
+        <!-- Recruiter Summary Card -->
+        <div class="card" style="margin-top: 1rem;">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin: 0;">Sending As</h3>
+                <button class="btn btn-sm btn-outline" onclick="openModal('recruiter')">Edit</button>
+            </div>
+            <div class="card-body" style="font-size: 0.875rem; line-height: 1.8;">
+                <strong>{{ recruiter.name or '—' }}</strong><br>
+                {{ recruiter.title or '' }}<br>
+                {{ recruiter.agency or '' }}<br>
+                <span class="text-muted">{{ recruiter.email or '' }}</span><br>
+                {% if recruiter.phone %}<span class="text-muted">{{ recruiter.phone }}</span>{% endif %}
+            </div>
+        </div>
     </div>
 
-    <!-- Existing Files -->
+    <!-- Existing Files + Instructions -->
     <div>
         <div class="card">
             <div class="card-header">
@@ -184,18 +263,120 @@
             </div>
             <div class="card-body" style="font-size: 0.875rem; line-height: 1.7;">
                 <ol style="padding-left: 1.25rem; margin: 0;">
-                    <li>Select the candidate tier and recruiter details above.</li>
-                    <li>Click <strong>Generate Invitation Drafts</strong>.</li>
-                    <li>Review the generated drafts on the next screen.</li>
-                    <li>Copy each email and paste it into your email client.</li>
-                    <li>Personalize as needed before sending.</li>
+                    <li>Select the candidate tier above and click <strong>Generate</strong>.</li>
+                    <li>Review and copy each draft from the next screen.</li>
+                    <li>Paste into your email client and send.</li>
                 </ol>
                 <p style="margin-top: 0.75rem;" class="text-muted">
-                    Files are also saved to the requisition's
-                    <code>correspondence/interview_invitations/</code> folder.
+                    Use <strong>Edit Settings &amp; Template</strong> to change your recruiter details
+                    or customise the email wording. Changes are saved globally.
                 </p>
             </div>
         </div>
+    </div>
+</div>
+
+<!-- ===== Settings & Template Modal ===== -->
+<div class="modal-overlay" id="settingsModal" onclick="handleOverlayClick(event)">
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-header">
+            <h2 id="modalTitle">Settings &amp; Template</h2>
+            <button class="modal-close" onclick="closeModal()" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-tabs">
+            <button class="modal-tab active" id="tab-recruiter" onclick="switchTab('recruiter')">Recruiter Details</button>
+            <button class="modal-tab" id="tab-template" onclick="switchTab('template')">Email Template</button>
+        </div>
+
+        <form action="/correspondence/settings" method="POST" id="settingsForm">
+            <input type="hidden" name="redirect_to"
+                   value="/correspondence/{{ client_code }}/{{ req_id }}/invitations">
+
+            <div class="modal-body">
+
+                <!-- ── Recruiter Tab ── -->
+                <div class="modal-tab-panel active" id="panel-recruiter">
+                    <div class="form-group">
+                        <label class="form-label">Full Name</label>
+                        <input type="text" name="recruiter_name" class="form-input"
+                               value="{{ recruiter.name or '' }}"
+                               placeholder="e.g., Alonso Perez">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Title</label>
+                        <input type="text" name="recruiter_title" class="form-input"
+                               value="{{ recruiter.title or '' }}"
+                               placeholder="e.g., Senior Recruitment Consultant">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
+                        <input type="email" name="recruiter_email" class="form-input"
+                               value="{{ recruiter.email or '' }}"
+                               placeholder="e.g., recruiter@archtektconsultinginc.com">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Phone <span class="text-muted">(optional)</span></label>
+                        <input type="text" name="recruiter_phone" class="form-input"
+                               value="{{ recruiter.phone or '' }}"
+                               placeholder="e.g., +1 905-477-9330 x 30">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Agency / Company</label>
+                        <input type="text" name="recruiter_agency" class="form-input"
+                               value="{{ recruiter.agency or '' }}"
+                               placeholder="e.g., Archtekt Consulting Inc.">
+                    </div>
+                </div>
+
+                <!-- ── Template Tab ── -->
+                <div class="modal-tab-panel" id="panel-template">
+                    <p class="text-muted" style="font-size: 0.825rem; margin-bottom: 1rem;">
+                        Customise the fixed text blocks in every invitation.
+                        Use <code>{job_title}</code>, <code>{company_name}</code>,
+                        <code>{recruiter_name}</code> as placeholders in the subject line.
+                        Leave a field blank to restore its default.
+                    </p>
+
+                    <div class="form-group">
+                        <label class="form-label">Subject Line</label>
+                        <input type="text" name="tmpl_subject" class="form-input"
+                               value="{{ invitation_template.subject or '' }}">
+                        <p class="field-hint">Supports <code>{job_title}</code>, <code>{company_name}</code>, <code>{recruiter_name}</code>, <code>{agency_name}</code></p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Opening Sentence</label>
+                        <input type="text" name="tmpl_opening" class="form-input"
+                               value="{{ invitation_template.opening or '' }}"
+                               placeholder="e.g., I hope this message finds you well.">
+                        <p class="field-hint">First sentence of the email, before your name introduction.</p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Call to Action</label>
+                        <textarea name="tmpl_call_to_action" class="form-input"
+                                  rows="3">{{ invitation_template.call_to_action or '' }}</textarea>
+                        <p class="field-hint">The paragraph asking the candidate to reply with their availability.</p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Not Interested / Keep in Touch</label>
+                        <textarea name="tmpl_not_interested" class="form-input"
+                                  rows="3">{{ invitation_template.not_interested or '' }}</textarea>
+                        <p class="field-hint">Paragraph shown if the candidate is not interested in this role.</p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Closing Line</label>
+                        <input type="text" name="tmpl_closing" class="form-input"
+                               value="{{ invitation_template.closing or '' }}"
+                               placeholder="e.g., We look forward to hearing from you.">
+                    </div>
+                </div>
+
+            </div><!-- /modal-body -->
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+            </div>
+        </form>
     </div>
 </div>
 {% endblock %}
@@ -207,5 +388,32 @@ function updatePreview(tier) {
         document.getElementById('preview-tier-' + t).style.display = (t == tier) ? 'block' : 'none';
     });
 }
+
+function openModal(tab) {
+    document.getElementById('settingsModal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+    if (tab) switchTab(tab);
+}
+
+function closeModal() {
+    document.getElementById('settingsModal').classList.remove('open');
+    document.body.style.overflow = '';
+}
+
+function handleOverlayClick(e) {
+    if (e.target === document.getElementById('settingsModal')) closeModal();
+}
+
+function switchTab(tab) {
+    ['recruiter', 'template'].forEach(function(t) {
+        document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+        document.getElementById('panel-' + t).classList.toggle('active', t === tab);
+    });
+}
+
+// Close on Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeModal();
+});
 </script>
 {% endblock %}
