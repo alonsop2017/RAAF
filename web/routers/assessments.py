@@ -272,6 +272,7 @@ async def set_lifecycle_status(
     return RedirectResponse(url=referer, status_code=303)
 
 
+
 @router.get("/{client_code}/{req_id}/status")
 async def get_assessment_status(client_code: str, req_id: str):
     """Return current assessed/pending counts as JSON for live progress polling."""
