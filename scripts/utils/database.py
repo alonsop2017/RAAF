@@ -225,6 +225,12 @@ class DatabaseManager:
                 generated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS pcr_positions_cache (
+                job_id    TEXT PRIMARY KEY,
+                data_json TEXT NOT NULL,
+                cached_at TIMESTAMP NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS schema_version (
                 version    INTEGER PRIMARY KEY,
                 applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -951,3 +957,38 @@ class DatabaseManager:
                 },
                 "avg_score": round(avg_row[0] or 0.0, 1),
             }
+
+    # -----------------------------------------------------------------------
+    # PCR positions cache
+    # -----------------------------------------------------------------------
+
+    def cache_pcr_positions(self, positions: list) -> None:
+        """Replace the PCR positions cache with a fresh snapshot."""
+        now = datetime.utcnow().isoformat()
+        with self._conn() as conn:
+            conn.execute("DELETE FROM pcr_positions_cache")
+            conn.executemany(
+                "INSERT INTO pcr_positions_cache (job_id, data_json, cached_at) VALUES (?, ?, ?)",
+                [
+                    (str(pos.get("JobId", "")), json.dumps(pos, default=str), now)
+                    for pos in positions
+                    if pos.get("JobId")
+                ],
+            )
+
+    def get_cached_pcr_positions(self, max_age_seconds: int = 3600) -> Optional[list]:
+        """Return cached raw PCR positions if the cache is fresh, else None."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT MAX(cached_at) FROM pcr_positions_cache"
+            ).fetchone()
+            if not row or not row[0]:
+                return None
+            cached_at = datetime.fromisoformat(row[0])
+            age = (datetime.utcnow() - cached_at).total_seconds()
+            if age > max_age_seconds:
+                return None
+            rows = conn.execute(
+                "SELECT data_json FROM pcr_positions_cache"
+            ).fetchall()
+            return [json.loads(r[0]) for r in rows]

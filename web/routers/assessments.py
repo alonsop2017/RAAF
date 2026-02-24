@@ -103,51 +103,76 @@ async def assessment_dashboard(request: Request, client_code: str, req_id: str):
     req_root = get_requisition_root(client_code, req_id)
     assessments_dir = req_root / "assessments" / "individual"
 
-    # Get all assessments with details - scan batches + legacy
+    # Get all assessments with details
     assessments = []
     pending = []
-    seen = set()
 
-    all_resumes = list_all_extracted_resumes(client_code, req_id)
-    # Also include legacy processed/
-    legacy_dir = req_root / "resumes" / "processed"
-    if legacy_dir.exists():
-        all_resumes.extend(sorted(legacy_dir.glob("*.txt")))
-
-    for resume_file in all_resumes:
-        name_normalized = resume_file.stem.replace("_resume", "")
-        if name_normalized in seen:
-            continue
-        seen.add(name_normalized)
-        assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
-
-        if assessment_file.exists():
-            with open(assessment_file, 'r') as f:
-                assessment = json.load(f)
-
-            # Load lifecycle status if present
-            lifecycle_file = assessments_dir / f"{name_normalized}_lifecycle.json"
-            lifecycle = ""
-            if lifecycle_file.exists():
-                with open(lifecycle_file) as lf:
-                    lifecycle = json.load(lf).get("status", "")
-
+    from scripts.utils.database import get_db, _use_database
+    if _use_database():
+        # Single DB query instead of per-file JSON reads
+        db = get_db()
+        for row in db.list_assessments(req_id):
+            scores = row.get("scores") or {}
+            stability_risk = (
+                scores.get("job_stability", {})
+                      .get("tenure_analysis", {})
+                      .get("risk_level", "N/A")
+            ) if isinstance(scores, dict) else "N/A"
             assessments.append({
-                'name_normalized': name_normalized,
-                'name': assessment.get('candidate', {}).get('name', name_normalized),
-                'score': assessment.get('total_score', 0),
-                'max_score': assessment.get('max_score', 100),
-                'percentage': assessment.get('percentage', 0),
-                'recommendation': assessment.get('recommendation', 'PENDING'),
-                'assessed_at': assessment.get('metadata', {}).get('assessed_at', 'N/A'),
-                'stability': assessment.get('scores', {}).get('job_stability', {}).get('tenure_analysis', {}).get('risk_level', 'N/A'),
-                'lifecycle': lifecycle,
+                "name_normalized": row["name_normalized"],
+                "name": row["name"],
+                "score": row.get("total_score", 0) or 0,
+                "max_score": 100,
+                "percentage": row.get("percentage", 0) or 0,
+                "recommendation": row.get("recommendation", "PENDING"),
+                "assessed_at": row.get("assessed_at", "N/A"),
+                "stability": stability_risk,
+                "lifecycle": row.get("pipeline_status", "") or "",
             })
-        else:
+        for cand in db.list_candidates(req_id, status="pending"):
             pending.append({
-                'name_normalized': name_normalized,
-                'name': name_normalized.replace("_", " ").title()
+                "name_normalized": cand["name_normalized"],
+                "name": cand["name"],
             })
+    else:
+        seen = set()
+        all_resumes = list_all_extracted_resumes(client_code, req_id)
+        legacy_dir = req_root / "resumes" / "processed"
+        if legacy_dir.exists():
+            all_resumes.extend(sorted(legacy_dir.glob("*.txt")))
+
+        for resume_file in all_resumes:
+            name_normalized = resume_file.stem.replace("_resume", "")
+            if name_normalized in seen:
+                continue
+            seen.add(name_normalized)
+            assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
+
+            if assessment_file.exists():
+                with open(assessment_file, "r") as f:
+                    assessment = json.load(f)
+                lifecycle_file = assessments_dir / f"{name_normalized}_lifecycle.json"
+                lifecycle = ""
+                if lifecycle_file.exists():
+                    with open(lifecycle_file) as lf:
+                        lifecycle = json.load(lf).get("status", "")
+                assessments.append({
+                    "name_normalized": name_normalized,
+                    "name": assessment.get("candidate", {}).get("name", name_normalized),
+                    "score": assessment.get("total_score", 0),
+                    "max_score": assessment.get("max_score", 100),
+                    "percentage": assessment.get("percentage", 0),
+                    "recommendation": assessment.get("recommendation", "PENDING"),
+                    "assessed_at": assessment.get("metadata", {}).get("assessed_at", "N/A"),
+                    "stability": assessment.get("scores", {}).get("job_stability", {}).get(
+                        "tenure_analysis", {}).get("risk_level", "N/A"),
+                    "lifecycle": lifecycle,
+                })
+            else:
+                pending.append({
+                    "name_normalized": name_normalized,
+                    "name": name_normalized.replace("_", " ").title(),
+                })
 
     # Sort assessments by percentage descending
     assessments.sort(key=lambda x: x['percentage'], reverse=True)

@@ -99,66 +99,87 @@ app.include_router(correspondence.router, prefix="/correspondence", tags=["corre
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     """Main dashboard showing overview of all clients and requisitions."""
-    from scripts.utils.client_utils import list_clients, list_requisitions, get_client_info, get_requisition_config
-    get_client_config = get_client_info  # Alias
+    from scripts.utils.database import get_db, _use_database
 
-    # Gather dashboard data
     dashboard_data = []
     total_candidates = 0
     total_assessed = 0
 
-    for client_code in list_clients():
-        try:
-            client_config = get_client_config(client_code)
-            client_name = client_config.get('company_name', client_code)
-
-            client_reqs = []
-            for req_id in list_requisitions(client_code):
-                try:
-                    req_config = get_requisition_config(client_code, req_id)
-
-                    # Count candidates and assessments
-                    from scripts.utils.client_utils import get_requisition_root, count_unique_candidates
-                    req_root = get_requisition_root(client_code, req_id)
-
-                    # Deduplicated count across all batches + legacy folder
-                    candidate_count = count_unique_candidates(client_code, req_id)
-
-                    # Count assessments (exclude lifecycle JSON files)
-                    assessments_dir = req_root / "assessments" / "individual"
-                    assessed_count = len([f for f in assessments_dir.glob("*.json") if not f.stem.endswith("_lifecycle")]) if assessments_dir.exists() else 0
-
-                    total_candidates += candidate_count
-                    total_assessed += assessed_count
-
-                    client_reqs.append({
-                        'req_id': req_id,
-                        'title': req_config.get('job', {}).get('title', req_id),
-                        'status': req_config.get('status', 'unknown'),
-                        'candidate_count': candidate_count,
-                        'assessed_count': assessed_count
+    if _use_database():
+        # Single query replaces the nested client/requisition file loop
+        rows = get_db().get_dashboard_data()
+        clients_seen: dict = {}
+        for row in rows:
+            cc = row["client_code"]
+            candidate_count = row.get("candidate_count", 0)
+            assessed_count = row.get("assessed_count", 0)
+            total_candidates += candidate_count
+            total_assessed += assessed_count
+            req_entry = {
+                "req_id": row["req_id"],
+                "title": row["job_title"],
+                "status": row["req_status"],
+                "candidate_count": candidate_count,
+                "assessed_count": assessed_count,
+            }
+            if cc not in clients_seen:
+                clients_seen[cc] = {
+                    "client_code": cc,
+                    "client_name": row["company_name"],
+                    "status": row["client_status"],
+                    "requisitions": [],
+                }
+                dashboard_data.append(clients_seen[cc])
+            clients_seen[cc]["requisitions"].append(req_entry)
+    else:
+        from scripts.utils.client_utils import (
+            list_clients, list_requisitions, get_client_info, get_requisition_config,
+            get_requisition_root, count_unique_candidates,
+        )
+        for client_code in list_clients():
+            try:
+                client_config = get_client_info(client_code)
+                client_name = client_config.get("company_name", client_code)
+                client_reqs = []
+                for req_id in list_requisitions(client_code):
+                    try:
+                        req_config = get_requisition_config(client_code, req_id)
+                        req_root = get_requisition_root(client_code, req_id)
+                        candidate_count = count_unique_candidates(client_code, req_id)
+                        assessments_dir = req_root / "assessments" / "individual"
+                        assessed_count = len([
+                            f for f in assessments_dir.glob("*.json")
+                            if not f.stem.endswith("_lifecycle")
+                        ]) if assessments_dir.exists() else 0
+                        total_candidates += candidate_count
+                        total_assessed += assessed_count
+                        client_reqs.append({
+                            "req_id": req_id,
+                            "title": req_config.get("job", {}).get("title", req_id),
+                            "status": req_config.get("status", "unknown"),
+                            "candidate_count": candidate_count,
+                            "assessed_count": assessed_count,
+                        })
+                    except Exception:
+                        continue
+                if client_reqs:
+                    dashboard_data.append({
+                        "client_code": client_code,
+                        "client_name": client_name,
+                        "requisitions": client_reqs,
+                        "status": client_config.get("status", "active"),
                     })
-                except Exception:
-                    continue
-
-            if client_reqs:
-                dashboard_data.append({
-                    'client_code': client_code,
-                    'client_name': client_name,
-                    'requisitions': client_reqs,
-                    'status': client_config.get('status', 'active')
-                })
-        except Exception:
-            continue
+            except Exception:
+                continue
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "user": getattr(request.state, 'user', None),
         "clients": dashboard_data,
         "total_clients": len(dashboard_data),
-        "total_requisitions": sum(len(c['requisitions']) for c in dashboard_data),
+        "total_requisitions": sum(len(c["requisitions"]) for c in dashboard_data),
         "total_candidates": total_candidates,
-        "total_assessed": total_assessed
+        "total_assessed": total_assessed,
     })
 
 

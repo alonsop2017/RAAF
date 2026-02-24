@@ -141,34 +141,54 @@ async def api_list_positions(request: Request, search: str = Query(""), include_
         from concurrent.futures import ThreadPoolExecutor
         import requests as http_requests
         from urllib.parse import urljoin
+        from scripts.utils.database import get_db, _use_database
 
+        # Always authenticate — needed for detail fetches even on cache hit
         client = PCRClient()
         client.ensure_authenticated()
         headers = client._get_headers()
-        url = urljoin(client.base_url + "/", "positions")
 
-        def fetch_page(page: int) -> tuple:
-            r = http_requests.get(
-                url,
-                headers=headers,
-                params={"ResultsPerPage": 500, "Page": page, "Status": "Open"},
-                timeout=30,
-            )
-            data = r.json()
-            return data.get("Results", []), data.get("TotalRecords")
+        # --- DB cache fast path for bulk position list ---
+        all_positions = None
+        if _use_database():
+            try:
+                all_positions = get_db().get_cached_pcr_positions(max_age_seconds=3600)
+            except Exception:
+                pass
 
-        # Fetch first page to get results and total count
-        first_results, total = fetch_page(1)
-        if total is None:
-            total = 5000  # conservative fallback
-        max_pages = (total + 499) // 500
-        all_positions = list(first_results)
+        if all_positions is None:
+            # Cache miss — fetch all pages from PCR API
+            url = urljoin(client.base_url + "/", "positions")
 
-        if max_pages > 1:
-            with ThreadPoolExecutor(max_workers=min(max_pages - 1, 20)) as executor:
-                extra_pages = list(executor.map(fetch_page, range(2, max_pages + 1)))
-            for results, _ in extra_pages:
-                all_positions.extend(results)
+            def fetch_page(page: int) -> tuple:
+                r = http_requests.get(
+                    url,
+                    headers=headers,
+                    params={"ResultsPerPage": 500, "Page": page, "Status": "Open"},
+                    timeout=30,
+                )
+                data = r.json()
+                return data.get("Results", []), data.get("TotalRecords")
+
+            # Fetch first page to get results and total count
+            first_results, total = fetch_page(1)
+            if total is None:
+                total = 5000  # conservative fallback
+            max_pages = (total + 499) // 500
+            all_positions = list(first_results)
+
+            if max_pages > 1:
+                with ThreadPoolExecutor(max_workers=min(max_pages - 1, 20)) as executor:
+                    extra_pages = list(executor.map(fetch_page, range(2, max_pages + 1)))
+                for results, _ in extra_pages:
+                    all_positions.extend(results)
+
+            # Populate cache for next request
+            if _use_database():
+                try:
+                    get_db().cache_pcr_positions(all_positions)
+                except Exception:
+                    pass
 
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
