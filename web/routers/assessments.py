@@ -18,6 +18,13 @@ from scripts.utils.client_utils import (
     get_project_root, list_all_extracted_resumes,
 )
 
+try:
+    from scripts.utils.database import _files_mode, _use_database, get_db
+except ImportError:
+    def _files_mode(): return True   # noqa: E704
+    def _use_database(): return False  # noqa: E704
+    def get_db(): return None  # noqa: E704
+
 # Alias for consistency
 get_client_config = get_client_info
 
@@ -103,51 +110,76 @@ async def assessment_dashboard(request: Request, client_code: str, req_id: str):
     req_root = get_requisition_root(client_code, req_id)
     assessments_dir = req_root / "assessments" / "individual"
 
-    # Get all assessments with details - scan batches + legacy
+    # Get all assessments with details
     assessments = []
     pending = []
-    seen = set()
 
-    all_resumes = list_all_extracted_resumes(client_code, req_id)
-    # Also include legacy processed/
-    legacy_dir = req_root / "resumes" / "processed"
-    if legacy_dir.exists():
-        all_resumes.extend(sorted(legacy_dir.glob("*.txt")))
-
-    for resume_file in all_resumes:
-        name_normalized = resume_file.stem.replace("_resume", "")
-        if name_normalized in seen:
-            continue
-        seen.add(name_normalized)
-        assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
-
-        if assessment_file.exists():
-            with open(assessment_file, 'r') as f:
-                assessment = json.load(f)
-
-            # Load lifecycle status if present
-            lifecycle_file = assessments_dir / f"{name_normalized}_lifecycle.json"
-            lifecycle = ""
-            if lifecycle_file.exists():
-                with open(lifecycle_file) as lf:
-                    lifecycle = json.load(lf).get("status", "")
-
+    from scripts.utils.database import get_db, _use_database
+    if _use_database():
+        # Single DB query instead of per-file JSON reads
+        db = get_db()
+        for row in db.list_assessments(req_id):
+            scores = row.get("scores") or {}
+            stability_risk = (
+                scores.get("job_stability", {})
+                      .get("tenure_analysis", {})
+                      .get("risk_level", "N/A")
+            ) if isinstance(scores, dict) else "N/A"
             assessments.append({
-                'name_normalized': name_normalized,
-                'name': assessment.get('candidate', {}).get('name', name_normalized),
-                'score': assessment.get('total_score', 0),
-                'max_score': assessment.get('max_score', 100),
-                'percentage': assessment.get('percentage', 0),
-                'recommendation': assessment.get('recommendation', 'PENDING'),
-                'assessed_at': assessment.get('metadata', {}).get('assessed_at', 'N/A'),
-                'stability': assessment.get('scores', {}).get('job_stability', {}).get('tenure_analysis', {}).get('risk_level', 'N/A'),
-                'lifecycle': lifecycle,
+                "name_normalized": row["name_normalized"],
+                "name": row["name"],
+                "score": row.get("total_score", 0) or 0,
+                "max_score": 100,
+                "percentage": row.get("percentage", 0) or 0,
+                "recommendation": row.get("recommendation", "PENDING"),
+                "assessed_at": row.get("assessed_at", "N/A"),
+                "stability": stability_risk,
+                "lifecycle": row.get("pipeline_status", "") or "",
             })
-        else:
+        for cand in db.list_candidates(req_id, status="pending"):
             pending.append({
-                'name_normalized': name_normalized,
-                'name': name_normalized.replace("_", " ").title()
+                "name_normalized": cand["name_normalized"],
+                "name": cand["name"],
             })
+    else:
+        seen = set()
+        all_resumes = list_all_extracted_resumes(client_code, req_id)
+        legacy_dir = req_root / "resumes" / "processed"
+        if legacy_dir.exists():
+            all_resumes.extend(sorted(legacy_dir.glob("*.txt")))
+
+        for resume_file in all_resumes:
+            name_normalized = resume_file.stem.replace("_resume", "")
+            if name_normalized in seen:
+                continue
+            seen.add(name_normalized)
+            assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
+
+            if assessment_file.exists():
+                with open(assessment_file, "r") as f:
+                    assessment = json.load(f)
+                lifecycle_file = assessments_dir / f"{name_normalized}_lifecycle.json"
+                lifecycle = ""
+                if lifecycle_file.exists():
+                    with open(lifecycle_file) as lf:
+                        lifecycle = json.load(lf).get("status", "")
+                assessments.append({
+                    "name_normalized": name_normalized,
+                    "name": assessment.get("candidate", {}).get("name", name_normalized),
+                    "score": assessment.get("total_score", 0),
+                    "max_score": assessment.get("max_score", 100),
+                    "percentage": assessment.get("percentage", 0),
+                    "recommendation": assessment.get("recommendation", "PENDING"),
+                    "assessed_at": assessment.get("metadata", {}).get("assessed_at", "N/A"),
+                    "stability": assessment.get("scores", {}).get("job_stability", {}).get(
+                        "tenure_analysis", {}).get("risk_level", "N/A"),
+                    "lifecycle": lifecycle,
+                })
+            else:
+                pending.append({
+                    "name_normalized": name_normalized,
+                    "name": name_normalized.replace("_", " ").title(),
+                })
 
     # Sort assessments by percentage descending
     assessments.sort(key=lambda x: x['percentage'], reverse=True)
@@ -263,10 +295,24 @@ async def set_lifecycle_status(
             "updated_at": datetime.now().isoformat(),
             "updated_by": getattr(request.state, 'user', {}).get('email', 'system'),
         }
-        with open(lifecycle_file, 'w') as f:
-            json.dump(data, f, indent=2)
-    elif lifecycle_file.exists():
+        if _files_mode():
+            with open(lifecycle_file, 'w') as f:
+                json.dump(data, f, indent=2)
+    elif lifecycle_file.exists() and _files_mode():
         lifecycle_file.unlink()
+
+    # Write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            get_db().upsert_candidate({
+                "req_id": req_id,
+                "name": name_normalized.replace("_", " ").title(),
+                "name_normalized": name_normalized,
+                "pipeline_status": status or None,
+            })
+    except Exception:
+        pass
 
     referer = request.headers.get("referer", f"/assessments/{client_code}/{req_id}")
     return RedirectResponse(url=referer, status_code=303)
@@ -445,8 +491,36 @@ async def update_assessment(
     assessment['metadata']['assessor'] = form_data.get('assessor', 'Manual/Web')
 
     # Save
-    with open(assessment_file, 'w') as f:
-        json.dump(assessment, f, indent=2)
+    if _files_mode():
+        with open(assessment_file, 'w') as f:
+            json.dump(assessment, f, indent=2)
+
+    # Write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            get_db().save_assessment({
+                "req_id": req_id,
+                "name_normalized": name_normalized,
+                "name": assessment.get("candidate", {}).get("name",
+                         name_normalized.replace("_", " ").title()),
+                "batch": assessment.get("candidate", {}).get("batch"),
+                "source_platform": assessment.get("candidate", {}).get(
+                    "source_platform", "Unknown"),
+                "total_score": assessment.get("total_score"),
+                "percentage": assessment.get("percentage"),
+                "recommendation": assessment.get("recommendation"),
+                "assessment_mode": "manual",
+                "ai_model": None,
+                "scores": assessment.get("scores"),
+                "summary": assessment.get("summary"),
+                "key_strengths": assessment.get("key_strengths"),
+                "areas_of_concern": assessment.get("areas_of_concern"),
+                "interview_focus_areas": assessment.get("interview_focus_areas"),
+                "assessed_at": assessment.get("metadata", {}).get("assessed_at"),
+            })
+    except Exception:
+        pass
 
     return RedirectResponse(
         url=f"/assessments/{client_code}/{req_id}/{name_normalized}",

@@ -14,6 +14,13 @@ import yaml
 import shutil
 import logging
 
+try:
+    from scripts.utils.database import _files_mode, _use_database, get_db
+except ImportError:
+    def _files_mode(): return True   # noqa: E704
+    def _use_database(): return False  # noqa: E704
+    def get_db(): return None  # noqa: E704
+
 logger = logging.getLogger(__name__)
 
 from scripts.utils.client_utils import (
@@ -46,39 +53,59 @@ async def list_all_requisitions(request: Request, status: str = None):
     """List all requisitions across all clients."""
     reqs_data = []
 
-    for client_code in list_clients():
-        try:
-            client_config = get_client_config(client_code)
-            client_name = client_config.get('company_name', client_code)
-
-            for req_id in list_requisitions(client_code, status):
-                try:
-                    req_config = get_requisition_config(client_code, req_id)
-                    req_root = get_requisition_root(client_code, req_id)
-
-                    # Deduplicated candidate count across all batches + legacy folder
-                    from scripts.utils.client_utils import count_unique_candidates
-                    candidate_count = count_unique_candidates(client_code, req_id)
-
-                    # Count assessments (exclude lifecycle JSON files)
-                    assessments_dir = req_root / "assessments" / "individual"
-                    assessed_count = len([f for f in assessments_dir.glob("*.json") if not f.stem.endswith("_lifecycle")]) if assessments_dir.exists() else 0
-
-                    reqs_data.append({
-                        'client_code': client_code,
-                        'client_name': client_name,
-                        'req_id': req_id,
-                        'title': req_config.get('job', {}).get('title', req_id),
-                        'status': req_config.get('status', 'active'),
-                        'location': req_config.get('job', {}).get('location', 'N/A'),
-                        'candidate_count': candidate_count,
-                        'assessed_count': assessed_count,
-                        'created_date': req_config.get('created_date', 'N/A')
-                    })
-                except Exception:
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            for row in get_db().get_dashboard_data():
+                if status and row.get("req_status") != status:
                     continue
-        except Exception:
-            continue
+                reqs_data.append({
+                    'client_code': row['client_code'],
+                    'client_name': row['company_name'],
+                    'req_id': row['req_id'],
+                    'title': row['job_title'],
+                    'status': row['req_status'],
+                    'location': row.get('location', 'N/A') or 'N/A',
+                    'candidate_count': row.get('candidate_count', 0),
+                    'assessed_count': row.get('assessed_count', 0),
+                    'created_date': row.get('created_date', 'N/A') or 'N/A',
+                })
+    except Exception as _e:
+        logger.debug("DB list_all_requisitions failed, falling back to files: %s", _e)
+        reqs_data = []
+
+    if not reqs_data:
+        for client_code in list_clients():
+            try:
+                client_config = get_client_config(client_code)
+                client_name = client_config.get('company_name', client_code)
+
+                for req_id in list_requisitions(client_code, status):
+                    try:
+                        req_config = get_requisition_config(client_code, req_id)
+                        req_root = get_requisition_root(client_code, req_id)
+
+                        from scripts.utils.client_utils import count_unique_candidates
+                        candidate_count = count_unique_candidates(client_code, req_id)
+
+                        assessments_dir = req_root / "assessments" / "individual"
+                        assessed_count = len([f for f in assessments_dir.glob("*.json") if not f.stem.endswith("_lifecycle")]) if assessments_dir.exists() else 0
+
+                        reqs_data.append({
+                            'client_code': client_code,
+                            'client_name': client_name,
+                            'req_id': req_id,
+                            'title': req_config.get('job', {}).get('title', req_id),
+                            'status': req_config.get('status', 'active'),
+                            'location': req_config.get('job', {}).get('location', 'N/A'),
+                            'candidate_count': candidate_count,
+                            'assessed_count': assessed_count,
+                            'created_date': req_config.get('created_date', 'N/A')
+                        })
+                    except Exception:
+                        continue
+            except Exception:
+                continue
 
     return templates.TemplateResponse("requisitions/list.html", {
         "request": request,
@@ -261,8 +288,9 @@ async def create_requisition(
             'linked_date': datetime.now().strftime("%Y-%m-%d"),
         }
 
-    with open(req_root / "requisition.yaml", 'w') as f:
-        yaml.dump(req_config, f, default_flow_style=False)
+    if _files_mode():
+        with open(req_root / "requisition.yaml", 'w') as f:
+            yaml.dump(req_config, f, default_flow_style=False)
 
     # Generate or copy assessment framework
     framework_generated = False
@@ -326,8 +354,47 @@ async def create_requisition(
         if req_id not in client_config['active_requisitions']:
             client_config['active_requisitions'].append(req_id)
 
-        with open(client_config_path, 'w') as f:
-            yaml.dump(client_config, f, default_flow_style=False)
+        if _files_mode():
+            with open(client_config_path, 'w') as f:
+                yaml.dump(client_config, f, default_flow_style=False)
+
+    # Write to DB when enabled
+    try:
+        if _use_database():
+            job = req_config.get("job", {})
+            requirements = req_config.get("requirements", {})
+            assessment_cfg = req_config.get("assessment", {})
+            thresholds = assessment_cfg.get("thresholds", {})
+            salary = job.get("salary_range", {})
+            pcr_int = req_config.get("pcr_integration", {})
+            pcr_positions = pcr_int.get("positions", [])
+            first_pcr = pcr_positions[0] if pcr_positions else {}
+            get_db().create_requisition({
+                "req_id": req_id,
+                "client_code": client_code,
+                "job_title": job.get("title", title),
+                "department": job.get("department"),
+                "location": job.get("location"),
+                "salary_min": salary.get("min", 0),
+                "salary_max": salary.get("max", 0),
+                "salary_currency": salary.get("currency", "CAD"),
+                "status": "active",
+                "experience_years_min": requirements.get("experience_years_min", 0),
+                "education": requirements.get("education"),
+                "threshold_strong": thresholds.get("strong_recommend", 85),
+                "threshold_recommend": thresholds.get("recommend", 70),
+                "threshold_conditional": thresholds.get("conditional", 55),
+                "framework_source": "ai_generated" if framework_generated else "template",
+                "framework_generated_at": datetime.now().isoformat() if framework_generated else None,
+                "pcr_job_id": pcr_int.get("job_id"),
+                "pcr_job_title": first_pcr.get("job_title"),
+                "pcr_company_name": first_pcr.get("company_name"),
+                "pcr_linked_date": pcr_int.get("linked_date"),
+                "notes": notes,
+                "created_date": req_config.get("created_date"),
+            })
+    except Exception:
+        pass
 
     redirect_url = f"/requisitions/{client_code}/{req_id}"
     if framework_generated:
@@ -348,42 +415,44 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
 
     req_root = get_requisition_root(client_code, req_id)
 
-    # Get candidates from batch extracted/ folders + legacy processed/
-    import json
-    from scripts.utils.client_utils import list_all_extracted_resumes
+    # Get candidates — DB fast path when enabled
     candidates = []
-    seen = set()
-    assessments_dir = req_root / "assessments" / "individual"
+    db_candidates_loaded = False
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            db = get_db()
+            seen_norms = set()
+            for row in db.list_assessments(req_id):
+                seen_norms.add(row['name_normalized'])
+                candidates.append({
+                    'name_normalized': row['name_normalized'],
+                    'resume_file': f"{row['name_normalized']}_resume.txt",
+                    'assessed': True,
+                    'score': row.get('total_score', 0) or 0,
+                    'percentage': row.get('percentage', 0) or 0,
+                    'recommendation': row.get('recommendation', 'PENDING'),
+                    'name': row.get('name', row['name_normalized']),
+                })
+            for cand in db.list_candidates(req_id, status='pending'):
+                if cand['name_normalized'] not in seen_norms:
+                    candidates.append({
+                        'name_normalized': cand['name_normalized'],
+                        'resume_file': f"{cand['name_normalized']}_resume.txt",
+                        'assessed': False,
+                        'name': cand.get('name', cand['name_normalized'].replace('_', ' ').title()),
+                    })
+            db_candidates_loaded = True
+    except Exception as _e:
+        logger.debug("DB view_requisition candidates failed, falling back to files: %s", _e)
 
-    for resume_file in list_all_extracted_resumes(client_code, req_id):
-        name_normalized = resume_file.stem.replace("_resume", "")
-        if name_normalized in seen:
-            continue
-        seen.add(name_normalized)
-        assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
+    if not db_candidates_loaded:
+        import json
+        from scripts.utils.client_utils import list_all_extracted_resumes
+        seen = set()
+        assessments_dir = req_root / "assessments" / "individual"
 
-        candidate_data = {
-            'name_normalized': name_normalized,
-            'resume_file': resume_file.name,
-            'assessed': assessment_file.exists()
-        }
-
-        if assessment_file.exists():
-            with open(assessment_file, 'r') as f:
-                assessment = json.load(f)
-            candidate_data['score'] = assessment.get('total_score', 0)
-            candidate_data['percentage'] = assessment.get('percentage', 0)
-            candidate_data['recommendation'] = assessment.get('recommendation', 'PENDING')
-            candidate_data['name'] = assessment.get('candidate', {}).get('name', name_normalized)
-        else:
-            candidate_data['name'] = name_normalized.replace("_", " ").title()
-
-        candidates.append(candidate_data)
-
-    # Also check legacy processed/ folder
-    legacy_dir = req_root / "resumes" / "processed"
-    if legacy_dir.exists():
-        for resume_file in sorted(legacy_dir.glob("*.txt")):
+        for resume_file in list_all_extracted_resumes(client_code, req_id):
             name_normalized = resume_file.stem.replace("_resume", "")
             if name_normalized in seen:
                 continue
@@ -404,6 +473,30 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
             else:
                 candidate_data['name'] = name_normalized.replace("_", " ").title()
             candidates.append(candidate_data)
+
+        legacy_dir = req_root / "resumes" / "processed"
+        if legacy_dir.exists():
+            for resume_file in sorted(legacy_dir.glob("*.txt")):
+                name_normalized = resume_file.stem.replace("_resume", "")
+                if name_normalized in seen:
+                    continue
+                seen.add(name_normalized)
+                assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
+                candidate_data = {
+                    'name_normalized': name_normalized,
+                    'resume_file': resume_file.name,
+                    'assessed': assessment_file.exists()
+                }
+                if assessment_file.exists():
+                    with open(assessment_file, 'r') as f:
+                        assessment = json.load(f)
+                    candidate_data['score'] = assessment.get('total_score', 0)
+                    candidate_data['percentage'] = assessment.get('percentage', 0)
+                    candidate_data['recommendation'] = assessment.get('recommendation', 'PENDING')
+                    candidate_data['name'] = assessment.get('candidate', {}).get('name', name_normalized)
+                else:
+                    candidate_data['name'] = name_normalized.replace("_", " ").title()
+                candidates.append(candidate_data)
 
     # Sort by score (assessed first, then by score descending)
     candidates.sort(key=lambda x: (x['assessed'], x.get('score', 0)), reverse=True)
@@ -573,8 +666,25 @@ async def update_requisition(
             except Exception as e:
                 logger.warning(f"Failed to extract JD text during update: {e}")
 
-    with open(config_path, 'w') as f:
-        yaml.dump(config, f, default_flow_style=False)
+    if _files_mode():
+        with open(config_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
+
+    # Write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            get_db().update_requisition(req_id, {
+                "job_title": title,
+                "department": department,
+                "location": location,
+                "salary_min": salary_min,
+                "salary_max": salary_max,
+                "status": status,
+                "notes": notes,
+            })
+    except Exception:
+        pass
 
     return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}", status_code=303)
 
@@ -614,8 +724,17 @@ async def update_requisition_status(
 
     config['status'] = status
 
-    with open(config_path, 'w') as f:
-        yaml.dump(config, f, default_flow_style=False)
+    if _files_mode():
+        with open(config_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
+
+    # Write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            get_db().update_requisition(req_id, {"status": status})
+    except Exception:
+        pass
 
     return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}", status_code=303)
 
@@ -669,8 +788,25 @@ async def link_pcr_position(
         'last_sync': pcr.get('last_sync'),
     }
 
-    with open(config_path, 'w') as f:
-        yaml.dump(config, f, default_flow_style=False)
+    if _files_mode():
+        with open(config_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
+
+    # Write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            pcr = config.get("pcr_integration", {})
+            positions = pcr.get("positions", [])
+            first_pos = positions[0] if positions else {}
+            get_db().update_requisition(req_id, {
+                "pcr_job_id": pcr.get("job_id"),
+                "pcr_job_title": first_pos.get("job_title"),
+                "pcr_company_name": first_pos.get("company_name"),
+                "pcr_linked_date": pcr.get("linked_date"),
+            })
+    except Exception:
+        pass
 
     return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}", status_code=303)
 
@@ -706,8 +842,33 @@ async def unlink_pcr_position(
     else:
         config.pop('pcr_integration', None)
 
-    with open(config_path, 'w') as f:
-        yaml.dump(config, f, default_flow_style=False)
+    if _files_mode():
+        with open(config_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
+
+    # Write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            pcr = config.get("pcr_integration", {})
+            if pcr:
+                positions = pcr.get("positions", [])
+                first_pos = positions[0] if positions else {}
+                get_db().update_requisition(req_id, {
+                    "pcr_job_id": pcr.get("job_id"),
+                    "pcr_job_title": first_pos.get("job_title"),
+                    "pcr_company_name": first_pos.get("company_name"),
+                    "pcr_linked_date": pcr.get("linked_date"),
+                })
+            else:
+                get_db().update_requisition(req_id, {
+                    "pcr_job_id": None,
+                    "pcr_job_title": None,
+                    "pcr_company_name": None,
+                    "pcr_linked_date": None,
+                })
+    except Exception:
+        pass
 
     return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}", status_code=303)
 
@@ -762,6 +923,17 @@ async def regenerate_framework(request: Request, client_code: str, req_id: str):
             f.write(f"# Extracted Job Description Text\n")
             f.write(f"# Regenerated: {datetime.now().strftime('%Y-%m-%d')}\n\n")
             f.write(jd_text)
+
+        # Dual-write to DB when enabled
+        try:
+            from scripts.utils.database import get_db, _use_database
+            if _use_database():
+                get_db().update_requisition(req_id, {
+                    "framework_source": "ai_generated",
+                    "framework_generated_at": datetime.now().isoformat(),
+                })
+        except Exception:
+            pass
 
         logger.info(f"Regenerated AI framework for {req_id}")
         return RedirectResponse(
@@ -831,11 +1003,22 @@ async def update_job_description(
     logger.info(f"Updated job description for {req_id}: {jd_path}")
 
     # Update requisition.yaml
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    config.setdefault('job', {})['description_file'] = job_description.filename
-    with open(config_path, 'w') as f:
-        yaml.dump(config, f, default_flow_style=False)
+    if _files_mode():
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+        config.setdefault('job', {})['description_file'] = job_description.filename
+        with open(config_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
+
+    # Write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            get_db().update_requisition(req_id, {
+                "job_description_file": str(jd_path),
+            })
+    except Exception:
+        pass
 
     # Extract text from new JD
     try:

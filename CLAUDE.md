@@ -200,6 +200,61 @@ active_requisitions:
   - `docx` (npm) - Report generation
   - `pyyaml` - Configuration management
   - `pandas` - Data aggregation and ranking
+  - `sqlite3` (stdlib) - Primary structured data store
+
+---
+
+## Database Architecture
+
+Structured metadata (clients, requisitions, candidates, assessments, batches) is stored in **SQLite** (`data/raaf.db`). Binary and document files remain on disk, referenced by path columns in the DB.
+
+### What's in SQLite
+
+| Table | Replaces |
+|-------|----------|
+| `clients` | `client_info.yaml` |
+| `client_contacts` | contacts dict in `client_info.yaml` |
+| `requisitions` | `requisition.yaml` |
+| `candidates` | file presence in `resumes/` |
+| `assessments` | `*_assessment.json` files |
+| `batches` | batch directory scanning |
+| `reports` | report file tracking |
+| `pcr_positions_cache` | live PCR API calls |
+
+### What Stays on Disk (never migrated)
+
+- `resumes/batches/*/originals/*.pdf` / `*.docx` — original resume files
+- `resumes/batches/*/extracted/*_resume.txt` — extracted text
+- `job_description.pdf` / `job_description.docx` — uploaded JDs
+- `framework/assessment_framework.md` — framework documents
+- `reports/final/*.docx` / `reports/drafts/*.docx` — generated reports
+- `config/settings.yaml` — global settings (loaded at startup)
+- `config/pcr_credentials.yaml` — secrets
+
+### RAAF_DB_MODE Environment Variable
+
+Controls storage behaviour at runtime (set in the systemd service or `.env`):
+
+| Value | Behaviour |
+|-------|-----------|
+| `db` **(default)** | Reads and writes go to SQLite; YAML/JSON config files are not updated |
+| `dual` | Writes go to both SQLite **and** YAML/JSON files simultaneously (used during migration) |
+| `files` | Legacy mode — reads/writes use YAML/JSON files only; SQLite is not used |
+
+**Rollback:** Set `RAAF_DB_MODE=files` to instantly revert to file-based operation. The YAML/JSON files are never deleted, so rollback is safe. To rebuild the DB from files: `python scripts/migrate/backfill_data.py`.
+
+### DB Backup
+
+```bash
+# Quick backup (add to cron or run before upgrades)
+cp data/raaf.db data/raaf_backup_$(date +%Y%m%d).db
+
+# Verify DB integrity
+sqlite3 data/raaf.db "PRAGMA integrity_check;"
+
+# Rebuild FTS index after bulk import
+python -c "from scripts.utils.database import get_db; get_db().rebuild_fts_index()"
+```
 
 ---
 
@@ -1053,7 +1108,10 @@ python scripts/client_dashboard.py --client techco
 **Weekly:**
 - Review `logs/` for errors or warnings
 - Check for stale requisitions (no activity > 30 days)
-- Back up `clients/` directory
+- Back up `clients/` directory and `data/raaf.db`:
+  ```bash
+  cp data/raaf.db data/raaf_backup_$(date +%Y%m%d).db
+  ```
 
 **Monthly:**
 - Archive completed/cancelled requisitions older than 60 days

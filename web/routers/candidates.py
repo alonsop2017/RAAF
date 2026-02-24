@@ -20,6 +20,13 @@ from scripts.utils.client_utils import (
 )
 import yaml
 
+try:
+    from scripts.utils.database import _files_mode, _use_database, get_db
+except ImportError:
+    def _files_mode(): return True   # noqa: E704
+    def _use_database(): return False  # noqa: E704
+    def get_db(): return None  # noqa: E704
+
 # Alias for consistency
 get_client_config = get_client_info
 
@@ -210,8 +217,40 @@ async def upload_resumes(
         'source_files': source_files,
         'status': 'uploaded',
     }
-    with open(batch_dir / "batch_manifest.yaml", 'w') as f:
-        yaml.dump(manifest, f, default_flow_style=False)
+    if _files_mode():
+        with open(batch_dir / "batch_manifest.yaml", 'w') as f:
+            yaml.dump(manifest, f, default_flow_style=False)
+
+    # Write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            db = get_db()
+            db.upsert_batch(
+                req_id,
+                batch_dir.name,
+                batch_type="flat",
+                candidate_count=uploaded_count,
+                manifest_path=str(batch_dir / "batch_manifest.yaml"),
+            )
+            for txt_file in sorted(extracted_dir.glob("*.txt")):
+                name_norm = txt_file.stem.replace("_resume", "")
+                matching_orig = next(
+                    (o for o in originals_dir.iterdir()
+                     if normalize_filename(o.name) == name_norm),
+                    None,
+                )
+                db.upsert_candidate({
+                    "req_id": req_id,
+                    "name": name_norm.replace("_", " ").title(),
+                    "name_normalized": name_norm,
+                    "batch": batch_dir.name,
+                    "resume_original_path": str(matching_orig) if matching_orig else None,
+                    "resume_extracted_path": str(txt_file),
+                    "source_platform": "Upload",
+                })
+    except Exception:
+        pass
 
     return RedirectResponse(url=f"/candidates/{client_code}/{req_id}?uploaded={uploaded_count}", status_code=303)
 
@@ -497,8 +536,40 @@ async def drive_import_files(
         'source_files': source_files,
         'status': 'uploaded',
     }
-    with open(batch_dir / "batch_manifest.yaml", 'w') as f:
-        yaml.dump(manifest, f, default_flow_style=False)
+    if _files_mode():
+        with open(batch_dir / "batch_manifest.yaml", 'w') as f:
+            yaml.dump(manifest, f, default_flow_style=False)
+
+    # Write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            db = get_db()
+            db.upsert_batch(
+                req_id,
+                batch_dir.name,
+                batch_type="flat",
+                candidate_count=imported_count,
+                manifest_path=str(batch_dir / "batch_manifest.yaml"),
+            )
+            for txt_file in sorted(extracted_dir.glob("*.txt")):
+                name_norm = txt_file.stem.replace("_resume", "")
+                matching_orig = next(
+                    (o for o in originals_dir.iterdir()
+                     if o.stem == name_norm or o.stem.startswith(name_norm)),
+                    None,
+                )
+                db.upsert_candidate({
+                    "req_id": req_id,
+                    "name": name_norm.replace("_", " ").title(),
+                    "name_normalized": name_norm,
+                    "batch": batch_dir.name,
+                    "resume_original_path": str(matching_orig) if matching_orig else None,
+                    "resume_extracted_path": str(txt_file),
+                    "source_platform": "Google Drive",
+                })
+    except Exception:
+        pass
 
     return RedirectResponse(
         url=f"/candidates/{client_code}/{req_id}?uploaded={imported_count}",

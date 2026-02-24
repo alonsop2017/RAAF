@@ -61,6 +61,37 @@ Return a JSON array with this structure:
 Sort by match_score descending. Return ONLY the JSON array, no other text."""
 
 
+def _db_row_to_assessment(row: dict) -> dict:
+    """Transform a v_candidate_search row to the legacy assessment dict shape."""
+    return {
+        "candidate": {
+            "name": row.get("name", ""),
+            "name_normalized": row.get("name_normalized", ""),
+            "source_platform": row.get("source_platform", ""),
+            "batch": row.get("batch", ""),
+        },
+        "recommendation": row.get("recommendation", "PENDING"),
+        "percentage": row.get("percentage", 0) or 0,
+        "total_score": row.get("total_score", 0) or 0,
+        "summary": row.get("summary", "") or "",
+        "key_strengths": json.loads(row["key_strengths_json"])
+                         if row.get("key_strengths_json") else [],
+        "areas_of_concern": json.loads(row["areas_of_concern_json"])
+                            if row.get("areas_of_concern_json") else [],
+        "interview_focus_areas": json.loads(row["interview_focus_json"])
+                                 if row.get("interview_focus_json") else [],
+        "scores": json.loads(row["scores_json"])
+                  if row.get("scores_json") else {},
+        # resume_text_preview is not stored in DB; leave empty for DB-backed loads
+        "resume_text_preview": "",
+        "_source": {
+            "client_code": row.get("client_code", ""),
+            "req_id": row.get("req_id", ""),
+            "req_title": row.get("job_title", row.get("req_id", "")),
+        },
+    }
+
+
 def load_candidate_repository(
     client_filter: str = None,
     req_filter: str = None,
@@ -77,6 +108,49 @@ def load_candidate_repository(
     Returns:
         List of assessment dictionaries with source metadata
     """
+    # DB-backed fast path
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _sys.path.insert(0, str(_Path(__file__).parent.parent.parent))
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            db = get_db()
+            # Use SQL search with empty query to get all rows, or targeted query
+            if client_filter or req_filter:
+                # Targeted query using SQL LIKE
+                query_parts = []
+                if client_filter:
+                    query_parts.append(client_filter)
+                if req_filter:
+                    query_parts.append(req_filter)
+                rows = db.search_candidates_sql(" ".join(query_parts), limit=5000)
+            else:
+                # All assessed candidates via v_candidate_search
+                with db._conn() as conn:
+                    rows = [dict(r) for r in conn.execute("""
+                        SELECT * FROM v_candidate_search
+                        WHERE recommendation IS NOT NULL
+                          AND recommendation != 'PENDING'
+                        ORDER BY percentage DESC
+                    """).fetchall()]
+
+            candidates = []
+            for row in rows:
+                if row.get("recommendation") == "PENDING":
+                    continue
+                if (row.get("percentage") or 0) < min_score:
+                    continue
+                if client_filter and row.get("client_code") != client_filter:
+                    continue
+                if req_filter and row.get("req_id") != req_filter:
+                    continue
+                candidates.append(_db_row_to_assessment(row))
+            return candidates
+    except Exception:
+        pass  # Fall through to file-based scan
+
+    # File-based fallback
     candidates = []
 
     clients = list_clients()
@@ -103,31 +177,26 @@ def load_candidate_repository(
                             with open(assessment_file, "r", encoding="utf-8") as f:
                                 assessment = json.load(f)
 
-                            # Skip pending/incomplete assessments
                             if assessment.get("recommendation") == "PENDING":
                                 continue
-
-                            # Apply score filter
                             if assessment.get("percentage", 0) < min_score:
                                 continue
 
-                            # Add source metadata
                             assessment["_source"] = {
                                 "client_code": client_code,
                                 "req_id": req_id,
                                 "req_title": req_title,
-                                "file": assessment_file.name
+                                "file": assessment_file.name,
                             }
-
                             candidates.append(assessment)
 
-                        except (json.JSONDecodeError, IOError) as e:
+                        except (json.JSONDecodeError, IOError):
                             continue
 
-                except Exception as e:
+                except Exception:
                     continue
 
-        except Exception as e:
+        except Exception:
             continue
 
     return candidates
@@ -501,39 +570,49 @@ def search_by_text(
 
 def get_repository_stats() -> dict:
     """Get statistics about the candidate repository."""
-    candidates = load_candidate_repository()
+    # DB-backed fast path — single aggregate query
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _sys.path.insert(0, str(_Path(__file__).parent.parent.parent))
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            db_stats = get_db().get_repository_stats()
+            # Add empty by_client / by_requisition (not needed by the UI currently)
+            return {
+                "total_candidates": db_stats.get("total_candidates", 0),
+                "by_recommendation": db_stats.get("by_recommendation", {}),
+                "by_client": {},
+                "by_requisition": {},
+                "avg_score": db_stats.get("avg_score", 0),
+            }
+    except Exception:
+        pass  # Fall through to file-based scan
 
+    # File-based fallback
+    candidates = load_candidate_repository()
     stats = {
         "total_candidates": len(candidates),
         "by_recommendation": {},
         "by_client": {},
         "by_requisition": {},
-        "avg_score": 0
+        "avg_score": 0,
     }
-
     if not candidates:
         return stats
 
     total_score = 0
     for c in candidates:
-        # By recommendation
         rec = c.get("recommendation", "Unknown")
         stats["by_recommendation"][rec] = stats["by_recommendation"].get(rec, 0) + 1
-
-        # By client
         source = c.get("_source", {})
         client = source.get("client_code", "Unknown")
         stats["by_client"][client] = stats["by_client"].get(client, 0) + 1
-
-        # By requisition
         req = f"{client}/{source.get('req_id', 'Unknown')}"
         stats["by_requisition"][req] = stats["by_requisition"].get(req, 0) + 1
-
-        # Total score
         total_score += c.get("percentage", 0)
 
     stats["avg_score"] = round(total_score / len(candidates), 1)
-
     return stats
 
 

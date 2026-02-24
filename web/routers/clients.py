@@ -11,6 +11,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 import yaml
 
+from scripts.utils.database import _files_mode, _use_database, get_db
+
 from scripts.utils.client_utils import (
     list_clients, get_client_info, get_client_root,
     get_project_root, list_requisitions, get_requisition_config
@@ -101,8 +103,25 @@ async def create_client(
         'active_requisitions': []
     }
 
-    with open(client_root / "client_info.yaml", 'w') as f:
-        yaml.dump(client_info, f, default_flow_style=False)
+    if _files_mode():
+        with open(client_root / "client_info.yaml", 'w') as f:
+            yaml.dump(client_info, f, default_flow_style=False)
+
+    # Write to DB when enabled
+    try:
+        if _use_database():
+            billing = client_info.get("billing", {})
+            get_db().create_client({
+                "client_code": code,
+                "company_name": company_name,
+                "industry": industry,
+                "status": "active",
+                "default_commission_rate": billing.get("default_commission_rate"),
+                "payment_terms": billing.get("payment_terms"),
+                "contacts": client_info.get("contacts", {}),
+            })
+    except Exception:
+        pass
 
     return RedirectResponse(url=f"/clients/{code}", status_code=303)
 
@@ -200,7 +219,22 @@ async def update_client(
     config['billing']['default_commission_rate'] = commission_rate
 
     # Save
-    with open(config_path, 'w') as f:
-        yaml.dump(config, f, default_flow_style=False)
+    if _files_mode():
+        with open(config_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
+
+    # Write to DB when enabled
+    try:
+        if _use_database():
+            billing = config.get("billing", {})
+            get_db().update_client(client_code, {
+                "company_name": company_name,
+                "industry": industry,
+                "status": status,
+                "default_commission_rate": billing.get("default_commission_rate"),
+                "contacts": config.get("contacts", {}),
+            })
+    except Exception:
+        pass
 
     return RedirectResponse(url=f"/clients/{client_code}", status_code=303)
