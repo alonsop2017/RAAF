@@ -49,6 +49,11 @@ Thumbs.db
 *.zip
 !templates/**/*.zip
 
+# SQLite database files (data/raaf.db rebuilt from files via backfill_data.py)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
 # Draft reports (optional - uncomment if you want to ignore drafts)
 # clients/*/requisitions/*/reports/drafts/
 clients/
