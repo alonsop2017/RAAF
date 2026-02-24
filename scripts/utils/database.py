@@ -6,7 +6,7 @@ assessments, batches, and reports. Resume files, PDFs, and DOCX documents
 remain on disk; they are referenced via file path columns.
 
 Environment variables:
-    RAAF_DB_MODE   — 'files' (default), 'dual', or 'db'
+    RAAF_DB_MODE   — 'db' (default), 'dual', or 'files'
     RAAF_DB_PATH   — override default DB location (data/raaf.db)
 
 Usage:
@@ -51,8 +51,19 @@ def reset_db_instance() -> None:
 
 
 def _use_database() -> bool:
-    """Return True when RAAF_DB_MODE is 'dual' or 'db'."""
-    return os.environ.get("RAAF_DB_MODE", "files") in ("dual", "db")
+    """Return True when RAAF_DB_MODE is 'dual' or 'db' (default)."""
+    return os.environ.get("RAAF_DB_MODE", "db") in ("dual", "db")
+
+
+def _files_mode() -> bool:
+    """Return True when file writes should be performed ('files' or 'dual' mode).
+
+    In the default 'db' mode this returns False — the DB is the source of
+    truth and YAML/JSON config files are not updated on write.  Set
+    RAAF_DB_MODE=files (or =dual) to re-enable file writes for rollback or
+    migration purposes.
+    """
+    return os.environ.get("RAAF_DB_MODE", "db") in ("files", "dual")
 
 
 # ---------------------------------------------------------------------------

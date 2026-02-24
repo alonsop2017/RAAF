@@ -14,6 +14,13 @@ import yaml
 import shutil
 import logging
 
+try:
+    from scripts.utils.database import _files_mode, _use_database, get_db
+except ImportError:
+    def _files_mode(): return True   # noqa: E704
+    def _use_database(): return False  # noqa: E704
+    def get_db(): return None  # noqa: E704
+
 logger = logging.getLogger(__name__)
 
 from scripts.utils.client_utils import (
@@ -281,8 +288,9 @@ async def create_requisition(
             'linked_date': datetime.now().strftime("%Y-%m-%d"),
         }
 
-    with open(req_root / "requisition.yaml", 'w') as f:
-        yaml.dump(req_config, f, default_flow_style=False)
+    if _files_mode():
+        with open(req_root / "requisition.yaml", 'w') as f:
+            yaml.dump(req_config, f, default_flow_style=False)
 
     # Generate or copy assessment framework
     framework_generated = False
@@ -346,12 +354,12 @@ async def create_requisition(
         if req_id not in client_config['active_requisitions']:
             client_config['active_requisitions'].append(req_id)
 
-        with open(client_config_path, 'w') as f:
-            yaml.dump(client_config, f, default_flow_style=False)
+        if _files_mode():
+            with open(client_config_path, 'w') as f:
+                yaml.dump(client_config, f, default_flow_style=False)
 
-    # Dual-write to DB when enabled
+    # Write to DB when enabled
     try:
-        from scripts.utils.database import get_db, _use_database
         if _use_database():
             job = req_config.get("job", {})
             requirements = req_config.get("requirements", {})
@@ -658,10 +666,11 @@ async def update_requisition(
             except Exception as e:
                 logger.warning(f"Failed to extract JD text during update: {e}")
 
-    with open(config_path, 'w') as f:
-        yaml.dump(config, f, default_flow_style=False)
+    if _files_mode():
+        with open(config_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
 
-    # Dual-write to DB when enabled
+    # Write to DB when enabled
     try:
         from scripts.utils.database import get_db, _use_database
         if _use_database():
@@ -715,10 +724,11 @@ async def update_requisition_status(
 
     config['status'] = status
 
-    with open(config_path, 'w') as f:
-        yaml.dump(config, f, default_flow_style=False)
+    if _files_mode():
+        with open(config_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
 
-    # Dual-write to DB when enabled
+    # Write to DB when enabled
     try:
         from scripts.utils.database import get_db, _use_database
         if _use_database():
@@ -778,10 +788,11 @@ async def link_pcr_position(
         'last_sync': pcr.get('last_sync'),
     }
 
-    with open(config_path, 'w') as f:
-        yaml.dump(config, f, default_flow_style=False)
+    if _files_mode():
+        with open(config_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
 
-    # Dual-write to DB when enabled
+    # Write to DB when enabled
     try:
         from scripts.utils.database import get_db, _use_database
         if _use_database():
@@ -831,10 +842,11 @@ async def unlink_pcr_position(
     else:
         config.pop('pcr_integration', None)
 
-    with open(config_path, 'w') as f:
-        yaml.dump(config, f, default_flow_style=False)
+    if _files_mode():
+        with open(config_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
 
-    # Dual-write to DB when enabled
+    # Write to DB when enabled
     try:
         from scripts.utils.database import get_db, _use_database
         if _use_database():
@@ -991,13 +1003,14 @@ async def update_job_description(
     logger.info(f"Updated job description for {req_id}: {jd_path}")
 
     # Update requisition.yaml
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    config.setdefault('job', {})['description_file'] = job_description.filename
-    with open(config_path, 'w') as f:
-        yaml.dump(config, f, default_flow_style=False)
+    if _files_mode():
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+        config.setdefault('job', {})['description_file'] = job_description.filename
+        with open(config_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
 
-    # Dual-write to DB when enabled
+    # Write to DB when enabled
     try:
         from scripts.utils.database import get_db, _use_database
         if _use_database():

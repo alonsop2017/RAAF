@@ -18,6 +18,13 @@ from scripts.utils.client_utils import (
     get_project_root, list_all_extracted_resumes,
 )
 
+try:
+    from scripts.utils.database import _files_mode, _use_database, get_db
+except ImportError:
+    def _files_mode(): return True   # noqa: E704
+    def _use_database(): return False  # noqa: E704
+    def get_db(): return None  # noqa: E704
+
 # Alias for consistency
 get_client_config = get_client_info
 
@@ -288,12 +295,13 @@ async def set_lifecycle_status(
             "updated_at": datetime.now().isoformat(),
             "updated_by": getattr(request.state, 'user', {}).get('email', 'system'),
         }
-        with open(lifecycle_file, 'w') as f:
-            json.dump(data, f, indent=2)
-    elif lifecycle_file.exists():
+        if _files_mode():
+            with open(lifecycle_file, 'w') as f:
+                json.dump(data, f, indent=2)
+    elif lifecycle_file.exists() and _files_mode():
         lifecycle_file.unlink()
 
-    # Dual-write to DB when enabled
+    # Write to DB when enabled
     try:
         from scripts.utils.database import get_db, _use_database
         if _use_database():
@@ -483,10 +491,11 @@ async def update_assessment(
     assessment['metadata']['assessor'] = form_data.get('assessor', 'Manual/Web')
 
     # Save
-    with open(assessment_file, 'w') as f:
-        json.dump(assessment, f, indent=2)
+    if _files_mode():
+        with open(assessment_file, 'w') as f:
+            json.dump(assessment, f, indent=2)
 
-    # Dual-write to DB when enabled
+    # Write to DB when enabled
     try:
         from scripts.utils.database import get_db, _use_database
         if _use_database():

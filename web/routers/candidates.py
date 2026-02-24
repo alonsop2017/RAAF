@@ -20,6 +20,13 @@ from scripts.utils.client_utils import (
 )
 import yaml
 
+try:
+    from scripts.utils.database import _files_mode, _use_database, get_db
+except ImportError:
+    def _files_mode(): return True   # noqa: E704
+    def _use_database(): return False  # noqa: E704
+    def get_db(): return None  # noqa: E704
+
 # Alias for consistency
 get_client_config = get_client_info
 
@@ -210,10 +217,11 @@ async def upload_resumes(
         'source_files': source_files,
         'status': 'uploaded',
     }
-    with open(batch_dir / "batch_manifest.yaml", 'w') as f:
-        yaml.dump(manifest, f, default_flow_style=False)
+    if _files_mode():
+        with open(batch_dir / "batch_manifest.yaml", 'w') as f:
+            yaml.dump(manifest, f, default_flow_style=False)
 
-    # Dual-write to DB when enabled
+    # Write to DB when enabled
     try:
         from scripts.utils.database import get_db, _use_database
         if _use_database():
@@ -528,10 +536,11 @@ async def drive_import_files(
         'source_files': source_files,
         'status': 'uploaded',
     }
-    with open(batch_dir / "batch_manifest.yaml", 'w') as f:
-        yaml.dump(manifest, f, default_flow_style=False)
+    if _files_mode():
+        with open(batch_dir / "batch_manifest.yaml", 'w') as f:
+            yaml.dump(manifest, f, default_flow_style=False)
 
-    # Dual-write to DB when enabled
+    # Write to DB when enabled
     try:
         from scripts.utils.database import get_db, _use_database
         if _use_database():
