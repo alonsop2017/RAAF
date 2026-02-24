@@ -314,7 +314,12 @@ class DatabaseManager:
         """)
 
     def _create_fts(self, conn: sqlite3.Connection) -> None:
-        """FTS5 virtual table for fast full-text candidate search."""
+        """FTS5 virtual table for fast full-text candidate search.
+
+        Standalone FTS5 (no content= option) avoids requiring column-name
+        alignment between the FTS table and the v_candidate_search view.
+        The index is populated via rebuild_fts_index() after bulk inserts.
+        """
         conn.executescript("""
             CREATE VIRTUAL TABLE IF NOT EXISTS assessments_fts
             USING fts5(
@@ -325,16 +330,37 @@ class DatabaseManager:
                 summary,
                 key_strengths,
                 areas_of_concern,
-                recommendation,
-                content=v_candidate_search,
-                content_rowid=candidate_id
+                recommendation
             );
         """)
 
     def rebuild_fts_index(self) -> None:
-        """Rebuild the FTS5 index from scratch. Call after bulk inserts."""
+        """Rebuild the FTS5 index from scratch. Call after bulk inserts.
+
+        The FTS5 'rebuild' command requires the content table/view columns to
+        match the FTS5 column names exactly, which our view doesn't guarantee.
+        We do a manual DELETE + INSERT instead, mapping columns explicitly.
+        """
         with self._conn() as conn:
-            conn.execute("INSERT INTO assessments_fts(assessments_fts) VALUES('rebuild')")
+            conn.execute("DELETE FROM assessments_fts")
+            conn.execute("""
+                INSERT INTO assessments_fts(
+                    rowid, candidate_name, req_id, job_title,
+                    client_code, summary, key_strengths,
+                    areas_of_concern, recommendation
+                )
+                SELECT
+                    candidate_id,
+                    name,
+                    req_id,
+                    job_title,
+                    client_code,
+                    COALESCE(summary, ''),
+                    COALESCE(key_strengths_json, ''),
+                    COALESCE(areas_of_concern_json, ''),
+                    COALESCE(recommendation, '')
+                FROM v_candidate_search
+            """)
 
     # -----------------------------------------------------------------------
     # Clients
