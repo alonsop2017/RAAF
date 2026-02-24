@@ -155,6 +155,8 @@ There are two ways to bring candidates in. The PCRecruiter route is the most pow
 
 ### From PCRecruiter (Recommended)
 
+![Workflow A – PCR Integrated](RAAF_Workflow_A_PCR_Integrated.png)
+
 PCRecruiter (PCR) is your applicant tracking system. When a job is posted through PCR and candidates apply, their resumes are stored in PCR waiting for you to pull them. RAAF connects directly to PCR and can download all of those resumes with a single click.
 
 **Step 1 — Sync Candidates**
@@ -172,6 +174,8 @@ Once the candidate list is synced, click **Download Resumes**. RAAF will downloa
 ---
 
 ### Manual Upload
+
+![Workflow B – Manual / Direct Upload](RAAF_Workflow_B_Manual_Upload.png)
 
 If you have resumes in your email or on your computer, you can upload them directly.
 
@@ -314,6 +318,8 @@ Each email is personalized to the candidate. It mentions their specific backgrou
 ---
 
 ## 12. Searching Your Candidate Repository
+
+![Workflow C – Candidate Repository Search](RAAF_Workflow_C_Repository_Search.png)
 
 Every candidate you have ever assessed is stored and searchable. This is one of the most valuable features of RAAF — the ability to find strong candidates from past searches and bring them back for a new opportunity.
 

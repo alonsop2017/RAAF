@@ -82,25 +82,25 @@ Direct integration with PCRecruiter means:
 
 ## How RAAF Works
 
-### The Assessment Workflow
+RAAF supports three distinct workflows depending on how candidates reach you. The recommended path uses PCRecruiter for end-to-end automation. A manual path accommodates resumes received directly. A third path lets you re-use your existing candidate database for new positions.
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        RAAF WORKFLOW                                 │
-└─────────────────────────────────────────────────────────────────────┘
+### Workflow A — PCR Integrated (Recommended)
 
-    ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
-    │  CLIENT  │     │   PCR    │     │   RAAF   │     │  CLIENT  │
-    │  REQUEST │────▶│  SETUP   │────▶│ PROCESS  │────▶│ DELIVERY │
-    └──────────┘     └──────────┘     └──────────┘     └──────────┘
-         │                │                │                │
-         ▼                ▼                ▼                ▼
-    Receive job      Create PCR       Sync candidates   Deliver report
-    description      position         Extract resumes   Client reviews
-    Define needs     Post to Indeed   Score against     Interview top
-                     Candidates        framework        candidates
-                     apply            Generate report
-```
+![Workflow A – PCR Integrated](RAAF_Workflow_A_PCR_Integrated.png)
+
+The full end-to-end workflow: post to Indeed through PCRecruiter, candidates flow in automatically, RAAF scores them, and results are pushed back to PCR.
+
+### Workflow B — Manual / Direct Upload
+
+![Workflow B – Manual / Direct Upload](RAAF_Workflow_B_Manual_Upload.png)
+
+For resumes received by email or other direct channels. Upload directly into RAAF; everything from assessment onward is identical to Workflow A.
+
+### Workflow C — Candidate Repository Search
+
+![Workflow C – Candidate Repository Search](RAAF_Workflow_C_Repository_Search.png)
+
+When a new position opens, search your existing candidate database first. Strong candidates from past searches can be matched to the new role and re-assessed in seconds — without starting from scratch.
 
 ### Step-by-Step Process
 

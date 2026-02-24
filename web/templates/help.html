@@ -15,7 +15,8 @@
     overflow-x: auto;
 }
 
-.workflow-diagram-container img {
+.workflow-diagram-container img,
+.workflow-img {
     max-width: 100%;
     height: auto;
     border-radius: 6px;
@@ -23,7 +24,8 @@
     transition: transform 0.2s;
 }
 
-.workflow-diagram-container img.zoomed {
+.workflow-diagram-container img.zoomed,
+.workflow-img.zoomed {
     cursor: zoom-out;
     transform: scale(1.8);
     transform-origin: top center;
@@ -196,83 +198,96 @@
     <p class="subtitle">Workflows, scoring framework, and recommendation tiers</p>
 </div>
 
-<!-- Workflow Diagram -->
-<div class="card">
+<!-- Supported Workflows heading -->
+<div class="card" style="margin-bottom:1rem;">
     <div class="card-header">
         <h3>Supported Workflows</h3>
     </div>
-    <div class="card-body">
-        <div class="workflow-diagram-container">
-            <img src="/static/images/workflow_diagram.png"
-                 alt="RAAF Workflow Diagram"
-                 id="workflowDiagram"
-                 title="Click to zoom">
-            <p class="diagram-caption">
-                Figure 1 &mdash; RAAF supports three workflows: PCR-Integrated (recommended),
-                Manual upload, and Candidate Repository Search.
-                <br><em>Click the diagram to zoom in.</em>
-            </p>
-        </div>
+    <div class="card-body" style="padding-bottom:0.5rem;">
+        <p style="font-size:0.9rem;color:var(--text-secondary);margin:0;">
+            RAAF supports three distinct workflows. Choose the one that matches how candidates reach you.
+            The full combined diagram is available as a
+            <a href="/static/images/workflow_diagram.png" download="RAAF_Workflow_Diagram.png">downloadable PNG</a>.
+        </p>
     </div>
 </div>
 
-<!-- Three Workflow Cards -->
-<div class="workflow-cards">
-
-    <div class="workflow-card pcr">
-        <h3>Workflow A &mdash; PCR-Integrated <span class="badge-recommended">Recommended</span></h3>
-        <p>Candidates apply via Indeed, flow automatically into PCRecruiter, and RAAF pulls them with one click.</p>
-        <ol class="workflow-steps">
-            <li>Create position in PCRecruiter (Job Code: INDML)</li>
-            <li>PCR posts the job to Indeed automatically</li>
-            <li>Candidates apply &rarr; resumes stored in PCR</li>
-            <li>Click <strong>PCR Sync</strong> in RAAF to pull applicants</li>
-            <li>Click <strong>Download Resumes</strong> to retrieve files</li>
-            <li>Extract text &amp; create a batch</li>
-            <li>Run AI Assessment &mdash; all candidates in one click</li>
-            <li>Review &amp; refine scores</li>
-            <li>Generate client report (DOCX)</li>
-            <li>Push scores back to PCR</li>
-            <li>Update PCR pipeline status</li>
-            <li>Send personalized interview invitations</li>
-            <li>Deliver report to client</li>
-            <li>Archive requisition when filled</li>
-        </ol>
+<!-- Workflow A -->
+<div class="workflow-card pcr" style="margin-bottom:1.25rem;border-radius:10px;box-shadow:var(--shadow);">
+    <h3>Workflow A &mdash; PCR-Integrated <span class="badge-recommended">Recommended</span></h3>
+    <p>Candidates apply via Indeed, flow automatically into PCRecruiter, and RAAF pulls them with one click.</p>
+    <div class="workflow-diagram-container" style="margin:1rem 0 0.5rem;">
+        <img src="/static/images/RAAF_Workflow_A_PCR_Integrated.png"
+             alt="Workflow A – PCR Integrated"
+             class="workflow-img"
+             title="Click to zoom">
+        <p class="diagram-caption">Figure 1A &mdash; PCR-Integrated workflow (end-to-end)</p>
     </div>
+    <ol class="workflow-steps" style="margin-top:1rem;">
+        <li>Create position in PCRecruiter (Job Code: INDML)</li>
+        <li>PCR posts the job to Indeed automatically</li>
+        <li>Candidates apply &rarr; resumes stored in PCR</li>
+        <li>Click <strong>PCR Sync</strong> in RAAF to pull applicants</li>
+        <li>Click <strong>Download Resumes</strong> to retrieve files</li>
+        <li>Extract text &amp; create a batch</li>
+        <li>Run AI Assessment &mdash; all candidates in one click</li>
+        <li>Review &amp; refine scores</li>
+        <li>Generate client report (DOCX)</li>
+        <li>Push scores back to PCR</li>
+        <li>Update PCR pipeline status</li>
+        <li>Send personalized interview invitations</li>
+        <li>Deliver report to client</li>
+        <li>Archive requisition when filled</li>
+    </ol>
+</div>
 
-    <div class="workflow-card manual">
-        <h3>Workflow B &mdash; Manual Upload</h3>
-        <p>Resumes arrive by email or direct download. Upload them straight into RAAF.</p>
-        <ol class="workflow-steps">
-            <li>Receive JD from client (PDF or DOCX)</li>
-            <li>Initialise client &amp; requisition in RAAF</li>
-            <li>Upload JD &rarr; AI generates assessment framework</li>
-            <li>Drag-and-drop resumes (PDF / DOCX)</li>
-            <li>Extract text &amp; create a batch</li>
-            <li>Run AI Assessment</li>
-            <li>Review &amp; refine scores</li>
-            <li>Generate client report (DOCX)</li>
-            <li>Send personalized interview invitations</li>
-            <li>Deliver report to client</li>
-            <li>Archive requisition when filled</li>
-        </ol>
+<!-- Workflow B -->
+<div class="workflow-card manual" style="margin-bottom:1.25rem;border-radius:10px;box-shadow:var(--shadow);">
+    <h3>Workflow B &mdash; Manual Upload</h3>
+    <p>Resumes arrive by email or direct download. Upload them straight into RAAF.</p>
+    <div class="workflow-diagram-container" style="margin:1rem 0 0.5rem;">
+        <img src="/static/images/RAAF_Workflow_B_Manual_Upload.png"
+             alt="Workflow B – Manual / Direct Upload"
+             class="workflow-img"
+             title="Click to zoom">
+        <p class="diagram-caption">Figure 1B &mdash; Manual / Direct Upload workflow</p>
     </div>
+    <ol class="workflow-steps" style="margin-top:1rem;">
+        <li>Receive JD from client (PDF or DOCX)</li>
+        <li>Initialise client &amp; requisition in RAAF</li>
+        <li>Upload JD &rarr; AI generates assessment framework</li>
+        <li>Drag-and-drop resumes (PDF / DOCX)</li>
+        <li>Extract text &amp; create a batch</li>
+        <li>Run AI Assessment</li>
+        <li>Review &amp; refine scores</li>
+        <li>Generate client report (DOCX)</li>
+        <li>Send personalized interview invitations</li>
+        <li>Deliver report to client</li>
+        <li>Archive requisition when filled</li>
+    </ol>
+</div>
 
-    <div class="workflow-card search">
-        <h3>Workflow C &mdash; Repository Search</h3>
-        <p>Every assessed candidate is stored. Search past talent before starting a new search from scratch.</p>
-        <ol class="workflow-steps">
-            <li>New position opens (same or new client)</li>
-            <li>Open <strong>Search</strong> in the top navigation</li>
-            <li>Upload JD for AI matching <em>or</em> search by keyword</li>
-            <li>AI ranks past candidates by fit to new role</li>
-            <li>Review previous assessment scores &amp; evidence</li>
-            <li>Reach out directly to warm candidates</li>
-            <li>Add to new requisition &amp; re-assess if needed</li>
-            <li>Continue via Workflow A or B from assessment onward</li>
-        </ol>
+<!-- Workflow C -->
+<div class="workflow-card search" style="margin-bottom:1.25rem;border-radius:10px;box-shadow:var(--shadow);">
+    <h3>Workflow C &mdash; Repository Search</h3>
+    <p>Every assessed candidate is stored. Search past talent before starting a new search from scratch.</p>
+    <div class="workflow-diagram-container" style="margin:1rem 0 0.5rem;">
+        <img src="/static/images/RAAF_Workflow_C_Repository_Search.png"
+             alt="Workflow C – Candidate Repository Search"
+             class="workflow-img"
+             title="Click to zoom">
+        <p class="diagram-caption">Figure 1C &mdash; Candidate Repository Search workflow</p>
     </div>
-
+    <ol class="workflow-steps" style="margin-top:1rem;">
+        <li>New position opens (same or new client)</li>
+        <li>Open <strong>Search</strong> in the top navigation</li>
+        <li>Upload JD for AI matching <em>or</em> search by keyword</li>
+        <li>AI ranks past candidates by fit to new role</li>
+        <li>Review previous assessment scores &amp; evidence</li>
+        <li>Reach out directly to warm candidates</li>
+        <li>Add to new requisition &amp; re-assess if needed</li>
+        <li>Continue via Workflow A or B from assessment onward</li>
+    </ol>
 </div>
 
 <!-- Scoring Framework + Tiers side by side -->
@@ -332,8 +347,10 @@
 
 {% block extra_js %}
 <script>
-document.getElementById('workflowDiagram').addEventListener('click', function() {
-    this.classList.toggle('zoomed');
+document.querySelectorAll('.workflow-img').forEach(function(img) {
+    img.addEventListener('click', function() {
+        this.classList.toggle('zoomed');
+    });
 });
 </script>
 {% endblock %}
