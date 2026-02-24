@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+
+{% block title %}How It Works{% endblock %}
+
+{% block extra_css %}
+<style>
+.workflow-diagram-container {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin: 1.5rem 0;
+    text-align: center;
+    box-shadow: var(--shadow);
+    overflow-x: auto;
+}
+
+.workflow-diagram-container img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 6px;
+    cursor: zoom-in;
+    transition: transform 0.2s;
+}
+
+.workflow-diagram-container img.zoomed {
+    cursor: zoom-out;
+    transform: scale(1.8);
+    transform-origin: top center;
+}
+
+.diagram-caption {
+    margin-top: 0.75rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.workflow-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.25rem;
+    margin: 1.5rem 0;
+}
+
+.workflow-card {
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 1.5rem;
+    border-left: 5px solid;
+    box-shadow: var(--shadow);
+}
+
+.workflow-card.pcr    { border-left-color: #186FAF; }
+.workflow-card.manual { border-left-color: #2E7D32; }
+.workflow-card.search { border-left-color: #5E35B1; }
+
+.workflow-card h3 {
+    margin-bottom: 0.4rem;
+    font-size: 1rem;
+}
+.workflow-card.pcr    h3 { color: #186FAF; }
+.workflow-card.manual h3 { color: #2E7D32; }
+.workflow-card.search h3 { color: #5E35B1; }
+
+.workflow-card .badge-recommended {
+    font-size: 0.7rem;
+    background: #FFF3E0;
+    color: #E65100;
+    border: 1px solid #E65100;
+    border-radius: 10px;
+    padding: 0.1rem 0.5rem;
+    margin-left: 0.4rem;
+    vertical-align: middle;
+    font-weight: 600;
+}
+
+.workflow-card p {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+
+.workflow-steps {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    counter-reset: step;
+}
+
+.workflow-steps li {
+    counter-increment: step;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    font-size: 0.875rem;
+    margin-bottom: 0.45rem;
+    color: var(--text-primary);
+}
+
+.workflow-steps li::before {
+    content: counter(step);
+    min-width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.workflow-card.pcr    .workflow-steps li::before { background: #DCF0FF; color: #186FAF; }
+.workflow-card.manual .workflow-steps li::before { background: #E8F5E9; color: #2E7D32; }
+.workflow-card.search .workflow-steps li::before { background: #EDE7F6; color: #5E35B1; }
+
+.scoring-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem 1.5rem;
+    margin: 0.75rem 0;
+}
+
+.scoring-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.scoring-row .pct {
+    font-weight: 700;
+    color: #00796B;
+    min-width: 36px;
+    text-align: right;
+}
+
+.tier-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    margin-top: 0.75rem;
+}
+
+.tier-table td {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-color);
+}
+
+.tier-table tr:first-child td { font-weight: 600; background: #F1F5F9; }
+
+.tier-strong  { background: #E8F5E9; color: #2E7D32; font-weight: 700; }
+.tier-rec     { background: #E3F2FD; color: #1565C0; font-weight: 700; }
+.tier-cond    { background: #FFF3E0; color: #E65100; font-weight: 700; }
+.tier-dnr     { background: #FFEBEE; color: #B71C1C; font-weight: 700; }
+
+.resources-row {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+}
+
+.resource-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-decoration: none;
+    border: 1px solid var(--border-color);
+    background: var(--surface);
+    color: var(--text-primary);
+    transition: all 0.15s;
+}
+
+.resource-link:hover {
+    background: var(--primary-color);
+    color: #fff;
+    border-color: var(--primary-color);
+}
+
+.resource-link .icon { font-size: 1.1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>How It Works</h1>
+    <p class="subtitle">Workflows, scoring framework, and recommendation tiers</p>
+</div>
+
+<!-- Workflow Diagram -->
+<div class="card">
+    <div class="card-header">
+        <h3>Supported Workflows</h3>
+    </div>
+    <div class="card-body">
+        <div class="workflow-diagram-container">
+            <img src="/static/images/workflow_diagram.png"
+                 alt="RAAF Workflow Diagram"
+                 id="workflowDiagram"
+                 title="Click to zoom">
+            <p class="diagram-caption">
+                Figure 1 &mdash; RAAF supports three workflows: PCR-Integrated (recommended),
+                Manual upload, and Candidate Repository Search.
+                <br><em>Click the diagram to zoom in.</em>
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Three Workflow Cards -->
+<div class="workflow-cards">
+
+    <div class="workflow-card pcr">
+        <h3>Workflow A &mdash; PCR-Integrated <span class="badge-recommended">Recommended</span></h3>
+        <p>Candidates apply via Indeed, flow automatically into PCRecruiter, and RAAF pulls them with one click.</p>
+        <ol class="workflow-steps">
+            <li>Create position in PCRecruiter (Job Code: INDML)</li>
+            <li>PCR posts the job to Indeed automatically</li>
+            <li>Candidates apply &rarr; resumes stored in PCR</li>
+            <li>Click <strong>PCR Sync</strong> in RAAF to pull applicants</li>
+            <li>Click <strong>Download Resumes</strong> to retrieve files</li>
+            <li>Extract text &amp; create a batch</li>
+            <li>Run AI Assessment &mdash; all candidates in one click</li>
+            <li>Review &amp; refine scores</li>
+            <li>Generate client report (DOCX)</li>
+            <li>Push scores back to PCR</li>
+            <li>Update PCR pipeline status</li>
+            <li>Send personalized interview invitations</li>
+            <li>Deliver report to client</li>
+            <li>Archive requisition when filled</li>
+        </ol>
+    </div>
+
+    <div class="workflow-card manual">
+        <h3>Workflow B &mdash; Manual Upload</h3>
+        <p>Resumes arrive by email or direct download. Upload them straight into RAAF.</p>
+        <ol class="workflow-steps">
+            <li>Receive JD from client (PDF or DOCX)</li>
+            <li>Initialise client &amp; requisition in RAAF</li>
+            <li>Upload JD &rarr; AI generates assessment framework</li>
+            <li>Drag-and-drop resumes (PDF / DOCX)</li>
+            <li>Extract text &amp; create a batch</li>
+            <li>Run AI Assessment</li>
+            <li>Review &amp; refine scores</li>
+            <li>Generate client report (DOCX)</li>
+            <li>Send personalized interview invitations</li>
+            <li>Deliver report to client</li>
+            <li>Archive requisition when filled</li>
+        </ol>
+    </div>
+
+    <div class="workflow-card search">
+        <h3>Workflow C &mdash; Repository Search</h3>
+        <p>Every assessed candidate is stored. Search past talent before starting a new search from scratch.</p>
+        <ol class="workflow-steps">
+            <li>New position opens (same or new client)</li>
+            <li>Open <strong>Search</strong> in the top navigation</li>
+            <li>Upload JD for AI matching <em>or</em> search by keyword</li>
+            <li>AI ranks past candidates by fit to new role</li>
+            <li>Review previous assessment scores &amp; evidence</li>
+            <li>Reach out directly to warm candidates</li>
+            <li>Add to new requisition &amp; re-assess if needed</li>
+            <li>Continue via Workflow A or B from assessment onward</li>
+        </ol>
+    </div>
+
+</div>
+
+<!-- Scoring Framework + Tiers side by side -->
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.5rem;">
+
+    <div class="card">
+        <div class="card-header"><h3>AI Scoring Framework</h3></div>
+        <div class="card-body">
+            <p style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:0.75rem;">
+                Every candidate is scored across six weighted categories. Each score is backed by direct evidence from the resume &mdash; no guesswork.
+            </p>
+            <div class="scoring-grid">
+                <div class="scoring-row"><span>Core Experience &amp; Qualifications</span><span class="pct">25%</span></div>
+                <div class="scoring-row"><span>Technical &amp; Analytical Skills</span><span class="pct">20%</span></div>
+                <div class="scoring-row"><span>Communication &amp; Relationships</span><span class="pct">20%</span></div>
+                <div class="scoring-row"><span>Strategic &amp; Business Acumen</span><span class="pct">15%</span></div>
+                <div class="scoring-row"><span>Job Stability</span><span class="pct">10%</span></div>
+                <div class="scoring-row"><span>Cultural Fit &amp; Soft Skills</span><span class="pct">10%</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header"><h3>Recommendation Tiers</h3></div>
+        <div class="card-body">
+            <p style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:0.75rem;">
+                Scores map directly to a hiring recommendation. Thresholds can be adjusted per requisition in the framework settings.
+            </p>
+            <table class="tier-table">
+                <tr><td>Tier</td><td>Score</td><td>Action</td></tr>
+                <tr><td class="tier-strong">STRONG RECOMMEND</td><td>85%+</td><td>Advance immediately</td></tr>
+                <tr><td class="tier-rec">RECOMMEND</td><td>70&ndash;84%</td><td>Advance to interview</td></tr>
+                <tr><td class="tier-cond">CONDITIONAL</td><td>55&ndash;69%</td><td>Hold in reserve</td></tr>
+                <tr><td class="tier-dnr">DO NOT RECOMMEND</td><td>&lt;55%</td><td>Do not advance</td></tr>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<!-- Resources -->
+<div class="card">
+    <div class="card-header"><h3>Resources</h3></div>
+    <div class="card-body">
+        <div class="resources-row">
+            <a href="/help/user-guide" class="resource-link">
+                <span class="icon">&#128196;</span> Download User Guide (PDF)
+            </a>
+            <a href="/static/images/workflow_diagram.png" class="resource-link" download="RAAF_Workflow_Diagram.png">
+                <span class="icon">&#128444;</span> Download Workflow Diagram (PNG)
+            </a>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('workflowDiagram').addEventListener('click', function() {
+    this.classList.toggle('zoomed');
+});
+</script>
+{% endblock %}

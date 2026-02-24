@@ -183,6 +183,28 @@ async def dashboard(request: Request):
     })
 
 
+@app.get("/help", response_class=HTMLResponse)
+async def help_page(request: Request):
+    """How It Works page with workflow diagram and scoring reference."""
+    return templates.TemplateResponse("help.html", {
+        "request": request,
+        "user": getattr(request.state, 'user', None),
+    })
+
+
+@app.get("/help/user-guide")
+async def download_user_guide():
+    """Serve the RAAF User Guide PDF for download."""
+    pdf_path = Path(__file__).parent.parent / "docs" / "RAAF_User_Guide.pdf"
+    if not pdf_path.exists():
+        raise HTTPException(status_code=404, detail="User guide not found")
+    return FileResponse(
+        path=str(pdf_path),
+        media_type="application/pdf",
+        filename="RAAF_User_Guide.pdf",
+    )
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
