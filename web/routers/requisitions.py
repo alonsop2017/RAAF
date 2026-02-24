@@ -329,6 +329,45 @@ async def create_requisition(
         with open(client_config_path, 'w') as f:
             yaml.dump(client_config, f, default_flow_style=False)
 
+    # Dual-write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            job = req_config.get("job", {})
+            requirements = req_config.get("requirements", {})
+            assessment_cfg = req_config.get("assessment", {})
+            thresholds = assessment_cfg.get("thresholds", {})
+            salary = job.get("salary_range", {})
+            pcr_int = req_config.get("pcr_integration", {})
+            pcr_positions = pcr_int.get("positions", [])
+            first_pcr = pcr_positions[0] if pcr_positions else {}
+            get_db().create_requisition({
+                "req_id": req_id,
+                "client_code": client_code,
+                "job_title": job.get("title", title),
+                "department": job.get("department"),
+                "location": job.get("location"),
+                "salary_min": salary.get("min", 0),
+                "salary_max": salary.get("max", 0),
+                "salary_currency": salary.get("currency", "CAD"),
+                "status": "active",
+                "experience_years_min": requirements.get("experience_years_min", 0),
+                "education": requirements.get("education"),
+                "threshold_strong": thresholds.get("strong_recommend", 85),
+                "threshold_recommend": thresholds.get("recommend", 70),
+                "threshold_conditional": thresholds.get("conditional", 55),
+                "framework_source": "ai_generated" if framework_generated else "template",
+                "framework_generated_at": datetime.now().isoformat() if framework_generated else None,
+                "pcr_job_id": pcr_int.get("job_id"),
+                "pcr_job_title": first_pcr.get("job_title"),
+                "pcr_company_name": first_pcr.get("company_name"),
+                "pcr_linked_date": pcr_int.get("linked_date"),
+                "notes": notes,
+                "created_date": req_config.get("created_date"),
+            })
+    except Exception:
+        pass
+
     redirect_url = f"/requisitions/{client_code}/{req_id}"
     if framework_generated:
         redirect_url += "?framework=generated"
@@ -576,6 +615,22 @@ async def update_requisition(
     with open(config_path, 'w') as f:
         yaml.dump(config, f, default_flow_style=False)
 
+    # Dual-write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            get_db().update_requisition(req_id, {
+                "job_title": title,
+                "department": department,
+                "location": location,
+                "salary_min": salary_min,
+                "salary_max": salary_max,
+                "status": status,
+                "notes": notes,
+            })
+    except Exception:
+        pass
+
     return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}", status_code=303)
 
 
@@ -616,6 +671,14 @@ async def update_requisition_status(
 
     with open(config_path, 'w') as f:
         yaml.dump(config, f, default_flow_style=False)
+
+    # Dual-write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            get_db().update_requisition(req_id, {"status": status})
+    except Exception:
+        pass
 
     return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}", status_code=303)
 
@@ -672,6 +735,22 @@ async def link_pcr_position(
     with open(config_path, 'w') as f:
         yaml.dump(config, f, default_flow_style=False)
 
+    # Dual-write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            pcr = config.get("pcr_integration", {})
+            positions = pcr.get("positions", [])
+            first_pos = positions[0] if positions else {}
+            get_db().update_requisition(req_id, {
+                "pcr_job_id": pcr.get("job_id"),
+                "pcr_job_title": first_pos.get("job_title"),
+                "pcr_company_name": first_pos.get("company_name"),
+                "pcr_linked_date": pcr.get("linked_date"),
+            })
+    except Exception:
+        pass
+
     return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}", status_code=303)
 
 
@@ -708,6 +787,30 @@ async def unlink_pcr_position(
 
     with open(config_path, 'w') as f:
         yaml.dump(config, f, default_flow_style=False)
+
+    # Dual-write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            pcr = config.get("pcr_integration", {})
+            if pcr:
+                positions = pcr.get("positions", [])
+                first_pos = positions[0] if positions else {}
+                get_db().update_requisition(req_id, {
+                    "pcr_job_id": pcr.get("job_id"),
+                    "pcr_job_title": first_pos.get("job_title"),
+                    "pcr_company_name": first_pos.get("company_name"),
+                    "pcr_linked_date": pcr.get("linked_date"),
+                })
+            else:
+                get_db().update_requisition(req_id, {
+                    "pcr_job_id": None,
+                    "pcr_job_title": None,
+                    "pcr_company_name": None,
+                    "pcr_linked_date": None,
+                })
+    except Exception:
+        pass
 
     return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}", status_code=303)
 
@@ -762,6 +865,17 @@ async def regenerate_framework(request: Request, client_code: str, req_id: str):
             f.write(f"# Extracted Job Description Text\n")
             f.write(f"# Regenerated: {datetime.now().strftime('%Y-%m-%d')}\n\n")
             f.write(jd_text)
+
+        # Dual-write to DB when enabled
+        try:
+            from scripts.utils.database import get_db, _use_database
+            if _use_database():
+                get_db().update_requisition(req_id, {
+                    "framework_source": "ai_generated",
+                    "framework_generated_at": datetime.now().isoformat(),
+                })
+        except Exception:
+            pass
 
         logger.info(f"Regenerated AI framework for {req_id}")
         return RedirectResponse(
@@ -836,6 +950,16 @@ async def update_job_description(
     config.setdefault('job', {})['description_file'] = job_description.filename
     with open(config_path, 'w') as f:
         yaml.dump(config, f, default_flow_style=False)
+
+    # Dual-write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            get_db().update_requisition(req_id, {
+                "job_description_file": str(jd_path),
+            })
+    except Exception:
+        pass
 
     # Extract text from new JD
     try:

@@ -407,6 +407,35 @@ def assess_candidate(
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(assessment, f, indent=2)
 
+    # Dual-write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            assessor = assessment.get("metadata", {}).get("assessor", "")
+            get_db().save_assessment({
+                "req_id": req_id,
+                "name_normalized": name_normalized,
+                "name": candidate_info.get("name",
+                         name_normalized.replace("_", " ").title()),
+                "batch": batch_name,
+                "source_platform": assessment.get("candidate", {}).get(
+                    "source_platform", "Unknown"),
+                "resume_extracted_path": str(resume_file),
+                "total_score": assessment.get("total_score"),
+                "percentage": assessment.get("percentage"),
+                "recommendation": assessment.get("recommendation"),
+                "assessment_mode": "ai" if use_ai else "pending",
+                "ai_model": assessor if use_ai else None,
+                "scores": assessment.get("scores"),
+                "summary": assessment.get("summary"),
+                "key_strengths": assessment.get("key_strengths"),
+                "areas_of_concern": assessment.get("areas_of_concern"),
+                "interview_focus_areas": assessment.get("interview_focus_areas"),
+                "assessed_at": assessment.get("metadata", {}).get("assessed_at"),
+            })
+    except Exception:
+        pass
+
     print(f"  Created: {output_file.name}")
     if use_ai:
         print(f"  Score: {assessment['total_score']}/{assessment['max_score']} ({assessment['percentage']}%)")

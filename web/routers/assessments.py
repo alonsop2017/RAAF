@@ -268,6 +268,19 @@ async def set_lifecycle_status(
     elif lifecycle_file.exists():
         lifecycle_file.unlink()
 
+    # Dual-write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            get_db().upsert_candidate({
+                "req_id": req_id,
+                "name": name_normalized.replace("_", " ").title(),
+                "name_normalized": name_normalized,
+                "pipeline_status": status or None,
+            })
+    except Exception:
+        pass
+
     referer = request.headers.get("referer", f"/assessments/{client_code}/{req_id}")
     return RedirectResponse(url=referer, status_code=303)
 
@@ -447,6 +460,33 @@ async def update_assessment(
     # Save
     with open(assessment_file, 'w') as f:
         json.dump(assessment, f, indent=2)
+
+    # Dual-write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            get_db().save_assessment({
+                "req_id": req_id,
+                "name_normalized": name_normalized,
+                "name": assessment.get("candidate", {}).get("name",
+                         name_normalized.replace("_", " ").title()),
+                "batch": assessment.get("candidate", {}).get("batch"),
+                "source_platform": assessment.get("candidate", {}).get(
+                    "source_platform", "Unknown"),
+                "total_score": assessment.get("total_score"),
+                "percentage": assessment.get("percentage"),
+                "recommendation": assessment.get("recommendation"),
+                "assessment_mode": "manual",
+                "ai_model": None,
+                "scores": assessment.get("scores"),
+                "summary": assessment.get("summary"),
+                "key_strengths": assessment.get("key_strengths"),
+                "areas_of_concern": assessment.get("areas_of_concern"),
+                "interview_focus_areas": assessment.get("interview_focus_areas"),
+                "assessed_at": assessment.get("metadata", {}).get("assessed_at"),
+            })
+    except Exception:
+        pass
 
     return RedirectResponse(
         url=f"/assessments/{client_code}/{req_id}/{name_normalized}",

@@ -106,6 +106,36 @@ def sync_candidates(
 
     print(f"  Saved manifest to: {candidates_file}")
 
+    # Dual-write to DB when enabled
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _sys.path.insert(0, str(_Path(__file__).parent.parent.parent))
+        from scripts.utils.database import get_db, _use_database
+        from scripts.utils.client_utils import normalize_candidate_name
+        if _use_database():
+            db = get_db()
+            for c in all_candidates:
+                first = c.get("FirstName", "") or ""
+                last = c.get("LastName", "") or ""
+                name = f"{first} {last}".strip() or "Unknown"
+                name_norm = (
+                    normalize_candidate_name(f"{name}")
+                    if name != "Unknown" else "unknown"
+                )
+                db.upsert_candidate({
+                    "req_id": req_id,
+                    "name": name,
+                    "name_normalized": name_norm,
+                    "email": c.get("Email"),
+                    "phone": c.get("Phone"),
+                    "source_platform": "PCR",
+                    "pcr_candidate_id": str(c.get("CandidateId", "")),
+                    "pipeline_status": c.get("PipelineStatus"),
+                })
+    except Exception:
+        pass
+
     # Output results
     if output_format == "json":
         print(json.dumps(all_candidates, indent=2, default=str, ensure_ascii=True))

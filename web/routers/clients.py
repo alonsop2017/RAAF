@@ -104,6 +104,23 @@ async def create_client(
     with open(client_root / "client_info.yaml", 'w') as f:
         yaml.dump(client_info, f, default_flow_style=False)
 
+    # Dual-write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            billing = client_info.get("billing", {})
+            get_db().create_client({
+                "client_code": code,
+                "company_name": company_name,
+                "industry": industry,
+                "status": "active",
+                "default_commission_rate": billing.get("default_commission_rate"),
+                "payment_terms": billing.get("payment_terms"),
+                "contacts": client_info.get("contacts", {}),
+            })
+    except Exception:
+        pass
+
     return RedirectResponse(url=f"/clients/{code}", status_code=303)
 
 
@@ -202,5 +219,20 @@ async def update_client(
     # Save
     with open(config_path, 'w') as f:
         yaml.dump(config, f, default_flow_style=False)
+
+    # Dual-write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            billing = config.get("billing", {})
+            get_db().update_client(client_code, {
+                "company_name": company_name,
+                "industry": industry,
+                "status": status,
+                "default_commission_rate": billing.get("default_commission_rate"),
+                "contacts": config.get("contacts", {}),
+            })
+    except Exception:
+        pass
 
     return RedirectResponse(url=f"/clients/{client_code}", status_code=303)

@@ -4,10 +4,13 @@ Client and requisition path utilities.
 Provides helper functions for navigating the project directory structure.
 """
 
+import logging
 import os
 from pathlib import Path
 from typing import Optional
 import yaml
+
+_log = logging.getLogger(__name__)
 
 
 def get_project_root() -> Path:
@@ -64,6 +67,28 @@ def save_requisition_config(client_code: str, req_id: str, config: dict) -> None
     req_path = get_requisition_root(client_code, req_id) / "requisition.yaml"
     with open(req_path, "w") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+    # Dual-write to DB when enabled
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            job = config.get("job", {})
+            assessment_cfg = config.get("assessment", {})
+            thresholds = assessment_cfg.get("thresholds", {})
+            salary = job.get("salary_range", {})
+            get_db().update_requisition(req_id, {
+                "job_title": job.get("title"),
+                "location": job.get("location"),
+                "salary_min": salary.get("min", 0),
+                "salary_max": salary.get("max", 0),
+                "status": config.get("status"),
+                "notes": config.get("notes"),
+                "threshold_strong": thresholds.get("strong_recommend"),
+                "threshold_recommend": thresholds.get("recommend"),
+                "threshold_conditional": thresholds.get("conditional"),
+            })
+    except Exception as _db_err:
+        _log.warning("DB dual-write failed in save_requisition_config: %s", _db_err)
 
 
 def get_resumes_path(client_code: str, req_id: str, folder: str = "incoming") -> Path:
