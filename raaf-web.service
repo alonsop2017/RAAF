@@ -7,7 +7,8 @@ Type=simple
 User=alonsop
 WorkingDirectory=/home/alonsop/RAAF
 Environment="PATH=/home/alonsop/RAAF/venv/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/home/alonsop/RAAF/venv/bin/python3 -m uvicorn web.app:app --host 0.0.0.0 --port 8000
+Environment="RAAF_DB_MODE=db"
+ExecStart=/home/alonsop/RAAF/venv/bin/python3 -m uvicorn web.app:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips="*"
 Restart=always
 RestartSec=5
 

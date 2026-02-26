@@ -66,10 +66,10 @@ logging:
   backup_count: 5
 recruiter:
   name: Alonso Perez
-  title: Senior Recruitment Consultant
+  title: Talent Search Executive
   email: alonso@peoplefindinc.com
   phone: +1 905-477-9330 x 30
-  agency: Archtekt Consulting Inc.
+  agency: PeopleFind Inc.
 invitation_template:
   subject: 'Opportunity: {job_title} at {company_name} - Are You Available for a Brief
     Call?'

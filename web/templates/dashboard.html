@@ -46,12 +46,19 @@
 {% if clients %}
 <div class="card">
     <div class="card-header">
-        <h3>Active Clients & Requisitions</h3>
-        <a href="/clients" class="btn btn-sm btn-outline">View All</a>
+        <h3>Clients & Requisitions</h3>
+        <div style="display:flex;align-items:center;gap:1rem;">
+            <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.875rem;font-weight:400;cursor:pointer;color:var(--text-secondary);">
+                <input type="checkbox" id="showInactiveClients" style="cursor:pointer;">
+                Show inactive clients
+            </label>
+            <a href="/clients" class="btn btn-sm btn-outline">View All</a>
+        </div>
     </div>
     <div class="card-body">
         {% for client in clients %}
-        <div class="client-card">
+        <div class="client-card" data-client-status="{{ client.status }}"
+             {% if client.status != 'active' %}style="display:none;"{% endif %}>
             <div class="client-header">
                 <div>
                     <a href="/clients/{{ client.client_code }}" class="client-name">{{ client.client_name }}</a>
@@ -96,4 +103,32 @@
     </div>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var checkbox = document.getElementById('showInactiveClients');
+    if (!checkbox) return;
+
+    // Restore saved preference
+    if (localStorage.getItem('showInactiveClients') === 'true') {
+        checkbox.checked = true;
+        setVisibility(true);
+    }
+
+    checkbox.addEventListener('change', function () {
+        setVisibility(this.checked);
+        localStorage.setItem('showInactiveClients', this.checked);
+    });
+
+    function setVisibility(show) {
+        document.querySelectorAll('.client-card[data-client-status]').forEach(function (card) {
+            if (card.dataset.clientStatus !== 'active') {
+                card.style.display = show ? '' : 'none';
+            }
+        });
+    }
+})();
+</script>
 {% endblock %}
