@@ -6,6 +6,49 @@
     <h1>Admin — Backup</h1>
 </div>
 
+{% if save_success %}
+<div class="alert alert-success">{{ save_success }}</div>
+{% endif %}
+{% if save_error %}
+<div class="alert alert-danger">{{ save_error }}</div>
+{% endif %}
+
+<!-- Destination Selector -->
+<div class="card" style="margin-bottom:1.5rem;">
+    <h2 class="card-title">Backup Destination</h2>
+    <div class="dest-toggle">
+        <label class="dest-option">
+            <input type="radio" name="destination" value="local" checked>
+            <span class="dest-label">
+                <strong>Download to my computer</strong>
+                <span class="dest-desc">Browser downloads the zip file directly</span>
+            </span>
+        </label>
+        <label class="dest-option">
+            <input type="radio" name="destination" value="lan">
+            <span class="dest-label">
+                <strong>Save to LAN / server path</strong>
+                <span class="dest-desc">Write zip to a directory on this machine (e.g. mounted NAS)</span>
+            </span>
+        </label>
+    </div>
+
+    <div id="lan-path-row" class="lan-path-row" style="display:none;">
+        <label class="form-label" for="lan-path-input">Directory path on this server</label>
+        <div style="display:flex;gap:0.5rem;align-items:center;">
+            <input type="text" id="lan-path-input" class="form-input"
+                   placeholder="/mnt/nas/raaf_backups"
+                   value="{{ saved_lan_path or lan_path }}"
+                   style="flex:1;">
+        </div>
+        <p class="text-secondary" style="font-size:0.8rem;margin-top:0.4rem;">
+            Path must be accessible by the server process. The directory will be created if it does not exist.
+            The path is saved automatically after each successful backup.
+        </p>
+    </div>
+</div>
+
+<!-- Backup Type Cards -->
 <div class="backup-grid">
 
     <div class="card">
@@ -16,9 +59,22 @@
             <li>Settings (<code>config/settings.yaml</code>) — {{ settings_size_kb }} KB</li>
         </ul>
         <p class="size-estimate">Estimated size: ~{{ quick_size_mb }} MB</p>
-        <a href="/admin/backup/download/quick" class="btn btn-primary" style="margin-top:1rem;">
-            Download Quick Backup
-        </a>
+
+        <!-- Local download (shown by default) -->
+        <div class="action-local">
+            <a href="/admin/backup/download/quick" class="btn btn-primary" style="margin-top:1rem;">
+                Download Quick Backup
+            </a>
+        </div>
+
+        <!-- LAN save (hidden by default) -->
+        <div class="action-lan" style="display:none;margin-top:1rem;">
+            <form method="post" action="/admin/backup/save" onsubmit="injectLanPath(this)">
+                <input type="hidden" name="backup_type" value="quick">
+                <input type="hidden" name="lan_path" value="">
+                <button type="submit" class="btn btn-primary">Save Quick Backup to LAN</button>
+            </form>
+        </div>
     </div>
 
     <div class="card">
@@ -28,12 +84,25 @@
             <li>All client data (<code>clients/</code>) — {{ clients_size_mb }} MB</li>
         </ul>
         <p class="size-estimate">Estimated size: ~{{ full_size_mb }} MB</p>
-        <p class="text-secondary" style="font-size:0.875rem;margin-top:0.5rem;">
+        <p class="text-secondary" style="font-size:0.875rem;margin-top:0.25rem;">
             Large directories may take a moment to zip.
         </p>
-        <a href="/admin/backup/download/full" class="btn btn-primary" style="margin-top:1rem;">
-            Download Full Backup
-        </a>
+
+        <!-- Local download (shown by default) -->
+        <div class="action-local">
+            <a href="/admin/backup/download/full" class="btn btn-primary" style="margin-top:1rem;">
+                Download Full Backup
+            </a>
+        </div>
+
+        <!-- LAN save (hidden by default) -->
+        <div class="action-lan" style="display:none;margin-top:1rem;">
+            <form method="post" action="/admin/backup/save" onsubmit="injectLanPath(this)">
+                <input type="hidden" name="backup_type" value="full">
+                <input type="hidden" name="lan_path" value="">
+                <button type="submit" class="btn btn-primary">Save Full Backup to LAN</button>
+            </form>
+        </div>
     </div>
 
 </div>
@@ -41,11 +110,12 @@
 <div class="card" style="margin-top:1.5rem;">
     <h2 class="card-title">Notes</h2>
     <ul class="backup-list">
-        <li><strong>pcr_credentials.yaml is excluded</strong> from automated backups as it contains API secrets.
-            To back it up manually:<br>
+        <li><strong>pcr_credentials.yaml is excluded</strong> — it contains API secrets.
+            Back it up manually if needed:<br>
             <code>cp config/pcr_credentials.yaml ~/pcr_credentials_backup.yaml</code>
         </li>
-        <li>Backups are generated on demand and streamed directly — no temp files are created on the server.</li>
+        <li>Local downloads are streamed in-memory — no temp files created on the server.</li>
+        <li>LAN saves write directly to the specified path; the directory is created if absent.</li>
         <li>Filename format: <code>raaf_backup_[quick|full]_YYYYMMDD_HHMMSS.zip</code></li>
     </ul>
 </div>
@@ -57,5 +127,53 @@
 .backup-list { margin: 0.75rem 0 0 1.25rem; }
 .backup-list li { margin-bottom: 0.4rem; }
 .size-estimate { margin-top: 0.75rem; font-weight: 600; color: var(--text-primary); }
+
+.dest-toggle { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem; }
+.dest-option { display: flex; align-items: flex-start; gap: 0.75rem; cursor: pointer; padding: 0.75rem 1rem; border: 1px solid var(--border-color); border-radius: 8px; transition: border-color 0.2s; }
+.dest-option:has(input:checked) { border-color: var(--primary-color); background: #eff6ff; }
+.dest-option input[type=radio] { margin-top: 0.2rem; accent-color: var(--primary-color); }
+.dest-label { display: flex; flex-direction: column; gap: 0.2rem; }
+.dest-desc { font-size: 0.85rem; color: var(--text-secondary); }
+
+.lan-path-row { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color); }
+
+.alert { padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; }
+.alert-success { background: #dcfce7; color: #166534; }
+.alert-danger { background: #fee2e2; color: #991b1b; }
 </style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var radios = document.querySelectorAll('input[name="destination"]');
+var lanRow = document.getElementById('lan-path-row');
+var actionsLocal = document.querySelectorAll('.action-local');
+var actionsLan = document.querySelectorAll('.action-lan');
+
+{% if save_error %}
+// Re-select LAN after an error (user was trying to save)
+document.querySelector('input[value="lan"]').checked = true;
+applyDestination();
+{% endif %}
+
+radios.forEach(function(r) {
+    r.addEventListener('change', applyDestination);
+});
+
+function applyDestination() {
+    var isLan = document.querySelector('input[name="destination"]:checked').value === 'lan';
+    lanRow.style.display = isLan ? 'block' : 'none';
+    actionsLocal.forEach(function(el) { el.style.display = isLan ? 'none' : 'block'; });
+    actionsLan.forEach(function(el) { el.style.display = isLan ? 'block' : 'none'; });
+}
+
+function injectLanPath(form) {
+    var path = document.getElementById('lan-path-input').value.trim();
+    if (!path) {
+        alert('Please enter a LAN directory path.');
+        return false;
+    }
+    form.querySelector('input[name="lan_path"]').value = path;
+}
+</script>
 {% endblock %}

@@ -58,6 +58,8 @@ pcr:
     hold: On Hold
     rejected: Not Selected
     hired: Hired
+backup:
+  lan_path: ''
 batch:
   max_candidates_per_batch: 50
   auto_create_batch: true

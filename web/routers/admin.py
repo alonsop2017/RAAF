@@ -185,13 +185,14 @@ def _clients_dir_size_mb() -> float:
     return round(total / (1024 * 1024), 1)
 
 
-@router.get("/backup", response_class=HTMLResponse)
-async def admin_backup(request: Request, _admin=Depends(require_admin)):
-    """Backup page with download options."""
+def _backup_page_context(request: Request, **extra) -> dict:
+    """Build the common context dict for the backup page."""
     db_size_mb = round(_DB_PATH.stat().st_size / (1024 * 1024), 2) if _DB_PATH.exists() else 0
     settings_size_kb = round(_SETTINGS_PATH.stat().st_size / 1024, 1) if _SETTINGS_PATH.exists() else 0
     clients_size_mb = _clients_dir_size_mb()
-    return templates.TemplateResponse("admin/backup.html", {
+    settings = _load_settings()
+    lan_path = settings.get("backup", {}).get("lan_path", "")
+    ctx = {
         "request": request,
         "user": getattr(request.state, "user", None),
         "db_size_mb": db_size_mb,
@@ -199,21 +200,22 @@ async def admin_backup(request: Request, _admin=Depends(require_admin)):
         "clients_size_mb": clients_size_mb,
         "quick_size_mb": round(db_size_mb + settings_size_kb / 1024, 2),
         "full_size_mb": round(db_size_mb + settings_size_kb / 1024 + clients_size_mb, 1),
-    })
+        "lan_path": lan_path,
+    }
+    ctx.update(extra)
+    return ctx
+
+
+@router.get("/backup", response_class=HTMLResponse)
+async def admin_backup(request: Request, _admin=Depends(require_admin)):
+    """Backup page with download options."""
+    return templates.TemplateResponse("admin/backup.html", _backup_page_context(request))
 
 
 @router.get("/backup/download/quick")
 async def admin_backup_quick(_admin=Depends(require_admin)):
-    """Stream a zip of DB + settings.yaml."""
-    buf = io.BytesIO()
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"raaf_backup_quick_{ts}.zip"
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        if _DB_PATH.exists():
-            zf.write(_DB_PATH, "raaf.db")
-        if _SETTINGS_PATH.exists():
-            zf.write(_SETTINGS_PATH, "config/settings.yaml")
-    buf.seek(0)
+    """Stream a quick backup zip to the browser."""
+    buf, filename = _build_zip("quick")
     return StreamingResponse(
         buf,
         media_type="application/zip",
@@ -223,25 +225,77 @@ async def admin_backup_quick(_admin=Depends(require_admin)):
 
 @router.get("/backup/download/full")
 async def admin_backup_full(_admin=Depends(require_admin)):
-    """Stream a zip of DB + settings.yaml + entire clients/ directory."""
-    buf = io.BytesIO()
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"raaf_backup_full_{ts}.zip"
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        if _DB_PATH.exists():
-            zf.write(_DB_PATH, "raaf.db")
-        if _SETTINGS_PATH.exists():
-            zf.write(_SETTINGS_PATH, "config/settings.yaml")
-        if _CLIENTS_PATH.exists():
-            for f in _CLIENTS_PATH.rglob("*"):
-                if f.is_file():
-                    zf.write(f, str(f.relative_to(_CLIENTS_PATH.parent)))
-    buf.seek(0)
+    """Stream a full backup zip to the browser."""
+    buf, filename = _build_zip("full")
     return StreamingResponse(
         buf,
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+def _build_zip(backup_type: str) -> tuple[io.BytesIO, str]:
+    """Build a backup zip in memory; return (buffer, filename)."""
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"raaf_backup_{backup_type}_{ts}.zip"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        if _DB_PATH.exists():
+            zf.write(_DB_PATH, "raaf.db")
+        if _SETTINGS_PATH.exists():
+            zf.write(_SETTINGS_PATH, "config/settings.yaml")
+        if backup_type == "full" and _CLIENTS_PATH.exists():
+            for f in _CLIENTS_PATH.rglob("*"):
+                if f.is_file():
+                    zf.write(f, str(f.relative_to(_CLIENTS_PATH.parent)))
+    buf.seek(0)
+    return buf, filename
+
+
+@router.post("/backup/save")
+async def admin_backup_save(
+    request: Request,
+    _admin=Depends(require_admin),
+    backup_type: str = Form(...),
+    lan_path: str = Form(...),
+):
+    """Save backup zip to a server-side directory (LAN path)."""
+    lan_path = lan_path.strip()
+    if not lan_path:
+        ctx = _backup_page_context(request, save_error="LAN path cannot be empty.")
+        return templates.TemplateResponse("admin/backup.html", ctx)
+
+    dest_dir = Path(lan_path)
+    if not dest_dir.exists():
+        try:
+            dest_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            ctx = _backup_page_context(request, save_error=f"Cannot create directory: {e}")
+            return templates.TemplateResponse("admin/backup.html", ctx)
+
+    if not dest_dir.is_dir():
+        ctx = _backup_page_context(request, save_error=f"Path is not a directory: {lan_path}")
+        return templates.TemplateResponse("admin/backup.html", ctx)
+
+    try:
+        buf, filename = _build_zip(backup_type)
+        dest_file = dest_dir / filename
+        dest_file.write_bytes(buf.read())
+    except Exception as e:
+        ctx = _backup_page_context(request, save_error=f"Failed to write backup: {e}")
+        return templates.TemplateResponse("admin/backup.html", ctx)
+
+    # Persist the path for next time
+    settings = _load_settings()
+    settings.setdefault("backup", {})["lan_path"] = lan_path
+    _save_settings(settings)
+
+    ctx = _backup_page_context(
+        request,
+        save_success=f"Backup saved to {dest_file}",
+        saved_lan_path=lan_path,
+    )
+    return templates.TemplateResponse("admin/backup.html", ctx)
 
 
 # ---------------------------------------------------------------------------
