@@ -411,19 +411,36 @@ def get_batch_for_resume(client_code: str, req_id: str, name_normalized: str) ->
     return None
 
 
+def _transliterate_to_ascii(text: str) -> str:
+    """Transliterate European characters to ASCII equivalents."""
+    import unicodedata
+    # Common European substitutions that don't decompose cleanly via NFKD
+    substitutions = {
+        'ä': 'ae', 'Ä': 'ae', 'ö': 'oe', 'Ö': 'oe',
+        'ü': 'ue', 'Ü': 'ue', 'ß': 'ss',
+        'ø': 'o', 'Ø': 'o', 'æ': 'ae', 'Æ': 'ae',
+        'å': 'a', 'Å': 'a', 'þ': 'th', 'ð': 'd',
+    }
+    for char, replacement in substitutions.items():
+        text = text.replace(char, replacement)
+    # Decompose remaining accented characters and strip diacritics
+    text = unicodedata.normalize('NFKD', text)
+    return text.encode('ascii', 'ignore').decode('ascii')
+
+
 def normalize_candidate_name(name: str) -> str:
     """Normalize a candidate name to lastname_firstname format."""
+    import re
     # Remove extra whitespace and split
     parts = name.strip().split()
     if len(parts) < 2:
-        return name.lower().replace(" ", "_")
+        cleaned = _transliterate_to_ascii(name).lower().replace(" ", "_")
+        return re.sub(r'[^a-z_]', '', cleaned)
 
     # Assume last part is last name, rest is first name
-    last_name = parts[-1].lower()
-    first_name = "_".join(parts[:-1]).lower()
+    last_name = _transliterate_to_ascii(parts[-1]).lower()
+    first_name = "_".join(_transliterate_to_ascii(p).lower() for p in parts[:-1])
 
-    # Remove special characters
-    import re
     last_name = re.sub(r'[^a-z]', '', last_name)
     first_name = re.sub(r'[^a-z_]', '', first_name)
 

@@ -35,12 +35,24 @@ templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates"
 
 
 def normalize_filename(name: str) -> str:
-    """Normalize candidate name for filename."""
+    """Normalize candidate name for filename, preserving European character meaning."""
+    import unicodedata
     # Remove extension
     name = name.rsplit('.', 1)[0]
-    # Convert to lowercase and replace spaces with underscores
+    # Transliterate common European characters before general stripping
+    substitutions = {
+        'ä': 'ae', 'Ä': 'ae', 'ö': 'oe', 'Ö': 'oe',
+        'ü': 'ue', 'Ü': 'ue', 'ß': 'ss',
+        'ø': 'o', 'Ø': 'o', 'æ': 'ae', 'Æ': 'ae',
+        'å': 'a', 'Å': 'a', 'þ': 'th', 'ð': 'd',
+    }
+    for char, replacement in substitutions.items():
+        name = name.replace(char, replacement)
+    # Decompose remaining accented characters (e.g. é→e, ñ→n)
+    name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode('ascii')
+    # Convert to lowercase and replace spaces/hyphens with underscores
     name = name.lower().replace(" ", "_").replace("-", "_")
-    # Remove special characters
+    # Keep only alphanumeric and underscores
     name = ''.join(c for c in name if c.isalnum() or c == '_')
     # Remove trailing _resume to avoid double suffix when _resume.txt is appended
     if name.endswith('_resume'):
