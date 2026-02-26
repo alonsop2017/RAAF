@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Admin - System Status{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Admin — System Status</h1>
+</div>
+
+{% if integrity_result is defined %}
+<div class="card" style="margin-bottom:1.5rem;">
+    <h2 class="card-title">DB Integrity Check</h2>
+    {% if integrity_status == 'ok' %}
+    <div class="alert alert-success">Database integrity: <strong>OK</strong></div>
+    {% else %}
+    <div class="alert alert-danger">Integrity issues found:<br><pre>{{ integrity_result }}</pre></div>
+    {% endif %}
+</div>
+{% endif %}
+
+{% if backfill_output is defined %}
+<div class="card" style="margin-bottom:1.5rem;">
+    <h2 class="card-title">Backfill Result</h2>
+    {% if backfill_error %}
+    <div class="alert alert-danger">{{ backfill_error }}</div>
+    {% endif %}
+    {% if backfill_output %}
+    <pre class="log-viewer">{{ backfill_output }}</pre>
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="admin-grid">
+
+    <!-- DB Stats -->
+    <div class="card">
+        <h2 class="card-title">Database</h2>
+        {% if db_size_mb is not none %}
+        <p class="stat-label">File size: <strong>{{ db_size_mb }} MB</strong></p>
+        {% endif %}
+        {% if db_stats %}
+        <table class="data-table" style="margin-top:1rem;">
+            <thead>
+                <tr><th>Table</th><th>Rows</th></tr>
+            </thead>
+            <tbody>
+            {% for table, count in db_stats.items() %}
+                <tr><td>{{ table }}</td><td>{{ count }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-secondary">No DB stats available.</p>
+        {% endif %}
+        <div style="margin-top:1rem;display:flex;gap:0.75rem;flex-wrap:wrap;">
+            <form method="post" action="/admin/database/integrity-check">
+                <button type="submit" class="btn btn-secondary btn-sm">Run Integrity Check</button>
+            </form>
+            <form method="post" action="/admin/database/backfill">
+                <button type="submit" class="btn btn-secondary btn-sm">Run Backfill</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Disk Usage -->
+    <div class="card">
+        <h2 class="card-title">Disk Usage</h2>
+        {% if disk_info.total_gb != '—' %}
+        <p class="stat-label">Total: <strong>{{ disk_info.total_gb }} GB</strong></p>
+        <p class="stat-label">Used: <strong>{{ disk_info.used_gb }} GB ({{ disk_info.used_pct }}%)</strong></p>
+        <p class="stat-label">Free: <strong>{{ disk_info.free_gb }} GB</strong></p>
+        <div class="progress-bar-container" style="margin-top:0.75rem;">
+            <div class="progress-bar" style="width:{{ disk_info.used_pct }}%;background:{% if disk_info.used_pct > 85 %}var(--danger-color){% elif disk_info.used_pct > 70 %}var(--warning-color){% else %}var(--success-color){% endif %};"></div>
+        </div>
+        {% else %}
+        <p class="text-secondary">—</p>
+        {% endif %}
+    </div>
+
+    <!-- Service Info -->
+    <div class="card">
+        <h2 class="card-title">Service (raaf-web)</h2>
+        {% if service_info %}
+        <table class="data-table">
+            <tbody>
+            {% for k, v in service_info.items() %}
+                <tr><td>{{ k }}</td><td>{{ v }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-secondary">Service info unavailable.</p>
+        {% endif %}
+    </div>
+
+    <!-- App Info -->
+    <div class="card">
+        <h2 class="card-title">Application</h2>
+        <table class="data-table">
+            <tbody>
+                <tr><td>RAAF Version</td><td>{{ app_info.raaf_version }}</td></tr>
+                <tr><td>Python</td><td>{{ app_info.python_version }}</td></tr>
+                <tr><td>DB Mode</td><td><code>{{ app_info.db_mode }}</code></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.admin-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+.stat-label { margin: 0.25rem 0; color: var(--text-secondary); }
+.stat-label strong { color: var(--text-primary); }
+.progress-bar-container {
+    height: 10px;
+    background: var(--border-color);
+    border-radius: 5px;
+    overflow: hidden;
+}
+.progress-bar { height: 100%; border-radius: 5px; transition: width 0.3s; }
+.log-viewer { background:#f1f5f9; padding:1rem; border-radius:6px; font-size:0.8rem; overflow-x:auto; max-height:300px; overflow-y:auto; }
+.alert { padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 0.5rem; }
+.alert-success { background: #dcfce7; color: #166534; }
+.alert-danger { background: #fee2e2; color: #991b1b; }
+</style>
+{% endblock %}

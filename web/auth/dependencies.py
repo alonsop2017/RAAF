@@ -3,9 +3,10 @@ FastAPI dependencies for authentication.
 """
 
 from typing import Optional
-from fastapi import Request, Depends
+from fastapi import Request, Depends, HTTPException
 
 from .session import session_manager, SessionManager
+from .config import get_admin_emails
 
 
 def get_session_manager() -> SessionManager:
@@ -28,6 +29,19 @@ def get_required_user(request: Request) -> dict:
     """
     user = get_current_user(request)
     if not user:
-        from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+
+def require_admin(request: Request) -> dict:
+    """
+    Dependency that requires the current user to be an admin.
+    Raises HTTP 403 if the user is not in the admin_emails list.
+    """
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    email = user.get("email", "").lower()
+    if email not in get_admin_emails():
+        raise HTTPException(status_code=403, detail="Admin access required")
     return user

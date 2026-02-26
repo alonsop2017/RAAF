@@ -18,10 +18,10 @@ from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 
 from web.routers import clients, requisitions, candidates, assessments, reports, pcr, search, correspondence
-from web.routers import auth as auth_router
+from web.routers import auth as auth_router, admin as admin_router
 from web.auth.oauth import setup_oauth
 from web.auth.session import session_manager
-from web.auth.config import get_session_secret_key
+from web.auth.config import get_session_secret_key, get_admin_emails
 
 app = FastAPI(
     title="RAAF - Resume Assessment Automation Framework",
@@ -80,6 +80,14 @@ async def auth_middleware(request: Request, call_next):
         # Still try to get user for public pages (e.g., login page redirect)
         request.state.user = session_manager.get_user_from_cookies(request.cookies)
 
+    # Set admin flag on request state
+    user = getattr(request.state, 'user', None)
+    if user:
+        email = user.get("email", "").lower()
+        request.state.is_admin = email in get_admin_emails()
+    else:
+        request.state.is_admin = False
+
     response = await call_next(request)
     return response
 
@@ -94,6 +102,7 @@ app.include_router(reports.router, prefix="/reports", tags=["reports"])
 app.include_router(pcr.router, prefix="/pcr", tags=["pcr"])
 app.include_router(search.router, prefix="/search", tags=["search"])
 app.include_router(correspondence.router, prefix="/correspondence", tags=["correspondence"])
+app.include_router(admin_router.router, prefix="/admin", tags=["admin"])
 
 
 @app.get("/", response_class=HTMLResponse)

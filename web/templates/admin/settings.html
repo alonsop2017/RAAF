@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Admin — Settings{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Admin — Settings</h1>
+</div>
+
+{% if message %}
+<div class="alert alert-success">{{ message }}</div>
+{% endif %}
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<form method="post" action="/admin/settings/update">
+
+    <!-- Assessment Thresholds -->
+    <div class="card" style="margin-bottom:1.5rem;">
+        <h2 class="card-title">Assessment Thresholds</h2>
+        <p class="text-secondary" style="margin-bottom:1rem;">Percentage scores for each recommendation tier.</p>
+        <div class="settings-grid">
+            <div class="form-group">
+                <label class="form-label">Strong Recommend (%)</label>
+                <input type="number" name="strong_recommend" class="form-input"
+                    value="{{ settings.assessment.default_thresholds.strong_recommend }}" min="1" max="100" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Recommend (%)</label>
+                <input type="number" name="recommend" class="form-input"
+                    value="{{ settings.assessment.default_thresholds.recommend }}" min="1" max="100" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Conditional (%)</label>
+                <input type="number" name="conditional" class="form-input"
+                    value="{{ settings.assessment.default_thresholds.conditional }}" min="1" max="100" required>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session -->
+    <div class="card" style="margin-bottom:1.5rem;">
+        <h2 class="card-title">Session</h2>
+        <div class="form-group" style="max-width:200px;">
+            <label class="form-label">Session Max Age (hours)</label>
+            <input type="number" name="max_age_hours" class="form-input"
+                value="{{ settings.auth.session.max_age_hours }}" min="1" max="720" required>
+        </div>
+    </div>
+
+    <!-- Recruiter Profile -->
+    <div class="card" style="margin-bottom:1.5rem;">
+        <h2 class="card-title">Recruiter Profile</h2>
+        <div class="settings-grid">
+            <div class="form-group">
+                <label class="form-label">Name</label>
+                <input type="text" name="recruiter_name" class="form-input"
+                    value="{{ settings.recruiter.name }}" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Title</label>
+                <input type="text" name="recruiter_title" class="form-input"
+                    value="{{ settings.recruiter.title }}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Email</label>
+                <input type="email" name="recruiter_email" class="form-input"
+                    value="{{ settings.recruiter.email }}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Phone</label>
+                <input type="text" name="recruiter_phone" class="form-input"
+                    value="{{ settings.recruiter.phone }}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Agency</label>
+                <input type="text" name="recruiter_agency" class="form-input"
+                    value="{{ settings.recruiter.agency }}">
+            </div>
+        </div>
+    </div>
+
+    <!-- Invitation Template -->
+    <div class="card" style="margin-bottom:1.5rem;">
+        <h2 class="card-title">Invitation Email Template</h2>
+        <div class="form-group">
+            <label class="form-label">Subject</label>
+            <input type="text" name="invitation_subject" class="form-input"
+                value="{{ settings.invitation_template.subject }}">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Opening</label>
+            <textarea name="invitation_opening" class="form-input" rows="2">{{ settings.invitation_template.opening }}</textarea>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Call to Action</label>
+            <textarea name="invitation_call_to_action" class="form-input" rows="3">{{ settings.invitation_template.call_to_action }}</textarea>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Not Interested Response</label>
+            <textarea name="invitation_not_interested" class="form-input" rows="3">{{ settings.invitation_template.not_interested }}</textarea>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Closing</label>
+            <textarea name="invitation_closing" class="form-input" rows="2">{{ settings.invitation_template.closing }}</textarea>
+        </div>
+    </div>
+
+    <!-- Read-only info -->
+    <div class="card" style="margin-bottom:1.5rem;">
+        <h2 class="card-title">Read-Only Configuration</h2>
+        <p class="text-secondary" style="margin-bottom:0.75rem;">These values cannot be changed via the web UI.</p>
+        <table class="data-table">
+            <tbody>
+                <tr><td>Google Client ID</td><td><code>{{ google_client_id }}</code></td></tr>
+                <tr><td>OAuth Redirect URI</td><td><code>{{ redirect_uri }}</code></td></tr>
+                <tr><td>DB Mode (RAAF_DB_MODE)</td><td><code>{{ db_mode }}</code></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Save Settings</button>
+    <a href="/admin/" class="btn btn-secondary" style="margin-left:0.5rem;">Cancel</a>
+
+</form>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+.alert { padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; }
+.alert-success { background: #dcfce7; color: #166534; }
+.alert-danger { background: #fee2e2; color: #991b1b; }
+textarea.form-input { resize: vertical; }
+</style>
+{% endblock %}

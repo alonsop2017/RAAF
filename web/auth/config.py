@@ -81,3 +81,9 @@ def get_allowed_emails() -> list:
     """Get list of explicitly allowed email addresses (empty = allow all)."""
     config = get_auth_config()
     return [e.strip().lower() for e in config.get('allowed_emails', [])]
+
+
+def get_admin_emails() -> list:
+    """Get list of admin email addresses."""
+    config = get_auth_config()
+    return [e.strip().lower() for e in config.get('admin_emails', [])]

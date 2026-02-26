@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Admin — Allowed Users{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Admin — Allowed Users</h1>
+</div>
+
+{% if message %}
+<div class="alert alert-success">{{ message }}</div>
+{% endif %}
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="users-grid">
+
+    <!-- Allowed Emails -->
+    <div class="card">
+        <h2 class="card-title">Allowed Emails</h2>
+        <p class="text-secondary" style="margin-bottom:1rem;">Users who can log in to RAAF.</p>
+
+        <table class="data-table">
+            <thead>
+                <tr><th>Email</th><th>Action</th></tr>
+            </thead>
+            <tbody>
+            {% for email in allowed_emails %}
+                <tr>
+                    <td>{{ email }}</td>
+                    <td>
+                        <form method="post" action="/admin/users/remove" style="display:inline;">
+                            <input type="hidden" name="email" value="{{ email }}">
+                            <button type="submit" class="btn btn-danger btn-sm"
+                                onclick="return confirm('Remove {{ email }}?')">Remove</button>
+                        </form>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="2" class="text-secondary">No allowed emails configured.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        <form method="post" action="/admin/users/add" class="add-form">
+            <input type="email" name="email" placeholder="new@email.com" required class="form-input">
+            <button type="submit" class="btn btn-primary">Add Email</button>
+        </form>
+    </div>
+
+    <!-- Admin Emails -->
+    <div class="card">
+        <h2 class="card-title">Admin Emails</h2>
+        <p class="text-secondary" style="margin-bottom:1rem;">Users with admin panel access. Must be in Allowed Emails too.</p>
+
+        <table class="data-table">
+            <thead>
+                <tr><th>Email</th><th>Action</th></tr>
+            </thead>
+            <tbody>
+            {% for email in admin_emails %}
+                <tr>
+                    <td>{{ email }}</td>
+                    <td>
+                        <form method="post" action="/admin/users/remove-admin" style="display:inline;">
+                            <input type="hidden" name="email" value="{{ email }}">
+                            <button type="submit" class="btn btn-danger btn-sm"
+                                onclick="return confirm('Remove {{ email }} from admins?')">Remove</button>
+                        </form>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="2" class="text-secondary">No admin emails configured.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        <form method="post" action="/admin/users/add-admin" class="add-form">
+            <input type="email" name="email" placeholder="admin@email.com" required class="form-input">
+            <button type="submit" class="btn btn-primary">Add Admin</button>
+        </form>
+    </div>
+
+</div>
+
+<div class="card" style="margin-top:1.5rem;">
+    <p class="text-secondary" style="font-size:0.875rem;">
+        <strong>Note:</strong> Changes take effect on next login. Existing sessions are not affected.
+        At least one admin must remain at all times.
+    </p>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.users-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1.5rem; }
+.add-form { display: flex; gap: 0.5rem; margin-top: 1rem; }
+.add-form .form-input { flex: 1; }
+.alert { padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; }
+.alert-success { background: #dcfce7; color: #166534; }
+.alert-danger { background: #fee2e2; color: #991b1b; }
+</style>
+{% endblock %}

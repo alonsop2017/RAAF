@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Admin — Backup{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Admin — Backup</h1>
+</div>
+
+<div class="backup-grid">
+
+    <div class="card">
+        <h2 class="card-title">Quick Backup</h2>
+        <p>Includes:</p>
+        <ul class="backup-list">
+            <li>Database (<code>data/raaf.db</code>) — {{ db_size_mb }} MB</li>
+            <li>Settings (<code>config/settings.yaml</code>) — {{ settings_size_kb }} KB</li>
+        </ul>
+        <p class="size-estimate">Estimated size: ~{{ quick_size_mb }} MB</p>
+        <a href="/admin/backup/download/quick" class="btn btn-primary" style="margin-top:1rem;">
+            Download Quick Backup
+        </a>
+    </div>
+
+    <div class="card">
+        <h2 class="card-title">Full Backup</h2>
+        <p>Includes everything in Quick Backup, plus:</p>
+        <ul class="backup-list">
+            <li>All client data (<code>clients/</code>) — {{ clients_size_mb }} MB</li>
+        </ul>
+        <p class="size-estimate">Estimated size: ~{{ full_size_mb }} MB</p>
+        <p class="text-secondary" style="font-size:0.875rem;margin-top:0.5rem;">
+            Large directories may take a moment to zip.
+        </p>
+        <a href="/admin/backup/download/full" class="btn btn-primary" style="margin-top:1rem;">
+            Download Full Backup
+        </a>
+    </div>
+
+</div>
+
+<div class="card" style="margin-top:1.5rem;">
+    <h2 class="card-title">Notes</h2>
+    <ul class="backup-list">
+        <li><strong>pcr_credentials.yaml is excluded</strong> from automated backups as it contains API secrets.
+            To back it up manually:<br>
+            <code>cp config/pcr_credentials.yaml ~/pcr_credentials_backup.yaml</code>
+        </li>
+        <li>Backups are generated on demand and streamed directly — no temp files are created on the server.</li>
+        <li>Filename format: <code>raaf_backup_[quick|full]_YYYYMMDD_HHMMSS.zip</code></li>
+    </ul>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.backup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; }
+.backup-list { margin: 0.75rem 0 0 1.25rem; }
+.backup-list li { margin-bottom: 0.4rem; }
+.size-estimate { margin-top: 0.75rem; font-weight: 600; color: var(--text-primary); }
+</style>
+{% endblock %}

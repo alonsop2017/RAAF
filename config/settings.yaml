@@ -12,6 +12,9 @@ auth:
   - charles@peoplefindinc.com
   - alonso@peoplefindinc.com
   - alonso.perez@archtektconsultinginc.com
+  admin_emails:
+  - alonso@peoplefindinc.com
+  - alonso.perez@archtektconsultinginc.com
 assessment:
   default_max_score: 100
   default_thresholds:

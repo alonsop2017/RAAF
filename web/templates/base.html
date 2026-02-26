@@ -19,6 +19,20 @@
             <a href="/requisitions" class="nav-link">Requisitions</a>
             <a href="/pcr" class="nav-link">PCR Integration</a>
             <a href="/help" class="nav-link">How It Works</a>
+            {% if request.state.is_admin %}
+            <div class="nav-dropdown">
+                <button class="nav-link nav-dropdown-toggle" aria-haspopup="true" aria-expanded="false">
+                    Admin &#9660;
+                </button>
+                <div class="nav-dropdown-menu">
+                    <a href="/admin/" class="nav-dropdown-item">System Status</a>
+                    <a href="/admin/users" class="nav-dropdown-item">Allowed Users</a>
+                    <a href="/admin/backup" class="nav-dropdown-item">Backup</a>
+                    <a href="/admin/settings" class="nav-dropdown-item">Settings</a>
+                    <a href="/admin/logs" class="nav-dropdown-item">Logs</a>
+                </div>
+            </div>
+            {% endif %}
         </div>
         {% if user %}
         <div class="nav-user">
@@ -40,5 +54,22 @@
     </footer>
 
     {% block extra_js %}{% endblock %}
+    <script>
+    // Admin dropdown: toggle on click, close on outside click
+    document.querySelectorAll('.nav-dropdown-toggle').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var dropdown = btn.closest('.nav-dropdown');
+            dropdown.classList.toggle('open');
+            btn.setAttribute('aria-expanded', dropdown.classList.contains('open'));
+        });
+    });
+    document.addEventListener('click', function() {
+        document.querySelectorAll('.nav-dropdown.open').forEach(function(d) {
+            d.classList.remove('open');
+            d.querySelector('.nav-dropdown-toggle').setAttribute('aria-expanded', 'false');
+        });
+    });
+    </script>
 </body>
 </html>
