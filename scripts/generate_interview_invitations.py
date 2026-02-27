@@ -167,7 +167,7 @@ def generate_email_draft(
     first_name = get_first_name(candidate_name)
     candidate_email = candidate.get("email", "[email not available]")
 
-    company_name = client_info.get("company_name", "our client")
+    company_name = "<Confidential Client>"
     industry = client_info.get("industry", "")
 
     job = req_config.get("job", {})
