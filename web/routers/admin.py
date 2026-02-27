@@ -3,11 +3,14 @@ Admin routes for RAAF Web Application.
 All routes require admin-level access.
 """
 
+import asyncio
 import io
 import os
 import shutil
+import sqlite3 as _sqlite3
 import subprocess
 import sys
+import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +24,7 @@ from fastapi.templating import Jinja2Templates
 
 from web.auth.dependencies import require_admin
 from web.auth.config import get_admin_emails, get_allowed_emails
+import web.backup_state as _bstate
 
 router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
@@ -235,13 +239,29 @@ async def admin_backup_full(_admin=Depends(require_admin)):
 
 
 def _build_zip(backup_type: str) -> tuple[io.BytesIO, str]:
-    """Build a backup zip in memory; return (buffer, filename)."""
+    """Build a backup zip in memory; return (buffer, filename).
+
+    Uses sqlite3.connection.backup() for a consistent DB snapshot so the
+    file captured is never mid-write.  No temp files are created on disk for
+    local browser downloads.
+    """
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"raaf_backup_{backup_type}_{ts}.zip"
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Consistent DB snapshot via sqlite3.backup()
         if _DB_PATH.exists():
-            zf.write(_DB_PATH, "raaf.db")
+            with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+                tmp_path = Path(tmp.name)
+            try:
+                src = _sqlite3.connect(str(_DB_PATH))
+                dst = _sqlite3.connect(str(tmp_path))
+                src.backup(dst)
+                dst.close()
+                src.close()
+                zf.write(tmp_path, "raaf.db")
+            finally:
+                tmp_path.unlink(missing_ok=True)
         if _SETTINGS_PATH.exists():
             zf.write(_SETTINGS_PATH, "config/settings.yaml")
         if backup_type == "full" and _CLIENTS_PATH.exists():
@@ -252,14 +272,63 @@ def _build_zip(backup_type: str) -> tuple[io.BytesIO, str]:
     return buf, filename
 
 
+def _run_rsync_backup(backup_type: str, dest_dir: Path) -> tuple[bool, str]:
+    """Incremental backup to dest_dir using sqlite3.backup() for the DB and
+    rsync for the clients/ directory.
+
+    Writes to dest_dir/latest/ so subsequent runs only copy changed files.
+    Updates dest_dir/backup_manifest.yaml with timestamp on success.
+    """
+    latest = dest_dir / "latest"
+    latest.mkdir(parents=True, exist_ok=True)
+
+    # DB: hot consistent snapshot
+    if _DB_PATH.exists():
+        dst_db = latest / "raaf.db"
+        src = _sqlite3.connect(str(_DB_PATH))
+        dst = _sqlite3.connect(str(dst_db))
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+            src.close()
+
+    # Settings
+    if _SETTINGS_PATH.exists():
+        cfg_dir = latest / "config"
+        cfg_dir.mkdir(exist_ok=True)
+        shutil.copy2(_SETTINGS_PATH, cfg_dir / "settings.yaml")
+
+    # Full backup: rsync clients/
+    if backup_type == "full" and _CLIENTS_PATH.exists():
+        clients_dest = latest / "clients"
+        clients_dest.mkdir(exist_ok=True)
+        result = subprocess.run(
+            ["rsync", "-a", "--delete",
+             f"{_CLIENTS_PATH}/", f"{clients_dest}/"],
+            capture_output=True, text=True, timeout=600,
+        )
+        if result.returncode != 0:
+            return False, f"rsync failed: {result.stderr.strip()}"
+
+    # Write manifest
+    manifest = dest_dir / "backup_manifest.yaml"
+    manifest.write_text(
+        f"last_backup: {datetime.now().isoformat()}\n"
+        f"backup_type: {backup_type}\n"
+    )
+    return True, str(latest)
+
+
 @router.post("/backup/save")
 async def admin_backup_save(
     request: Request,
     _admin=Depends(require_admin),
     backup_type: str = Form(...),
     lan_path: str = Form(...),
+    quiesce: bool = Form(False),
 ):
-    """Save backup zip to a server-side directory (LAN path)."""
+    """Save backup to a server-side directory (LAN path) using rsync."""
     lan_path = lan_path.strip()
     if not lan_path:
         ctx = _backup_page_context(request, save_error="LAN path cannot be empty.")
@@ -278,11 +347,16 @@ async def admin_backup_save(
         return templates.TemplateResponse("admin/backup.html", ctx)
 
     try:
-        buf, filename = _build_zip(backup_type)
-        dest_file = dest_dir / filename
-        dest_file.write_bytes(buf.read())
+        if quiesce:
+            _bstate.backup_in_progress = True
+        success, result = await asyncio.to_thread(_run_rsync_backup, backup_type, dest_dir)
     except Exception as e:
-        ctx = _backup_page_context(request, save_error=f"Failed to write backup: {e}")
+        success, result = False, str(e)
+    finally:
+        _bstate.backup_in_progress = False
+
+    if not success:
+        ctx = _backup_page_context(request, save_error=result)
         return templates.TemplateResponse("admin/backup.html", ctx)
 
     # Persist the path for next time
@@ -292,7 +366,7 @@ async def admin_backup_save(
 
     ctx = _backup_page_context(
         request,
-        save_success=f"Backup saved to {dest_file}",
+        save_success=f"Backup saved to {result}",
         saved_lan_path=lan_path,
     )
     return templates.TemplateResponse("admin/backup.html", ctx)

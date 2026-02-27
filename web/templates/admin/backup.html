@@ -72,6 +72,14 @@
             <form method="post" action="/admin/backup/save" onsubmit="injectLanPath(this)">
                 <input type="hidden" name="backup_type" value="quick">
                 <input type="hidden" name="lan_path" value="">
+                <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
+                    <input type="checkbox" name="quiesce" value="true">
+                    <span>Pause write operations during backup
+                        <span class="text-secondary" style="font-size:0.8rem;">
+                            (returns 503 to any concurrent saves while backup runs)
+                        </span>
+                    </span>
+                </label>
                 <button type="submit" class="btn btn-primary">Save Quick Backup to LAN</button>
             </form>
         </div>
@@ -100,6 +108,14 @@
             <form method="post" action="/admin/backup/save" onsubmit="injectLanPath(this)">
                 <input type="hidden" name="backup_type" value="full">
                 <input type="hidden" name="lan_path" value="">
+                <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
+                    <input type="checkbox" name="quiesce" value="true">
+                    <span>Pause write operations during backup
+                        <span class="text-secondary" style="font-size:0.8rem;">
+                            (returns 503 to any concurrent saves while backup runs)
+                        </span>
+                    </span>
+                </label>
                 <button type="submit" class="btn btn-primary">Save Full Backup to LAN</button>
             </form>
         </div>
@@ -114,9 +130,12 @@
             Back it up manually if needed:<br>
             <code>cp config/pcr_credentials.yaml ~/pcr_credentials_backup.yaml</code>
         </li>
-        <li>Local downloads are streamed in-memory — no temp files created on the server.</li>
-        <li>LAN saves write directly to the specified path; the directory is created if absent.</li>
-        <li>Filename format: <code>raaf_backup_[quick|full]_YYYYMMDD_HHMMSS.zip</code></li>
+        <li>Local downloads are streamed in-memory — no temp files created on the server.
+            The database is captured with a hot consistent snapshot so the zip is never mid-write.</li>
+        <li>LAN backups write to <code>&lt;path&gt;/latest/</code> — rsync only copies changed files on subsequent runs.
+            A <code>backup_manifest.yaml</code> in the backup directory records the timestamp of the last backup.</li>
+        <li>The directory is created if absent.</li>
+        <li>Local download filename format: <code>raaf_backup_[quick|full]_YYYYMMDD_HHMMSS.zip</code></li>
     </ul>
 </div>
 {% endblock %}

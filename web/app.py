@@ -92,6 +92,19 @@ async def auth_middleware(request: Request, call_next):
     return response
 
 
+@app.middleware("http")
+async def quiesce_middleware(request: Request, call_next):
+    import web.backup_state as bstate
+    if bstate.backup_in_progress and request.method not in ("GET", "HEAD", "OPTIONS"):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Backup in progress — writes paused. Please retry in a moment."},
+            headers={"Retry-After": "60"},
+        )
+    return await call_next(request)
+
+
 # Include routers
 app.include_router(auth_router.router, prefix="/auth", tags=["auth"])
 app.include_router(clients.router, prefix="/clients", tags=["clients"])
