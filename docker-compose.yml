@@ -1,0 +1,53 @@
+services:
+
+  raaf-app:
+    build: .
+    container_name: raaf-app
+    restart: unless-stopped
+    environment:
+      - RAAF_DB_MODE=db
+      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    volumes:
+      - raaf-data:/app/data
+      - raaf-clients:/app/clients
+      - raaf-config:/app/config
+      - raaf-logs:/app/logs
+    networks:
+      - raaf-network
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  nginx:
+    image: nginx:alpine
+    container_name: raaf-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/raaf.conf:/etc/nginx/conf.d/raaf.conf:ro
+      - raaf-certs:/etc/letsencrypt:ro
+      - raaf-certbot-webroot:/var/www/certbot:ro
+    networks:
+      - raaf-network
+    depends_on:
+      - raaf-app
+
+volumes:
+  raaf-data:
+  raaf-clients:
+  raaf-config:
+  raaf-logs:
+  raaf-certs:
+  raaf-certbot-webroot:
+
+networks:
+  raaf-network:
+    driver: bridge

@@ -1,0 +1,46 @@
+# Version control
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+venv/
+.venv/
+ENV/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Data — comes via Docker volumes at runtime
+data/
+clients/
+logs/
+
+# Secrets — never bake into the image
+config/pcr_credentials.yaml
+config/claude_credentials.yaml
+config/.token_store.json
+.env
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Backups and temp
+*.tar.gz
+*.zip
+*.tmp
+*.bak
+
+# Docs and project files (not needed in image)
+docs/
+archive/
+.claude/
+.current_context.yaml
