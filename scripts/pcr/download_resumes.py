@@ -60,7 +60,7 @@ def download_resumes(
             f"Expected: {req_root / 'incoming' / 'candidates_manifest.json'}"
         )
 
-    with open(manifest_file, "r") as f:
+    with open(manifest_file, "r", encoding="utf-8") as f:
         manifest = json.load(f)
 
     candidates = manifest.get("candidates", [])
@@ -201,16 +201,16 @@ def download_resumes(
         'source_files': [f['filename'] for f in stats['files']],
         'status': 'uploaded',
     }
-    with open(batch_dir / "batch_manifest.yaml", "w") as f:
-        yaml.dump(batch_manifest, f, default_flow_style=False)
+    with open(batch_dir / "batch_manifest.yaml", "w", encoding="utf-8") as f:
+        yaml.dump(batch_manifest, f, default_flow_style=False, allow_unicode=True)
 
     # Save download log in batch
     log_file = batch_dir / "download_log.json"
-    with open(log_file, "w") as f:
+    with open(log_file, "w", encoding="utf-8") as f:
         json.dump({
             "downloaded_at": datetime.now().isoformat(),
             "stats": stats
-        }, f, indent=2)
+        }, f, indent=2, ensure_ascii=False)
 
     print("\nDownload Summary:")
     print(f"  Batch: {batch_dir.name}")

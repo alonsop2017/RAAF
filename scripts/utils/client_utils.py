@@ -30,7 +30,7 @@ def get_settings() -> dict:
     settings_path = get_config_path() / "settings.yaml"
     if not settings_path.exists():
         raise FileNotFoundError(f"Settings file not found: {settings_path}")
-    with open(settings_path, "r") as f:
+    with open(settings_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -49,7 +49,7 @@ def _get_requisition_config_from_file(client_code: str, req_id: str) -> dict:
     req_path = get_requisition_root(client_code, req_id) / "requisition.yaml"
     if not req_path.exists():
         raise FileNotFoundError(f"Requisition config not found: {req_path}")
-    with open(req_path, "r") as f:
+    with open(req_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -69,8 +69,8 @@ def get_requisition_config(client_code: str, req_id: str) -> dict:
 def save_requisition_config(client_code: str, req_id: str, config: dict) -> None:
     """Save requisition config to requisition.yaml."""
     req_path = get_requisition_root(client_code, req_id) / "requisition.yaml"
-    with open(req_path, "w") as f:
-        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+    with open(req_path, "w", encoding="utf-8") as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
     # Dual-write to DB when enabled
     try:
@@ -219,17 +219,30 @@ def _db_req_to_config(row: dict, client_code: str) -> dict:
         },
         "notes": row.get("notes"),
     }
-    if row.get("pcr_job_id"):
-        config["pcr_integration"] = {
-            "job_id": row["pcr_job_id"],
+    # pcr_integration: DB stores only the primary job_id; last_sync and multi-position
+    # list live in the YAML. Always read from YAML to get the full picture.
+    try:
+        yaml_pcr = _get_requisition_config_from_file(client_code, row["req_id"]).get("pcr_integration", {})
+    except FileNotFoundError:
+        yaml_pcr = {}
+
+    if row.get("pcr_job_id") or yaml_pcr.get("job_id"):
+        pcr_integration = {
+            "job_id": row.get("pcr_job_id") or yaml_pcr.get("job_id"),
             "positions": [{
                 "job_id": row["pcr_job_id"],
                 "job_title": row.get("pcr_job_title", ""),
                 "company_name": row.get("pcr_company_name", ""),
                 "linked_date": row.get("pcr_linked_date", ""),
-            }],
-            "linked_date": row.get("pcr_linked_date"),
+            }] if row.get("pcr_job_id") else [],
+            "linked_date": row.get("pcr_linked_date") or yaml_pcr.get("linked_date"),
         }
+        # YAML is authoritative for last_sync and multi-position list
+        if yaml_pcr.get("last_sync"):
+            pcr_integration["last_sync"] = yaml_pcr["last_sync"]
+        if yaml_pcr.get("positions"):
+            pcr_integration["positions"] = yaml_pcr["positions"]
+        config["pcr_integration"] = pcr_integration
     return config
 
 
@@ -262,7 +275,7 @@ def get_client_info(client_code: str) -> dict:
     client_info_path = get_client_root(client_code) / "client_info.yaml"
     if not client_info_path.exists():
         raise FileNotFoundError(f"Client info not found: {client_info_path}")
-    with open(client_info_path, "r") as f:
+    with open(client_info_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -459,15 +472,15 @@ def load_context() -> dict:
     context_file = get_context_file()
     if not context_file.exists():
         return {}
-    with open(context_file, "r") as f:
+    with open(context_file, "r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
 
 def save_context(context: dict) -> None:
     """Save the current working context."""
     context_file = get_context_file()
-    with open(context_file, "w") as f:
-        yaml.dump(context, f, default_flow_style=False)
+    with open(context_file, "w", encoding="utf-8") as f:
+        yaml.dump(context, f, default_flow_style=False, allow_unicode=True)
 
 
 def clear_context() -> None:

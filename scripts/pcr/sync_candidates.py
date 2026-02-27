@@ -96,7 +96,7 @@ def sync_candidates(
     incoming_path.mkdir(parents=True, exist_ok=True)
 
     candidates_file = incoming_path / "candidates_manifest.json"
-    with open(candidates_file, "w") as f:
+    with open(candidates_file, "w", encoding="utf-8") as f:
         json.dump({
             "synced_at": datetime.now().isoformat(),
             "position_ids": position_ids,

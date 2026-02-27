@@ -12,6 +12,12 @@ from datetime import datetime, timedelta
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Force UTF-8 stdout/stderr so candidate names with non-latin-1 chars don't crash print()
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 from utils.pcr_client import PCRClient, PCRClientError
 from utils.client_utils import (
     get_requisition_config,
@@ -184,7 +190,7 @@ def check_requisition(
 
         manifest_file = incoming_path / "candidates_manifest.json"
         if manifest_file.exists():
-            with open(manifest_file, "r") as f:
+            with open(manifest_file, "r", encoding="utf-8") as f:
                 manifest = json.load(f)
             existing_ids = {c.get("CandidateId") for c in manifest.get("candidates", [])}
             for c in new_candidates:
@@ -200,8 +206,8 @@ def check_requisition(
         manifest["synced_at"] = datetime.now().isoformat()
         manifest["count"] = len(manifest.get("candidates", []))
 
-        with open(manifest_file, "w") as f:
-            json.dump(manifest, f, indent=2, default=str)
+        with open(manifest_file, "w", encoding="utf-8") as f:
+            json.dump(manifest, f, indent=2, default=str, ensure_ascii=False)
 
         # Update last sync
         pcr_config["last_sync"] = datetime.now().isoformat()
