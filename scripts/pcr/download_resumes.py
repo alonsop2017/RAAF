@@ -12,6 +12,12 @@ from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Force UTF-8 stdout/stderr so candidate names with non-latin-1 chars don't crash print()
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 from utils.pcr_client import PCRClient, PCRClientError
 from utils.client_utils import (
     get_requisition_config,
