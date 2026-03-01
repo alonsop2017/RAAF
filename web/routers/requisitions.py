@@ -310,6 +310,7 @@ async def create_requisition(
                     location=location,
                     experience_years_min=experience_years_min,
                     education=education,
+                    notes=notes,
                 )
                 with open(req_root / "framework" / "assessment_framework.md", "w", encoding="utf-8") as f:
                     f.write(framework_md)
@@ -788,9 +789,10 @@ async def link_pcr_position(
         'last_sync': pcr.get('last_sync'),
     }
 
-    if _files_mode():
-        with open(config_path, 'w') as f:
-            yaml.dump(config, f, default_flow_style=False)
+    # Always write YAML — _db_req_to_config reads it as the authoritative source
+    # for the multi-position list and last_sync, regardless of DB mode.
+    with open(config_path, 'w') as f:
+        yaml.dump(config, f, default_flow_style=False)
 
     # Write to DB when enabled
     try:
@@ -842,9 +844,10 @@ async def unlink_pcr_position(
     else:
         config.pop('pcr_integration', None)
 
-    if _files_mode():
-        with open(config_path, 'w') as f:
-            yaml.dump(config, f, default_flow_style=False)
+    # Always write YAML — _db_req_to_config reads it as the authoritative source
+    # for the multi-position list and last_sync, regardless of DB mode.
+    with open(config_path, 'w') as f:
+        yaml.dump(config, f, default_flow_style=False)
 
     # Write to DB when enabled
     try:
@@ -914,6 +917,7 @@ async def regenerate_framework(request: Request, client_code: str, req_id: str):
             location=job.get('location', ''),
             experience_years_min=reqs.get('experience_years_min', 0),
             education=reqs.get('education', ''),
+            notes=req_config.get('notes', ''),
         )
         with open(req_root / "framework" / "assessment_framework.md", "w", encoding="utf-8") as f:
             f.write(framework_md)

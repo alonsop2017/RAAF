@@ -24,14 +24,18 @@ FRAMEWORK_GENERATION_PROMPT = """You are an expert recruitment assessment specia
 - Minimum Experience: {experience_years_min} years
 - Education Requirement: {education}
 
+## Recruiter Notes & Hiring Manager Requirements
+{notes}
+
 ## Instructions
 
 Create a comprehensive assessment framework in markdown format that follows the structure below. The framework must:
 
 1. Be specifically tailored to the job description provided
-2. Include 6 scoring categories totaling 100 points
-3. Have detailed scoring criteria with specific, measurable benchmarks drawn from the JD
-4. Include role-specific interview questions
+2. Incorporate the Recruiter Notes as additional mandatory requirements — treat them as refinements that override or supplement the JD where they differ
+3. Include 6 scoring categories totaling 100 points
+4. Have detailed scoring criteria with specific, measurable benchmarks drawn from the JD and the Recruiter Notes
+5. Include role-specific interview questions
 
 The 6 categories MUST be:
 - Core Experience & Qualifications (25 points)
@@ -156,16 +160,10 @@ generated: true
 Return ONLY the markdown framework. Do not include any other text or commentary."""
 
 
-def _get_claude_client():
-    """Get an Anthropic client instance."""
-    try:
-        import anthropic
-    except ImportError:
-        raise ImportError("anthropic library is required. Run: pip install anthropic")
-
+def _get_api_key() -> str:
+    """Resolve the Anthropic API key from env or credentials file."""
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        # Try credentials file
         config_path = Path(__file__).parent.parent.parent / "config" / "claude_credentials.yaml"
         if config_path.exists():
             with open(config_path, "r") as f:
@@ -180,7 +178,7 @@ def _get_claude_client():
             "or configure config/claude_credentials.yaml"
         )
 
-    return anthropic.Anthropic(api_key=api_key)
+    return api_key
 
 
 async def generate_framework(
@@ -190,7 +188,8 @@ async def generate_framework(
     location: str = "",
     experience_years_min: int = 0,
     education: str = "",
-    model: str = "claude-sonnet-4-20250514",
+    notes: str = "",
+    model: str = "claude-sonnet-4-6",
 ) -> str:
     """
     Generate an assessment framework from a job description using Claude.
@@ -207,9 +206,14 @@ async def generate_framework(
     Returns:
         Generated assessment framework as markdown text.
     """
+    try:
+        from anthropic import AsyncAnthropic
+    except ImportError:
+        raise ImportError("anthropic library is required. Run: pip install anthropic")
+
     from datetime import date
 
-    client = _get_claude_client()
+    client = AsyncAnthropic(api_key=_get_api_key())
 
     prompt = FRAMEWORK_GENERATION_PROMPT.format(
         jd_text=jd_text,
@@ -218,13 +222,13 @@ async def generate_framework(
         location=location or "Not specified",
         experience_years_min=experience_years_min,
         education=education or "Not specified",
+        notes=notes.strip() if notes and notes.strip() else "No additional notes provided.",
         today_date=date.today().isoformat(),
     )
 
-    message = client.messages.create(
+    message = await client.messages.create(
         model=model,
         max_tokens=8192,
-        temperature=0.3,
         messages=[{"role": "user", "content": prompt}],
     )
 
