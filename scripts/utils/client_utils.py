@@ -171,6 +171,83 @@ def list_batches(client_code: str, req_id: str) -> list[str]:
     return sorted([d.name for d in batches_dir.iterdir() if d.is_dir()])
 
 
+def get_next_batch_name(client_code: str, req_id: str) -> str:
+    """Generate the next batch name (batch_YYYYMMDD_N) for a requisition."""
+    from datetime import datetime
+
+    today = datetime.now().strftime("%Y%m%d")
+    existing = list_batches(client_code, req_id)
+
+    # Find highest N for today's date
+    n = 1
+    for batch in existing:
+        if batch.startswith(f"batch_{today}_"):
+            try:
+                num = int(batch.split("_")[-1])
+                n = max(n, num + 1)
+            except ValueError:
+                continue
+
+    return f"batch_{today}_{n}"
+
+
+def create_batch_folder(client_code: str, req_id: str) -> Path:
+    """Create a new batch folder with originals/ and extracted/ subdirectories."""
+    batch_name = get_next_batch_name(client_code, req_id)
+    batch_dir = get_batch_path(client_code, req_id, batch_name)
+    (batch_dir / "originals").mkdir(parents=True, exist_ok=True)
+    (batch_dir / "extracted").mkdir(parents=True, exist_ok=True)
+    return batch_dir
+
+
+def list_all_extracted_resumes(client_code: str, req_id: str) -> list[Path]:
+    """List all extracted resume files across all batches for a requisition."""
+    batches_dir = get_resumes_path(client_code, req_id, "batches")
+    results = []
+    if batches_dir.exists():
+        for batch_dir in sorted(batches_dir.iterdir()):
+            extracted_dir = batch_dir / "extracted"
+            if extracted_dir.exists():
+                results.extend(sorted(extracted_dir.iterdir()))
+    return results
+
+
+def find_resume_in_batches(
+    client_code: str, req_id: str, name_normalized: str, subfolder: str = "extracted"
+) -> Optional[Path]:
+    """Find a resume file by normalized name across all batches.
+
+    Args:
+        client_code: Client identifier
+        req_id: Requisition identifier
+        name_normalized: Normalized candidate name (e.g. 'smith_jane')
+        subfolder: 'extracted' or 'originals'
+
+    Returns:
+        Path to the file if found, None otherwise.
+    """
+    batches_dir = get_resumes_path(client_code, req_id, "batches")
+    if not batches_dir.exists():
+        return None
+    for batch_dir in sorted(batches_dir.iterdir()):
+        sub = batch_dir / subfolder
+        if not sub.exists():
+            continue
+        for f in sub.iterdir():
+            if f.stem.replace("_resume", "") == name_normalized:
+                return f
+    return None
+
+
+def get_batch_for_resume(client_code: str, req_id: str, name_normalized: str) -> Optional[str]:
+    """Get the batch name that contains a given candidate's resume."""
+    found = find_resume_in_batches(client_code, req_id, name_normalized, "extracted")
+    if found:
+        # Path is .../batches/<batch_name>/extracted/<file>
+        return found.parent.parent.name
+    return None
+
+
 def normalize_candidate_name(name: str) -> str:
     """Normalize a candidate name to lastname_firstname format."""
     # Remove extra whitespace and split
