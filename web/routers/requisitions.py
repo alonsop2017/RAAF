@@ -612,7 +612,7 @@ async def update_requisition(
     if not config_path.exists():
         raise HTTPException(status_code=404, detail=f"Requisition not found")
 
-    with open(config_path, 'r') as f:
+    with open(config_path, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
 
     # Update fields
@@ -668,8 +668,8 @@ async def update_requisition(
                 logger.warning(f"Failed to extract JD text during update: {e}")
 
     if _files_mode():
-        with open(config_path, 'w') as f:
-            yaml.dump(config, f, default_flow_style=False)
+        with open(config_path, 'w', encoding='utf-8') as f:
+            yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
 
     # Write to DB when enabled
     try:
@@ -720,14 +720,14 @@ async def update_requisition_status(
             raise HTTPException(status_code=500, detail=f"Failed to archive requisition: {str(e)}")
 
     # For other statuses, just update the YAML
-    with open(config_path, 'r') as f:
+    with open(config_path, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
 
     config['status'] = status
 
     if _files_mode():
-        with open(config_path, 'w') as f:
-            yaml.dump(config, f, default_flow_style=False)
+        with open(config_path, 'w', encoding='utf-8') as f:
+            yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
 
     # Write to DB when enabled
     try:
@@ -756,7 +756,7 @@ async def link_pcr_position(
     if not config_path.exists():
         raise HTTPException(status_code=404, detail="Requisition not found")
 
-    with open(config_path, 'r') as f:
+    with open(config_path, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
 
     pcr = config.get('pcr_integration', {})
@@ -791,8 +791,8 @@ async def link_pcr_position(
 
     # Always write YAML — _db_req_to_config reads it as the authoritative source
     # for the multi-position list and last_sync, regardless of DB mode.
-    with open(config_path, 'w') as f:
-        yaml.dump(config, f, default_flow_style=False)
+    with open(config_path, 'w', encoding='utf-8') as f:
+        yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
 
     # Write to DB when enabled
     try:
@@ -827,7 +827,7 @@ async def unlink_pcr_position(
     if not config_path.exists():
         raise HTTPException(status_code=404, detail="Requisition not found")
 
-    with open(config_path, 'r') as f:
+    with open(config_path, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
 
     if job_id:
@@ -846,8 +846,8 @@ async def unlink_pcr_position(
 
     # Always write YAML — _db_req_to_config reads it as the authoritative source
     # for the multi-position list and last_sync, regardless of DB mode.
-    with open(config_path, 'w') as f:
-        yaml.dump(config, f, default_flow_style=False)
+    with open(config_path, 'w', encoding='utf-8') as f:
+        yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
 
     # Write to DB when enabled
     try:
@@ -1008,11 +1008,11 @@ async def update_job_description(
 
     # Update requisition.yaml
     if _files_mode():
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
         config.setdefault('job', {})['description_file'] = job_description.filename
-        with open(config_path, 'w') as f:
-            yaml.dump(config, f, default_flow_style=False)
+        with open(config_path, 'w', encoding='utf-8') as f:
+            yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
 
     # Write to DB when enabled
     try:
