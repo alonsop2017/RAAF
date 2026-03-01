@@ -6,6 +6,7 @@ config/claude_credentials.yaml
 
 # OAuth token store (NEVER commit)
 config/.token_store.json
+config/.gmail_token.json
 
 # Context file
 .current_context.yaml
