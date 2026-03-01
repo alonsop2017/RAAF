@@ -1,26 +1,30 @@
+# Global Settings - Resume Assessment Automation Framework
+# Archtekt Consulting Inc.
+
+# Authentication settings
 auth:
   google:
-    client_id: 344797612488-91k92gaufbvhbutq4j0ouof9u0qhmu80.apps.googleusercontent.com
-    client_secret_env: GOOGLE_CLIENT_SECRET
-    redirect_uri: https://raaf.genapex.org/auth/callback
+    client_id: "344797612488-91k92gaufbvhbutq4j0ouof9u0qhmu80.apps.googleusercontent.com"
+    client_secret_env: "GOOGLE_CLIENT_SECRET"
   session:
-    secret_key_env: SESSION_SECRET_KEY
-    cookie_name: raaf_session
+    secret_key_env: "SESSION_SECRET_KEY"
+    cookie_name: "raaf_session"
     max_age_hours: 8
-  allowed_domains: []
-  allowed_emails:
-  - charles@peoplefindinc.com
-  - alonso@peoplefindinc.com
-  - alonso.perez@archtektconsultinginc.com
-  admin_emails:
-  - alonso@peoplefindinc.com
-  - alonso.perez@archtektconsultinginc.com
+  allowed_domains: []  # Optional: ["archtekt.ca"] to restrict login
+
+# Database for user credentials (email/password auth)
+database:
+  url: "sqlite:///config/users.db"
+
+# Default assessment settings (can be overridden per requisition)
 assessment:
   default_max_score: 100
   default_thresholds:
     strong_recommend: 85
     recommend: 70
     conditional: 55
+
+# Job stability scoring weights
 stability:
   weights:
     four_plus_years: 10
@@ -29,65 +33,62 @@ stability:
     eighteen_months_to_two_years: 4
     one_to_eighteen_months: 2
     less_than_one_year: 0
+
+# Report formatting settings
 report:
   font_family: Arial
   body_font_size: 11
   heading_font_size: 14
   margins_inches: 1.0
-  header_shading: D5E8F0
+  header_shading: "D5E8F0"
+
+# Output formatting
 output:
-  date_format: '%Y-%m-%d'
-  filename_date_format: '%y%m%d'
+  date_format: "%Y-%m-%d"
+  filename_date_format: "%y%m%d"
+
+# Path patterns (use {client} and {req} placeholders)
 paths:
-  client_root: clients/{client}
-  requisition_root: clients/{client}/requisitions/{req}
-  archive_root: archive/{client}
-  log_root: logs/{client}
+  client_root: "clients/{client}"
+  requisition_root: "clients/{client}/requisitions/{req}"
+  archive_root: "archive/{client}"
+  log_root: "logs/{client}"
+
+# Context persistence
 context:
-  file: .current_context.yaml
+  file: ".current_context.yaml"
   auto_save: true
+
+# PCRecruiter integration settings
 pcr:
-  api_base_url: https://www2.pcrecruiter.net/rest/api
-  api_version: v2
+  api_base_url: "https://www2.pcrecruiter.net/rest/api"
+  api_version: "v2"
   session_timeout_minutes: 60
-  sync_interval_minutes: 60
+  sync_interval_minutes: 15
   default_pipeline_statuses:
-    new: New Applicant
-    assessed: Assessed
-    interview: Interview Scheduled
-    hold: On Hold
-    rejected: Not Selected
-    hired: Hired
-backup:
-  lan_path: ''
+    new: "New Applicant"
+    assessed: "Assessed"
+    interview: "Interview Scheduled"
+    hold: "On Hold"
+    rejected: "Not Selected"
+    hired: "Hired"
+
+# Batch processing settings
 batch:
   max_candidates_per_batch: 50
   auto_create_batch: true
-  batch_naming_pattern: batch_{date}_{n}
+  batch_naming_pattern: "batch_{date}_{n}"
+
+# Logging settings
 logging:
   level: INFO
-  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
   rotate_size_mb: 10
   backup_count: 5
-recruiter:
-  name: Alonso Perez
-  title: Talent Search Executive
-  email: alonso@peoplefindinc.com
-  phone: +1 905-477-9330 x 30
-  agency: PeopleFind Inc.
-invitation_template:
-  subject: 'Opportunity: {job_title} at {company_name} - Are You Available for a Brief
-    Call?'
-  opening: I hope this message finds you well.
-  call_to_action: If this sounds like something you would be open to exploring, please
-    reply to this email with a few times that work for you this week or next, and
-    we will arrange a convenient time to connect.
-  not_interested: If the timing or opportunity isn't the right fit at this stage,
-    please feel free to let us know - we appreciate your transparency and would welcome
-    the chance to stay in touch for future opportunities.
-  closing: We look forward to hearing from you.
+
+# Claude API settings (for AI-powered assessments)
 claude:
-  default_model: claude-sonnet-4-20250514
+  default_model: "claude-sonnet-4-20250514"
   max_tokens: 4096
-  temperature: 0.3
+  temperature: 0.3  # Lower for more consistent scoring
   timeout_seconds: 120

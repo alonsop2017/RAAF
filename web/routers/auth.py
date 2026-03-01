@@ -1,19 +1,23 @@
 """
 Authentication routes for RAAF Web Application.
-Handles Google OAuth login/logout flow.
+Handles email/password login, registration, and Google OAuth login/logout flow.
 """
 
 import time
 
-from fastapi import APIRouter, Request, HTTPException
+import bcrypt
+from fastapi import APIRouter, Request, HTTPException, Depends, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
+from sqlalchemy.orm import Session
 
 from web.auth.oauth import oauth
 from web.auth.session import session_manager
 from web.auth.config import get_allowed_domains, get_allowed_emails, get_google_client_id, get_google_client_secret, get_google_redirect_uri
 from web.auth.token_store import store_token, get_token, remove_token, is_token_expired
+from web.auth.database import get_db
+from web.auth.models import User
 
 router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
@@ -21,17 +25,124 @@ templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates"
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    """Display the login page with Google sign-in button."""
+    """Display the login page with email/password form and Google sign-in button."""
     # If already logged in, redirect to dashboard
     user = session_manager.get_user_from_cookies(request.cookies)
     if user:
         return RedirectResponse(url="/", status_code=302)
 
     error = request.query_params.get("error")
+    success = request.query_params.get("success")
     return templates.TemplateResponse("auth/login.html", {
         "request": request,
-        "error": error
+        "error": error,
+        "success": success,
     })
+
+
+@router.post("/login")
+async def login_email(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Authenticate with email and password."""
+    user = db.query(User).filter(User.email == email).first()
+
+    if not user or not bcrypt.checkpw(password.encode("utf-8"), user.password_hash.encode("utf-8")):
+        return RedirectResponse(
+            url="/auth/login?error=Invalid+email+or+password",
+            status_code=302,
+        )
+
+    # Build session data compatible with OAuth sessions
+    name_parts = user.name.split()
+    user_data = {
+        "email": user.email,
+        "name": user.name,
+        "given_name": name_parts[0],
+        "family_name": name_parts[-1] if len(name_parts) > 1 else "",
+        "picture": None,
+        "email_verified": True,
+    }
+
+    session_token = session_manager.create_session(user_data)
+
+    response = RedirectResponse(url="/", status_code=302)
+    response.set_cookie(
+        key=session_manager.cookie_name,
+        value=session_token,
+        max_age=session_manager.max_age,
+        httponly=True,
+        samesite="lax",
+        secure=False,  # Set to True in production with HTTPS
+    )
+    return response
+
+
+@router.get("/register", response_class=HTMLResponse)
+async def register_page(request: Request):
+    """Display the registration page."""
+    user = session_manager.get_user_from_cookies(request.cookies)
+    if user:
+        return RedirectResponse(url="/", status_code=302)
+
+    error = request.query_params.get("error")
+    return templates.TemplateResponse("auth/register.html", {
+        "request": request,
+        "error": error,
+    })
+
+
+@router.post("/register")
+async def register_email(
+    request: Request,
+    name: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Create a new account with email and password."""
+    # Validate passwords match
+    if password != confirm_password:
+        return templates.TemplateResponse("auth/register.html", {
+            "request": request,
+            "error": "Passwords do not match.",
+            "name": name,
+            "email": email,
+        })
+
+    # Validate password length
+    if len(password) < 8:
+        return templates.TemplateResponse("auth/register.html", {
+            "request": request,
+            "error": "Password must be at least 8 characters.",
+            "name": name,
+            "email": email,
+        })
+
+    # Check if email already exists
+    existing = db.query(User).filter(User.email == email).first()
+    if existing:
+        return templates.TemplateResponse("auth/register.html", {
+            "request": request,
+            "error": "An account with this email already exists.",
+            "name": name,
+            "email": email,
+        })
+
+    # Hash password and create user
+    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    new_user = User(email=email, name=name.strip(), password_hash=password_hash)
+    db.add(new_user)
+    db.commit()
+
+    return RedirectResponse(
+        url="/auth/login?success=Account+created+successfully.+Please+sign+in.",
+        status_code=302,
+    )
 
 
 @router.get("/login/google")
