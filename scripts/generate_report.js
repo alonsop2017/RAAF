@@ -52,7 +52,8 @@ function loadClientInfo(clientCode) {
 }
 
 // Load all assessments for a requisition
-function loadAssessments(clientCode, reqId, batch = null) {
+function loadAssessments(clientCode, reqId, options = {}) {
+  const batch = options.batch || null;
   const assessmentsPath = join(
     PROJECT_ROOT, 'clients', clientCode, 'requisitions', reqId, 'assessments', 'individual'
   );
@@ -69,6 +70,11 @@ function loadAssessments(clientCode, reqId, batch = null) {
 
     // Filter by batch if specified
     if (batch && data.candidate?.batch !== batch) {
+      continue;
+    }
+
+    // Filter by minimum score if specified
+    if (options.minScore !== undefined && (data.percentage || 0) < options.minScore) {
       continue;
     }
 
@@ -108,7 +114,7 @@ function generateReport(clientCode, reqId, options = {}) {
   const settings = loadSettings();
   const reqConfig = loadRequisitionConfig(clientCode, reqId);
   const clientInfo = loadClientInfo(clientCode);
-  const assessments = loadAssessments(clientCode, reqId, options.batch);
+  const assessments = loadAssessments(clientCode, reqId, options);
 
   if (assessments.length === 0) {
     throw new Error('No assessments found for this requisition');
@@ -528,6 +534,7 @@ async function main() {
   let reqId = null;
   let outputType = 'draft';
   let batch = null;
+  let minScore = undefined;
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -545,6 +552,9 @@ async function main() {
       case '--batch':
       case '-b':
         batch = args[++i];
+        break;
+      case '--min-score':
+        minScore = parseFloat(args[++i]);
         break;
       case '--test':
         console.log('Test mode - would generate report');
@@ -573,7 +583,7 @@ Options:
   try {
     console.log(`Generating report for ${reqId}...`);
 
-    const doc = generateReport(clientCode, reqId, { batch });
+    const doc = generateReport(clientCode, reqId, { batch, minScore });
 
     // Determine output path
     const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '').slice(2);
