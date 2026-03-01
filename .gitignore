@@ -14,6 +14,9 @@ config/users.db
 # Context file
 .current_context.yaml
 
+# Generated backup wrapper (created by install_backup_cron.sh)
+run_backup.sh
+
 # Log files
 logs/
 
