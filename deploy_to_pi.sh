@@ -29,6 +29,11 @@ rsync -avz --progress \
     --exclude 'config/pcr_credentials.yaml' \
     --exclude 'config/claude_credentials.yaml' \
     --exclude 'config/.token_store.json' \
+    --exclude 'config/users.db' \
+    --exclude 'clients/' \
+    --exclude 'archive/' \
+    --exclude 'logs/' \
+    --exclude '.current_context.yaml' \
     --exclude '.DS_Store' \
     --exclude '.obsidian' \
     $LOCAL_DIR/ $PI_HOST:$PI_DIR/
