@@ -130,7 +130,7 @@ async def generate_new_report(
     top_candidates: int = Form(6),
 ):
     """Generate a new report."""
-    top_candidates = max(1, min(top_candidates, 50))  # clamp 1-50
+    top_candidates = max(1, min(top_candidates, 100))  # clamp 1-100
     success, stdout, stderr = generate_report(client_code, req_id, output_type, top_candidates)
 
     if success:
