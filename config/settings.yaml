@@ -13,6 +13,7 @@ auth:
   allowed_domains: []  # Optional: ["archtekt.ca"] to restrict login
   allowed_emails:
     - alonso.perez@archtektconsultinginc.com
+    - charlesg6@gmail.com
   admin_emails:
     - alonso.perez@archtektconsultinginc.com
 
@@ -92,7 +93,7 @@ logging:
 
 # Claude API settings (for AI-powered assessments)
 claude:
-  default_model: "claude-sonnet-4-20250514"
+  default_model: "claude-sonnet-4-6"
   max_tokens: 4096
-  temperature: 0.3  # Lower for more consistent scoring
+  temperature: 0.1
   timeout_seconds: 120
