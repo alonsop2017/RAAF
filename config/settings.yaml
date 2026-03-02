@@ -11,6 +11,10 @@ auth:
     cookie_name: "raaf_session"
     max_age_hours: 8
   allowed_domains: []  # Optional: ["archtekt.ca"] to restrict login
+  allowed_emails:
+    - alonso.perez@archtektconsultinginc.com
+  admin_emails:
+    - alonso.perez@archtektconsultinginc.com
 
 # Database for user credentials (email/password auth)
 database:
