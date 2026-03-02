@@ -1,44 +1,83 @@
 FROM python:3.11-slim
 
-# System dependencies
+# ── System dependencies ──────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    libmupdf-dev \
-    poppler-utils \
-    rsync \
+        curl \
+        # pymupdf / pdfplumber
+        libmupdf-dev \
+        libglib2.0-0 \
+        libgl1 \
+        poppler-utils \
+        # Pillow (favicon generation, image processing)
+        libjpeg-dev \
+        libpng-dev \
+        fonts-dejavu-core \
+        # Utilities
+        rsync \
+        sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js 18
+# ── Node.js 18 ───────────────────────────────────────────────────────────────
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
+
+# ── Supercronic (lightweight cron for containers) ────────────────────────────
+# Supports amd64 (VPS) and arm64 (Pi)
+RUN ARCH=$(dpkg --print-architecture) && \
+    case "$ARCH" in \
+      amd64)   SC_ARCH="supercronic-linux-amd64" ;; \
+      arm64)   SC_ARCH="supercronic-linux-arm64" ;; \
+      *)       echo "Unsupported arch: $ARCH" && exit 1 ;; \
+    esac && \
+    curl -fsSL "https://github.com/aptible/supercronic/releases/latest/download/${SC_ARCH}" \
+         -o /usr/local/bin/supercronic && \
+    chmod +x /usr/local/bin/supercronic
+
+# ── Non-root user ────────────────────────────────────────────────────────────
+RUN groupadd -r raaf && useradd -r -g raaf -d /app raaf
 
 WORKDIR /app
 
-# Install Python dependencies
+# ── Python dependencies ──────────────────────────────────────────────────────
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Node dependencies
-COPY package.json .
-RUN npm install --omit=dev
+# ── Node dependencies ────────────────────────────────────────────────────────
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev
 
-COPY scripts/package.json scripts/
-RUN cd scripts && npm install --omit=dev
+COPY scripts/package.json scripts/package-lock.json* scripts/
+RUN cd scripts && npm ci --omit=dev
 
-# Copy application code (data comes via volumes at runtime)
+# ── Application code ─────────────────────────────────────────────────────────
+# Data directories (clients/, data/, logs/) come via bind mounts at runtime
 COPY web/         web/
 COPY scripts/     scripts/
 COPY templates/   templates/
-COPY config/settings.yaml             config/settings.yaml
-COPY config/client_template.yaml      config/client_template.yaml
-COPY config/requisition_template.yaml config/requisition_template.yaml
+COPY docs/        docs/
+COPY config/settings.yaml               config/settings.yaml
+COPY config/client_template.yaml        config/client_template.yaml
+COPY config/requisition_template.yaml   config/requisition_template.yaml
+COPY config/pcr_credentials_template.yaml  config/pcr_credentials_template.yaml
+COPY config/claude_credentials_template.yaml  config/claude_credentials_template.yaml
 
-# Create volume mount points
-RUN mkdir -p data clients logs
+# ── Entrypoint & cron ────────────────────────────────────────────────────────
+COPY docker/entrypoint.sh /entrypoint.sh
+COPY docker/crontab       /app/docker/crontab
+RUN chmod +x /entrypoint.sh
+
+# ── Volume mount points (created here so ownership is correct) ───────────────
+RUN mkdir -p data clients archive logs config/clients \
+    && chown -R raaf:raaf /app
+
+ENV PYTHONPATH=/app
+ENV PYTHONIOENCODING=utf-8
+ENV RAAF_DB_MODE=db
 
 EXPOSE 8000
 
-CMD ["python", "-m", "uvicorn", "web.app:app", \
-     "--host", "0.0.0.0", "--port", "8000", \
-     "--proxy-headers", "--forwarded-allow-ips=*"]
+USER raaf
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["uvicorn"]

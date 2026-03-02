@@ -1,0 +1,8 @@
+# RAAF cron schedule (supercronic format — standard crontab syntax)
+# Logs go to stdout/stderr and are captured by Docker
+
+# PCR sync: every 5 minutes — pull new applicants, download resumes, auto-assess
+*/5 * * * * PYTHONPATH=/app RAAF_DB_MODE=db PYTHONIOENCODING=utf-8 python /app/scripts/pcr/watch_applicants.py --once --auto-download --auto-assess >> /app/logs/pcr_sync.log 2>&1
+
+# Daily backup at 12:30 AM UTC
+30 0 * * * PYTHONPATH=/app /app/backup.sh --target local --local-path /app/backups >> /app/logs/backup.log 2>&1

@@ -1,19 +1,23 @@
 services:
 
+  # ── Web application ─────────────────────────────────────────────────────────
   raaf-app:
     build: .
+    image: raaf:latest
     container_name: raaf-app
     restart: unless-stopped
+    command: uvicorn
+    env_file: .env
     environment:
       - RAAF_DB_MODE=db
-      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - PYTHONPATH=/app
+      - PYTHONIOENCODING=utf-8
     volumes:
-      - raaf-data:/app/data
-      - raaf-clients:/app/clients
-      - raaf-config:/app/config
-      - raaf-logs:/app/logs
+      - ./data:/app/data               # SQLite DB
+      - ./clients:/app/clients         # Client & requisition data
+      - ./archive:/app/archive         # Archived requisitions
+      - ./logs:/app/logs               # Application logs
+      - ./config:/app/config           # Secrets & runtime config (users.db, tokens)
     networks:
       - raaf-network
     expose:
@@ -23,7 +27,32 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 15s
 
+  # ── PCR sync cron ───────────────────────────────────────────────────────────
+  raaf-cron:
+    image: raaf:latest
+    container_name: raaf-cron
+    restart: unless-stopped
+    command: cron
+    env_file: .env
+    environment:
+      - RAAF_DB_MODE=db
+      - PYTHONPATH=/app
+      - PYTHONIOENCODING=utf-8
+    volumes:
+      - ./data:/app/data
+      - ./clients:/app/clients
+      - ./archive:/app/archive
+      - ./logs:/app/logs
+      - ./config:/app/config
+    networks:
+      - raaf-network
+    depends_on:
+      raaf-app:
+        condition: service_healthy
+
+  # ── Nginx reverse proxy ──────────────────────────────────────────────────────
   nginx:
     image: nginx:alpine
     container_name: raaf-nginx
@@ -32,21 +61,24 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/raaf.conf:/etc/nginx/conf.d/raaf.conf:ro
-      - raaf-certs:/etc/letsencrypt:ro
-      - raaf-certbot-webroot:/var/www/certbot:ro
+      - ./nginx/raaf.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certbot/www:/var/www/certbot:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
     networks:
       - raaf-network
     depends_on:
       - raaf-app
 
-volumes:
-  raaf-data:
-  raaf-clients:
-  raaf-config:
-  raaf-logs:
-  raaf-certs:
-  raaf-certbot-webroot:
+  # ── Let's Encrypt cert renewal ───────────────────────────────────────────────
+  certbot:
+    image: certbot/certbot:latest
+    container_name: raaf-certbot
+    volumes:
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
+    # Run manually for first cert: docker compose run --rm certbot certonly ...
+    # Renewal handled by the cron-style entrypoint below
+    entrypoint: /bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done'
 
 networks:
   raaf-network:

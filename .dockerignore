@@ -14,10 +14,13 @@ ENV/
 node_modules/
 npm-debug.log*
 
-# Data — comes via Docker volumes at runtime
+# Data — comes via bind mounts at runtime
 data/
 clients/
+archive/
 logs/
+backups/
+certbot/
 
 # Secrets — never bake into the image
 config/pcr_credentials.yaml
@@ -40,7 +43,5 @@ config/.token_store.json
 *.bak
 
 # Docs and project files (not needed in image)
-docs/
-archive/
 .claude/
 .current_context.yaml
