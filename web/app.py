@@ -62,7 +62,7 @@ async def auth_middleware(request: Request, call_next):
     dev_mode = os.environ.get("DEV_MODE", "0") == "1"
 
     # Paths that don't require authentication
-    public_paths = ["/auth", "/static", "/health"]
+    public_paths = ["/auth", "/static", "/health", "/favicon.ico", "/favicon.png"]
 
     # Check if path is public
     path = request.url.path
@@ -218,6 +218,16 @@ async def user_guide_pdf():
         media_type="application/pdf",
         headers={"Content-Disposition": "inline; filename=RAAF_User_Guide.pdf"},
     )
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon_ico():
+    return FileResponse(Path(__file__).parent / "static" / "favicon.ico", media_type="image/x-icon")
+
+
+@app.get("/favicon.png", include_in_schema=False)
+async def favicon_png():
+    return FileResponse(Path(__file__).parent / "static" / "favicon.png", media_type="image/png")
 
 
 @app.get("/health")
