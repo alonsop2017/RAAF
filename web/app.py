@@ -198,6 +198,15 @@ async def dashboard(request: Request):
     })
 
 
+@app.get("/help", response_class=HTMLResponse)
+async def help_page(request: Request):
+    """How It Works page."""
+    return templates.TemplateResponse("help.html", {
+        "request": request,
+        "user": getattr(request.state, 'user', None),
+    })
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
