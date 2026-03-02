@@ -189,6 +189,28 @@
 }
 
 .resource-link .icon { font-size: 1.1rem; }
+
+.btn-print-diagram {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.6rem;
+    padding: 0.35rem 0.85rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.btn-print-diagram:hover {
+    background: var(--primary-color);
+    color: #fff;
+    border-color: var(--primary-color);
+}
 </style>
 {% endblock %}
 
@@ -222,6 +244,7 @@
              class="workflow-img"
              title="Click to zoom">
         <p class="diagram-caption">Figure 1A &mdash; PCR-Integrated workflow (end-to-end)</p>
+        <button class="btn-print-diagram" onclick="printWorkflowDiagram('/static/images/RAAF_Workflow_A_PCR_Integrated.png', 'Workflow A \u2014 PCR-Integrated')">&#128438; Print Diagram</button>
     </div>
     <ol class="workflow-steps" style="margin-top:1rem;">
         <li>Create position in PCRecruiter (Job Code: INDML)</li>
@@ -251,6 +274,7 @@
              class="workflow-img"
              title="Click to zoom">
         <p class="diagram-caption">Figure 1B &mdash; Manual / Direct Upload workflow</p>
+        <button class="btn-print-diagram" onclick="printWorkflowDiagram('/static/images/RAAF_Workflow_B_Manual_Upload.png', 'Workflow B \u2014 Manual Upload')">&#128438; Print Diagram</button>
     </div>
     <ol class="workflow-steps" style="margin-top:1rem;">
         <li>Receive JD from client (PDF or DOCX)</li>
@@ -277,6 +301,7 @@
              class="workflow-img"
              title="Click to zoom">
         <p class="diagram-caption">Figure 1C &mdash; Candidate Repository Search workflow</p>
+        <button class="btn-print-diagram" onclick="printWorkflowDiagram('/static/images/RAAF_Workflow_C_Repository_Search.png', 'Workflow C \u2014 Repository Search')">&#128438; Print Diagram</button>
     </div>
     <ol class="workflow-steps" style="margin-top:1rem;">
         <li>New position opens (same or new client)</li>
@@ -333,8 +358,11 @@
     <div class="card-header"><h3>Resources</h3></div>
     <div class="card-body">
         <div class="resources-row">
-            <a href="/help/user-guide" class="resource-link">
-                <span class="icon">&#128196;</span> Download User Guide (PDF)
+            <a href="/help/user-guide" class="resource-link" target="_blank">
+                <span class="icon">&#128196;</span> View User Guide (PDF)
+            </a>
+            <a href="/help/user-guide" class="resource-link" download="RAAF_User_Guide.pdf">
+                <span class="icon">&#11015;</span> Download User Guide (PDF)
             </a>
             <a href="/static/images/workflow_diagram.png" class="resource-link" download="RAAF_Workflow_Diagram.png">
                 <span class="icon">&#128444;</span> Download Workflow Diagram (PNG)
@@ -352,5 +380,21 @@ document.querySelectorAll('.workflow-img').forEach(function(img) {
         this.classList.toggle('zoomed');
     });
 });
+
+function printWorkflowDiagram(src, caption) {
+    var w = window.open('', '_blank');
+    w.document.write(
+        '<!DOCTYPE html><html><head><title>' + caption + '</title>' +
+        '<style>body{margin:1cm;font-family:Arial,sans-serif;text-align:center;}' +
+        'img{max-width:100%;height:auto;}' +
+        'h2{font-size:14pt;margin-bottom:0.5cm;}' +
+        '@media print{button{display:none;}}' +
+        '</style></head><body>' +
+        '<h2>' + caption + '</h2>' +
+        '<img src="' + src + '" onload="window.print()">' +
+        '</body></html>'
+    );
+    w.document.close();
+}
 </script>
 {% endblock %}

@@ -4,6 +4,7 @@ Resume Assessment Automation Framework Web Interface
 """
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -17,11 +18,14 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 
-from web.routers import clients, requisitions, candidates, assessments, reports, pcr, search, correspondence
-from web.routers import auth as auth_router, admin as admin_router
+from web.routers import clients, requisitions, candidates, assessments, reports, pcr, search
+from web.routers import admin as admin_router
+from web.routers import auth as auth_router
 from web.auth.oauth import setup_oauth
 from web.auth.session import session_manager
 from web.auth.config import get_session_secret_key, get_admin_emails
+from web.auth.database import engine, Base
+from web.auth.models import User  # noqa: F401 — ensure model is registered
 
 app = FastAPI(
     title="RAAF - Resume Assessment Automation Framework",
@@ -36,6 +40,9 @@ app.add_middleware(SessionMiddleware, secret_key=session_secret)
 
 # Setup OAuth
 setup_oauth()
+
+# Create database tables (users for email/password auth)
+Base.metadata.create_all(bind=engine)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
@@ -69,6 +76,7 @@ async def auth_middleware(request: Request, call_next):
             "given_name": "Dev",
             "family_name": "User",
         }
+        request.state.is_admin = "dev@localhost" in get_admin_emails()
     elif not is_public:
         # Check for valid session
         user = session_manager.get_user_from_cookies(request.cookies)
@@ -76,36 +84,21 @@ async def auth_middleware(request: Request, call_next):
             return RedirectResponse(url="/auth/login", status_code=302)
         # Attach user to request state for use in routes
         request.state.user = user
-    else:
-        # Still try to get user for public pages (e.g., login page redirect)
-        request.state.user = session_manager.get_user_from_cookies(request.cookies)
-
-    # Set admin flag on request state
-    user = getattr(request.state, 'user', None)
-    if user:
-        email = user.get("email", "").lower()
+        email = (user.get("email") or "").strip().lower()
         request.state.is_admin = email in get_admin_emails()
     else:
-        request.state.is_admin = False
+        # Still try to get user for public pages (e.g., login page redirect)
+        user = session_manager.get_user_from_cookies(request.cookies)
+        request.state.user = user
+        email = (user.get("email") or "").strip().lower() if user else ""
+        request.state.is_admin = email in get_admin_emails() if email else False
 
     response = await call_next(request)
     return response
 
 
-@app.middleware("http")
-async def quiesce_middleware(request: Request, call_next):
-    import web.backup_state as bstate
-    if bstate.backup_in_progress and request.method not in ("GET", "HEAD", "OPTIONS"):
-        from fastapi.responses import JSONResponse
-        return JSONResponse(
-            status_code=503,
-            content={"detail": "Backup in progress — writes paused. Please retry in a moment."},
-            headers={"Retry-After": "60"},
-        )
-    return await call_next(request)
-
-
 # Include routers
+app.include_router(admin_router.router, prefix="/admin", tags=["admin"])
 app.include_router(auth_router.router, prefix="/auth", tags=["auth"])
 app.include_router(clients.router, prefix="/clients", tags=["clients"])
 app.include_router(requisitions.router, prefix="/requisitions", tags=["requisitions"])
@@ -114,100 +107,100 @@ app.include_router(assessments.router, prefix="/assessments", tags=["assessments
 app.include_router(reports.router, prefix="/reports", tags=["reports"])
 app.include_router(pcr.router, prefix="/pcr", tags=["pcr"])
 app.include_router(search.router, prefix="/search", tags=["search"])
-app.include_router(correspondence.router, prefix="/correspondence", tags=["correspondence"])
-app.include_router(admin_router.router, prefix="/admin", tags=["admin"])
 
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     """Main dashboard showing overview of all clients and requisitions."""
-    from scripts.utils.database import get_db, _use_database
+    from scripts.utils.client_utils import list_clients, list_requisitions, get_client_info, get_requisition_config
+    get_client_config = get_client_info  # Alias
 
+    # Gather dashboard data
     dashboard_data = []
     total_candidates = 0
     total_assessed = 0
 
-    if _use_database():
-        # Single query replaces the nested client/requisition file loop
-        rows = get_db().get_dashboard_data()
-        clients_seen: dict = {}
-        for row in rows:
-            cc = row["client_code"]
-            candidate_count = row.get("candidate_count", 0)
-            assessed_count = row.get("assessed_count", 0)
-            total_candidates += candidate_count
-            total_assessed += assessed_count
-            req_entry = {
-                "req_id": row["req_id"],
-                "title": row["job_title"],
-                "status": row["req_status"],
-                "candidate_count": candidate_count,
-                "assessed_count": assessed_count,
-            }
-            if cc not in clients_seen:
-                clients_seen[cc] = {
-                    "client_code": cc,
-                    "client_name": row["company_name"],
-                    "status": row["client_status"],
-                    "requisitions": [],
-                }
-                dashboard_data.append(clients_seen[cc])
-            clients_seen[cc]["requisitions"].append(req_entry)
-    else:
-        from scripts.utils.client_utils import (
-            list_clients, list_requisitions, get_client_info, get_requisition_config,
-            get_requisition_root, count_unique_candidates,
-        )
-        for client_code in list_clients():
-            try:
-                client_config = get_client_info(client_code)
-                client_name = client_config.get("company_name", client_code)
-                client_reqs = []
-                for req_id in list_requisitions(client_code):
-                    try:
-                        req_config = get_requisition_config(client_code, req_id)
-                        req_root = get_requisition_root(client_code, req_id)
-                        candidate_count = count_unique_candidates(client_code, req_id)
-                        assessments_dir = req_root / "assessments" / "individual"
-                        assessed_count = len([
-                            f for f in assessments_dir.glob("*.json")
-                            if not f.stem.endswith("_lifecycle")
-                        ]) if assessments_dir.exists() else 0
-                        total_candidates += candidate_count
-                        total_assessed += assessed_count
-                        client_reqs.append({
-                            "req_id": req_id,
-                            "title": req_config.get("job", {}).get("title", req_id),
-                            "status": req_config.get("status", "unknown"),
-                            "candidate_count": candidate_count,
-                            "assessed_count": assessed_count,
-                        })
-                    except Exception:
-                        continue
-                if client_reqs:
-                    dashboard_data.append({
-                        "client_code": client_code,
-                        "client_name": client_name,
-                        "requisitions": client_reqs,
-                        "status": client_config.get("status", "active"),
+    for client_code in list_clients():
+        try:
+            client_config = get_client_config(client_code)
+            client_name = client_config.get('company_name', client_code)
+
+            client_reqs = []
+            for req_id in list_requisitions(client_code):
+                try:
+                    req_config = get_requisition_config(client_code, req_id)
+
+                    # Count candidates and assessments
+                    from scripts.utils.client_utils import get_requisition_root
+                    req_root = get_requisition_root(client_code, req_id)
+
+                    # Count resumes (extracted text files across all batches)
+                    batches_dir = req_root / "resumes" / "batches"
+                    candidate_count = 0
+                    if batches_dir.exists():
+                        for batch in batches_dir.iterdir():
+                            extracted = batch / "extracted"
+                            if extracted.exists():
+                                candidate_count += len(list(extracted.glob("*.txt")))
+
+                    # Count assessments
+                    assessments_dir = req_root / "assessments" / "individual"
+                    assessed_count = len(list(assessments_dir.glob("*.json"))) if assessments_dir.exists() else 0
+
+                    total_candidates += candidate_count
+                    total_assessed += assessed_count
+
+                    client_reqs.append({
+                        'req_id': req_id,
+                        'title': req_config.get('job', {}).get('title', req_id),
+                        'status': req_config.get('status', 'unknown'),
+                        'candidate_count': candidate_count,
+                        'assessed_count': assessed_count
                     })
-            except Exception:
-                continue
+                except Exception:
+                    continue
+
+            if client_reqs:
+                dashboard_data.append({
+                    'client_code': client_code,
+                    'client_name': client_name,
+                    'requisitions': client_reqs,
+                    'status': client_config.get('status', 'active')
+                })
+        except Exception:
+            continue
+
+    # MOTD: yesterday's git commits
+    motd_commits = []
+    try:
+        project_root = Path(__file__).parent.parent
+        result = subprocess.run(
+            ["git", "log", '--after=yesterday 00:00', '--before=today 00:00', "--oneline"],
+            capture_output=True, text=True, timeout=5, cwd=str(project_root),
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            for line in result.stdout.strip().splitlines():
+                # Strip the short hash prefix
+                parts = line.split(" ", 1)
+                motd_commits.append(parts[1] if len(parts) > 1 else line)
+    except Exception:
+        pass
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "user": getattr(request.state, 'user', None),
         "clients": dashboard_data,
         "total_clients": len(dashboard_data),
-        "total_requisitions": sum(len(c["requisitions"]) for c in dashboard_data),
+        "total_requisitions": sum(len(c['requisitions']) for c in dashboard_data),
         "total_candidates": total_candidates,
         "total_assessed": total_assessed,
+        "motd_commits": motd_commits,
     })
 
 
 @app.get("/help", response_class=HTMLResponse)
 async def help_page(request: Request):
-    """How It Works page with workflow diagram and scoring reference."""
+    """How It Works page."""
     return templates.TemplateResponse("help.html", {
         "request": request,
         "user": getattr(request.state, 'user', None),
@@ -215,15 +208,15 @@ async def help_page(request: Request):
 
 
 @app.get("/help/user-guide")
-async def download_user_guide():
-    """Serve the RAAF User Guide PDF for download."""
+async def user_guide_pdf():
+    """Serve the RAAF User Guide PDF inline for viewing and printing."""
     pdf_path = Path(__file__).parent.parent / "docs" / "RAAF_User_Guide.pdf"
     if not pdf_path.exists():
-        raise HTTPException(status_code=404, detail="User guide not found")
+        raise HTTPException(status_code=404, detail="User Guide PDF not found")
     return FileResponse(
-        path=str(pdf_path),
+        path=pdf_path,
         media_type="application/pdf",
-        filename="RAAF_User_Guide.pdf",
+        headers={"Content-Disposition": "inline; filename=RAAF_User_Guide.pdf"},
     )
 
 
