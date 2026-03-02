@@ -8,8 +8,14 @@ config/claude_credentials.yaml
 config/.token_store.json
 config/.gmail_token.json
 
+# User credentials database (NEVER commit)
+config/users.db
+
 # Context file
 .current_context.yaml
+
+# Generated backup wrapper (created by install_backup_cron.sh)
+run_backup.sh
 
 # Log files
 logs/

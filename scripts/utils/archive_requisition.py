@@ -90,7 +90,7 @@ def archive_requisition(
         with open(client_info_path, "w") as f:
             yaml.dump(client_info, f, default_flow_style=False, sort_keys=False)
 
-    print(f"\n✓ Requisition archived successfully!")
+    print(f"\nRequisition archived successfully!")
     print(f"  Archive location: {archive_path}")
 
     return str(archive_path)

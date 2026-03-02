@@ -29,13 +29,18 @@ rsync -avz --progress \
     --exclude 'config/pcr_credentials.yaml' \
     --exclude 'config/claude_credentials.yaml' \
     --exclude 'config/.token_store.json' \
+    --exclude 'config/users.db' \
+    --exclude 'clients/' \
+    --exclude 'archive/' \
+    --exclude 'logs/' \
+    --exclude '.current_context.yaml' \
     --exclude '.DS_Store' \
     --exclude '.obsidian' \
     $LOCAL_DIR/ $PI_HOST:$PI_DIR/
 
-# Step 3: Install Python dependencies
+# Step 3: Set up venv and install Python dependencies
 echo "[3/5] Installing Python dependencies..."
-ssh $PI_HOST "cd $PI_DIR && pip3 install -r requirements.txt"
+ssh $PI_HOST "cd $PI_DIR && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
 
 # Step 4: Install Node.js dependencies
 echo "[4/5] Installing Node.js dependencies..."

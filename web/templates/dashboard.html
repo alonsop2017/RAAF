@@ -8,6 +8,21 @@
     <p class="subtitle">Overview of all clients and active requisitions</p>
 </div>
 
+<!-- Message of the Day -->
+{% if motd_commits %}
+<div id="motd-banner" class="motd-banner">
+    <div class="motd-header">
+        <h3 class="motd-title">What's New</h3>
+        <button type="button" class="motd-close" onclick="dismissMotd()" aria-label="Dismiss">&times;</button>
+    </div>
+    <ul class="motd-list">
+        {% for msg in motd_commits %}
+        <li>{{ msg }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
 <!-- Stats Grid -->
 <div class="stats-grid">
     <div class="stat-card">
@@ -105,8 +120,75 @@
 {% endif %}
 {% endblock %}
 
+{% block extra_css %}
+<style>
+.motd-banner {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+}
+.motd-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.motd-title {
+    margin: 0;
+    font-size: 1rem;
+    color: #1e40af;
+}
+.motd-close {
+    background: none;
+    border: none;
+    font-size: 1.25rem;
+    cursor: pointer;
+    color: #1e40af;
+    padding: 0 0.25rem;
+    line-height: 1;
+}
+.motd-close:hover { opacity: 0.7; }
+.motd-list {
+    margin: 0.5rem 0 0 1.25rem;
+    padding: 0;
+    color: #1e3a5f;
+    font-size: 0.9rem;
+}
+.motd-list li { margin-bottom: 0.2rem; }
+</style>
+{% endblock %}
+
 {% block extra_js %}
 <script>
+// MOTD cookie logic
+(function () {
+    var banner = document.getElementById('motd-banner');
+    if (banner) {
+        var today = new Date().toISOString().slice(0, 10);
+        var cookies = document.cookie.split(';');
+        for (var i = 0; i < cookies.length; i++) {
+            var c = cookies[i].trim();
+            if (c.startsWith('motd_date=') && c.substring(10) === today) {
+                banner.style.display = 'none';
+                break;
+            }
+        }
+        if (banner.style.display !== 'none') {
+            document.cookie = 'motd_date=' + today + ';path=/;max-age=86400';
+        }
+    }
+})();
+
+function dismissMotd() {
+    var banner = document.getElementById('motd-banner');
+    if (banner) {
+        banner.style.display = 'none';
+        var today = new Date().toISOString().slice(0, 10);
+        document.cookie = 'motd_date=' + today + ';path=/;max-age=86400';
+    }
+}
+
 (function () {
     var checkbox = document.getElementById('showInactiveClients');
     if (!checkbox) return;
