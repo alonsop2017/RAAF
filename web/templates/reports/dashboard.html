@@ -16,6 +16,7 @@
         {% if can_generate %}
         <form action="/reports/{{ client_code }}/{{ req_id }}/generate" method="POST">
             <input type="hidden" name="output_type" value="final">
+            <input type="hidden" name="top_candidates" value="6">
             <button type="submit" class="btn btn-primary">Generate New Report</button>
         </form>
         {% endif %}
@@ -150,6 +151,14 @@
                             <option value="final">Final Report</option>
                             <option value="draft">Draft Report</option>
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Candidate profiles to include</label>
+                        <input type="number" name="top_candidates" class="form-control"
+                               value="6" min="1" max="50"
+                               style="width:80px;"
+                               title="Number of detailed candidate profiles shown in the report (default 6)">
+                        <small class="text-muted">Top-ranked candidates with full detail (max 50)</small>
                     </div>
                     <button type="submit" class="btn btn-primary">Generate Report</button>
                 </form>

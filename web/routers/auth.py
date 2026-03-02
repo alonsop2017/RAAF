@@ -268,6 +268,56 @@ async def refresh_drive_token(request: Request):
     return {"status": "ok"}
 
 
+@router.get("/reset-password", response_class=HTMLResponse)
+async def reset_password_page(request: Request):
+    """Display the reset password page."""
+    user = session_manager.get_user_from_cookies(request.cookies)
+    if user:
+        return RedirectResponse(url="/", status_code=302)
+
+    error = request.query_params.get("error")
+    return templates.TemplateResponse("auth/reset_password.html", {
+        "request": request,
+        "error": error,
+    })
+
+
+@router.post("/reset-password")
+async def reset_password(
+    request: Request,
+    email: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Reset password for an existing account."""
+    def render_error(msg: str):
+        return templates.TemplateResponse("auth/reset_password.html", {
+            "request": request,
+            "error": msg,
+            "email": email,
+        })
+
+    if new_password != confirm_password:
+        return render_error("Passwords do not match.")
+
+    if len(new_password) < 8:
+        return render_error("Password must be at least 8 characters.")
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        # Deliberately vague to avoid user enumeration
+        return render_error("No account found for that email address.")
+
+    user.password_hash = bcrypt.hashpw(new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    db.commit()
+
+    return RedirectResponse(
+        url="/auth/login?success=Password+reset+successfully.+Please+sign+in.",
+        status_code=302,
+    )
+
+
 @router.get("/logout")
 async def logout(request: Request):
     """Log out the user by clearing the session cookie and stored token."""

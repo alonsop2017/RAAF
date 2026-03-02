@@ -25,7 +25,7 @@ router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
 
 
-def generate_report(client_code: str, req_id: str, output_type: str = "final"):
+def generate_report(client_code: str, req_id: str, output_type: str = "final", top_candidates: int = 6):
     """Run report generation script."""
     script_path = get_project_root() / "scripts" / "generate_report.js"
 
@@ -33,7 +33,8 @@ def generate_report(client_code: str, req_id: str, output_type: str = "final"):
         "node", str(script_path),
         "--client", client_code,
         "--req", req_id,
-        "--output-type", output_type
+        "--output-type", output_type,
+        "--top-candidates", str(top_candidates),
     ]
 
     result = subprocess.run(
@@ -125,10 +126,12 @@ async def generate_new_report(
     request: Request,
     client_code: str,
     req_id: str,
-    output_type: str = Form("final")
+    output_type: str = Form("final"),
+    top_candidates: int = Form(6),
 ):
     """Generate a new report."""
-    success, stdout, stderr = generate_report(client_code, req_id, output_type)
+    top_candidates = max(1, min(top_candidates, 50))  # clamp 1-50
+    success, stdout, stderr = generate_report(client_code, req_id, output_type, top_candidates)
 
     if success:
         return RedirectResponse(

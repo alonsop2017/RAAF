@@ -124,6 +124,7 @@ function generateReport(clientCode, reqId, options = {}) {
   const title = reqConfig.job?.title || 'Unknown Position';
   const companyName = clientInfo.company_name || clientCode;
   const reportDate = new Date().toISOString().split('T')[0];
+  const topN = options.topCandidatesCount || 6;
 
   // Count by recommendation
   const counts = {
@@ -371,7 +372,7 @@ function generateReport(clientCode, reqId, options = {}) {
     })
   );
 
-  const topCandidates = assessments.slice(0, 6);
+  const topCandidates = assessments.slice(0, topN);
 
   topCandidates.forEach((a, index) => {
     const name = a.candidate?.name || 'Unknown';
@@ -535,6 +536,7 @@ async function main() {
   let outputType = 'draft';
   let batch = null;
   let minScore = undefined;
+  let topCandidatesCount = 6;
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -555,6 +557,9 @@ async function main() {
         break;
       case '--min-score':
         minScore = parseFloat(args[++i]);
+        break;
+      case '--top-candidates':
+        topCandidatesCount = parseInt(args[++i], 10);
         break;
       case '--test':
         console.log('Test mode - would generate report');
@@ -583,7 +588,7 @@ Options:
   try {
     console.log(`Generating report for ${reqId}...`);
 
-    const doc = generateReport(clientCode, reqId, { batch, minScore });
+    const doc = generateReport(clientCode, reqId, { batch, minScore, topCandidatesCount });
 
     // Determine output path
     const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '').slice(2);
