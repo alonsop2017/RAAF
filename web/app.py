@@ -4,6 +4,7 @@ Resume Assessment Automation Framework Web Interface
 """
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -156,6 +157,22 @@ async def dashboard(request: Request):
         except Exception:
             continue
 
+    # MOTD: yesterday's git commits
+    motd_commits = []
+    try:
+        project_root = Path(__file__).parent.parent
+        result = subprocess.run(
+            ["git", "log", '--after=yesterday 00:00', '--before=today 00:00', "--oneline"],
+            capture_output=True, text=True, timeout=5, cwd=str(project_root),
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            for line in result.stdout.strip().splitlines():
+                # Strip the short hash prefix
+                parts = line.split(" ", 1)
+                motd_commits.append(parts[1] if len(parts) > 1 else line)
+    except Exception:
+        pass
+
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "user": getattr(request.state, 'user', None),
@@ -163,7 +180,8 @@ async def dashboard(request: Request):
         "total_clients": len(dashboard_data),
         "total_requisitions": sum(len(c['requisitions']) for c in dashboard_data),
         "total_candidates": total_candidates,
-        "total_assessed": total_assessed
+        "total_assessed": total_assessed,
+        "motd_commits": motd_commits,
     })
 
 

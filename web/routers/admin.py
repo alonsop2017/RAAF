@@ -32,6 +32,7 @@ templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates"
 _SETTINGS_PATH = Path(__file__).parent.parent.parent / "config" / "settings.yaml"
 _DB_PATH = Path(__file__).parent.parent.parent / "data" / "raaf.db"
 _CLIENTS_PATH = Path(__file__).parent.parent.parent / "clients"
+_BACKUP_LOG_PATH = Path(__file__).parent.parent.parent / "logs" / "backup.log"
 
 
 def _load_settings() -> dict:
@@ -97,6 +98,15 @@ async def admin_dashboard(request: Request, _admin=Depends(require_admin)):
         "raaf_version": "1.0.0",
     }
 
+    # Read last 50 lines of backup log
+    backup_log = None
+    if _BACKUP_LOG_PATH.exists():
+        try:
+            lines = _BACKUP_LOG_PATH.read_text().splitlines()
+            backup_log = "\n".join(lines[-50:])
+        except Exception:
+            backup_log = None
+
     return templates.TemplateResponse("admin/dashboard.html", {
         "request": request,
         "user": getattr(request.state, "user", None),
@@ -105,6 +115,7 @@ async def admin_dashboard(request: Request, _admin=Depends(require_admin)):
         "disk_info": disk_info,
         "service_info": service_info,
         "app_info": app_info,
+        "backup_log": backup_log,
     })
 
 
