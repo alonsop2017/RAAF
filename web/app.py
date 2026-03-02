@@ -19,10 +19,11 @@ from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 
 from web.routers import clients, requisitions, candidates, assessments, reports, pcr, search
+from web.routers import admin as admin_router
 from web.routers import auth as auth_router
 from web.auth.oauth import setup_oauth
 from web.auth.session import session_manager
-from web.auth.config import get_session_secret_key
+from web.auth.config import get_session_secret_key, get_admin_emails
 from web.auth.database import engine, Base
 from web.auth.models import User  # noqa: F401 — ensure model is registered
 
@@ -75,6 +76,7 @@ async def auth_middleware(request: Request, call_next):
             "given_name": "Dev",
             "family_name": "User",
         }
+        request.state.is_admin = "dev@localhost" in get_admin_emails()
     elif not is_public:
         # Check for valid session
         user = session_manager.get_user_from_cookies(request.cookies)
@@ -82,15 +84,21 @@ async def auth_middleware(request: Request, call_next):
             return RedirectResponse(url="/auth/login", status_code=302)
         # Attach user to request state for use in routes
         request.state.user = user
+        email = (user.get("email") or "").strip().lower()
+        request.state.is_admin = email in get_admin_emails()
     else:
         # Still try to get user for public pages (e.g., login page redirect)
-        request.state.user = session_manager.get_user_from_cookies(request.cookies)
+        user = session_manager.get_user_from_cookies(request.cookies)
+        request.state.user = user
+        email = (user.get("email") or "").strip().lower() if user else ""
+        request.state.is_admin = email in get_admin_emails() if email else False
 
     response = await call_next(request)
     return response
 
 
 # Include routers
+app.include_router(admin_router.router, prefix="/admin", tags=["admin"])
 app.include_router(auth_router.router, prefix="/auth", tags=["auth"])
 app.include_router(clients.router, prefix="/clients", tags=["clients"])
 app.include_router(requisitions.router, prefix="/requisitions", tags=["requisitions"])
