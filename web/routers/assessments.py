@@ -272,6 +272,15 @@ async def run_single_assessment(
 _LIFECYCLE_STATUSES = ("interview_recommended", "offered", "accepted", "future_opportunities", "")
 
 
+@router.get("/{client_code}/{req_id}/{name_normalized}/lifecycle")
+async def lifecycle_get(client_code: str, req_id: str, name_normalized: str):
+    """Redirect stray GET requests to the assessment view."""
+    return RedirectResponse(
+        url=f"/assessments/{client_code}/{req_id}/{name_normalized}",
+        status_code=302
+    )
+
+
 @router.post("/{client_code}/{req_id}/{name_normalized}/lifecycle")
 async def set_lifecycle_status(
     request: Request,
@@ -295,10 +304,9 @@ async def set_lifecycle_status(
             "updated_at": datetime.now().isoformat(),
             "updated_by": getattr(request.state, 'user', {}).get('email', 'system'),
         }
-        if _files_mode():
-            with open(lifecycle_file, 'w') as f:
-                json.dump(data, f, indent=2)
-    elif lifecycle_file.exists() and _files_mode():
+        with open(lifecycle_file, 'w') as f:
+            json.dump(data, f, indent=2)
+    elif lifecycle_file.exists():
         lifecycle_file.unlink()
 
     # Write to DB when enabled
@@ -410,6 +418,15 @@ async def edit_assessment_form(request: Request, client_code: str, req_id: str, 
     })
 
 
+@router.get("/{client_code}/{req_id}/{name_normalized}/update")
+async def update_assessment_get(client_code: str, req_id: str, name_normalized: str):
+    """Redirect stray GET requests (e.g. from Cloudflare challenge retry) to the edit form."""
+    return RedirectResponse(
+        url=f"/assessments/{client_code}/{req_id}/{name_normalized}/edit",
+        status_code=302
+    )
+
+
 @router.post("/{client_code}/{req_id}/{name_normalized}/update")
 async def update_assessment(
     request: Request,
@@ -490,10 +507,9 @@ async def update_assessment(
     assessment['metadata']['assessed_at'] = datetime.now().isoformat()
     assessment['metadata']['assessor'] = form_data.get('assessor', 'Manual/Web')
 
-    # Save
-    if _files_mode():
-        with open(assessment_file, 'w') as f:
-            json.dump(assessment, f, indent=2)
+    # Save to disk (always keep JSON in sync regardless of DB mode)
+    with open(assessment_file, 'w') as f:
+        json.dump(assessment, f, indent=2)
 
     # Write to DB when enabled
     try:
