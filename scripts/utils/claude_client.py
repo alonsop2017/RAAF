@@ -313,7 +313,19 @@ class ClaudeClient:
         if json_match:
             text = json_match.group()
 
-        return json.loads(text)
+        # First try strict parse
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            # "Extra data" case: trailing content after valid JSON — use raw_decode
+            # to extract just the first complete object
+            try:
+                result, _ = json.JSONDecoder().raw_decode(text)
+                if isinstance(result, dict):
+                    return result
+            except json.JSONDecodeError:
+                pass
+            raise
 
     def _validate_assessment(self, assessment: dict) -> None:
         """Validate the assessment structure."""
