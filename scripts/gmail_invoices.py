@@ -205,9 +205,143 @@ def _clean_preview(body: str, max_chars: int = 800) -> list[str]:
             lines.append(line)
     return lines
 
+# ── Excel export ──────────────────────────────────────────────────────────────
+
+def _parse_amount_float(amount_str: str) -> float | None:
+    """Extract a numeric float from an amount string like 'Total $5.38' or 'CA$5.00'."""
+    m = re.search(r"[\d,]+\.\d{2}", amount_str)
+    if m:
+        return float(m.group(0).replace(",", ""))
+    return None
+
+
+def _parse_date(date_str: str) -> datetime | None:
+    """Parse RFC 2822 email date to datetime."""
+    from email.utils import parsedate_to_datetime
+    try:
+        return parsedate_to_datetime(date_str)
+    except Exception:
+        return None
+
+
+def export_excel(api_invoices: list[dict], out_path: Path) -> None:
+    """Write invoice list to a formatted Excel workbook."""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Anthropic API Invoices"
+
+    # ── Styles ────────────────────────────────────────────────────────────────
+    header_font    = Font(bold=True, color="FFFFFF", size=11)
+    header_fill    = PatternFill("solid", fgColor="1F3864")
+    total_fill     = PatternFill("solid", fgColor="D9E1F2")
+    total_font     = Font(bold=True, size=11)
+    center         = Alignment(horizontal="center", vertical="center")
+    left           = Alignment(horizontal="left",   vertical="center")
+    thin           = Side(style="thin", color="CCCCCC")
+    border         = Border(left=thin, right=thin, top=thin, bottom=thin)
+    currency_fmt   = '#,##0.00'
+
+    # ── Headers ───────────────────────────────────────────────────────────────
+    headers = ["#", "Date", "Receipt #", "Invoice #", "Description", "Currency", "Amount (numeric)", "Amount (raw)"]
+    ws.append(headers)
+    for col, _ in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col)
+        cell.font      = header_font
+        cell.fill      = header_fill
+        cell.alignment = center
+        cell.border    = border
+
+    # ── Data rows ─────────────────────────────────────────────────────────────
+    for i, inv in enumerate(api_invoices, 1):
+        dt       = _parse_date(inv["date"])
+        date_str = dt.strftime("%Y-%m-%d %H:%M UTC") if dt else inv["date"]
+
+        # Receipt # comes from the subject line: "... #XXXX-XXXX-XXXX"
+        receipt_m = re.search(r"#([\d\-]+)", inv["subject"])
+        receipt   = receipt_m.group(1) if receipt_m else "—"
+
+        # Currency: CA$ vs $
+        currency  = "CAD" if "CA$" in inv["amount"] or "CA$" in inv.get("preview", [""])[0] else "USD"
+        amount_f  = _parse_amount_float(inv["amount"])
+
+        row = [
+            i,
+            date_str,
+            receipt,
+            inv["invoice_id"] if inv["invoice_id"] != "illustration" else "—",
+            inv["subject"],
+            currency,
+            amount_f,
+            inv["amount"],
+        ]
+        ws.append(row)
+        r = ws.max_row
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=r, column=col)
+            cell.border    = border
+            cell.alignment = center if col in (1, 6) else left
+            if col == 7 and amount_f is not None:
+                cell.number_format = currency_fmt
+
+    # ── Totals row ────────────────────────────────────────────────────────────
+    usd_total = sum(
+        _parse_amount_float(inv["amount"]) or 0
+        for inv in api_invoices
+        if "CA$" not in inv["amount"]
+    )
+    cad_total = sum(
+        _parse_amount_float(inv["amount"]) or 0
+        for inv in api_invoices
+        if "CA$" in inv["amount"]
+    )
+
+    last_data = ws.max_row
+    ws.append(["", "", "", "", f"TOTAL  ({len(api_invoices)} invoices)", "USD", usd_total, f"${usd_total:.2f}"])
+    tr = ws.max_row
+    for col in range(1, len(headers) + 1):
+        cell = ws.cell(row=tr, column=col)
+        cell.font      = total_font
+        cell.fill      = total_fill
+        cell.border    = border
+        cell.alignment = center if col in (1, 6, 7) else left
+        if col == 7:
+            cell.number_format = currency_fmt
+
+    if cad_total > 0:
+        ws.append(["", "", "", "", "", "CAD", cad_total, f"CA${cad_total:.2f}"])
+        tr2 = ws.max_row
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=tr2, column=col)
+            cell.font      = total_font
+            cell.fill      = total_fill
+            cell.border    = border
+            cell.alignment = center if col in (1, 6, 7) else left
+            if col == 7:
+                cell.number_format = currency_fmt
+
+    # ── Column widths ─────────────────────────────────────────────────────────
+    col_widths = [5, 22, 18, 18, 55, 10, 18, 18]
+    for i, w in enumerate(col_widths, 1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    ws.row_dimensions[1].height = 20
+    ws.freeze_panes = "A2"
+
+    wb.save(out_path)
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Fetch Anthropic API invoices from Gmail")
+    parser.add_argument("--excel", metavar="FILE", help="Also export results to an Excel file")
+    args = parser.parse_args()
+
     print("\nRAAF — Anthropic API Invoice Fetcher")
     print("=" * 60)
 
@@ -286,6 +420,12 @@ def main():
     print(f"\n{'='*60}")
     print(f"Total API invoices: {len(api_invoices)}")
     print(f"Token stored at   : config/.gmail_token.json  (not committed)")
+
+    # ── Excel export ──────────────────────────────────────────────────────────
+    excel_path = Path(args.excel) if args.excel else \
+        PROJECT_ROOT / f"anthropic_invoices_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    export_excel(api_invoices, excel_path)
+    print(f"\nExcel saved → {excel_path}")
 
 
 if __name__ == "__main__":
