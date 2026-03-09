@@ -407,34 +407,7 @@ def assess_candidate(
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(assessment, f, indent=2)
 
-    # Dual-write to DB when enabled
-    try:
-        from scripts.utils.database import get_db, _use_database
-        if _use_database():
-            assessor = assessment.get("metadata", {}).get("assessor", "")
-            get_db().save_assessment({
-                "req_id": req_id,
-                "name_normalized": name_normalized,
-                "name": candidate_info.get("name",
-                         name_normalized.replace("_", " ").title()),
-                "batch": batch_name,
-                "source_platform": assessment.get("candidate", {}).get(
-                    "source_platform", "Unknown"),
-                "resume_extracted_path": str(resume_file),
-                "total_score": assessment.get("total_score"),
-                "percentage": assessment.get("percentage"),
-                "recommendation": assessment.get("recommendation"),
-                "assessment_mode": "ai" if use_ai else "pending",
-                "ai_model": assessor if use_ai else None,
-                "scores": assessment.get("scores"),
-                "summary": assessment.get("summary"),
-                "key_strengths": assessment.get("key_strengths"),
-                "areas_of_concern": assessment.get("areas_of_concern"),
-                "interview_focus_areas": assessment.get("interview_focus_areas"),
-                "assessed_at": assessment.get("metadata", {}).get("assessed_at"),
-            })
-    except Exception:
-        pass
+    _save_to_db(assessment, name_normalized, resume_file, use_ai=use_ai)
 
     print(f"  Created: {output_file.name}")
     if use_ai:
@@ -491,6 +464,18 @@ def assess_with_claude(
 
     print("  Sending to Claude API...")
 
+    # Register with activity monitor if no worker_id already set on this thread
+    try:
+        from utils.activity_writer import worker_stage, _thread_local
+        if not getattr(_thread_local, "worker_id", ""):
+            from utils.activity_writer import worker_start, make_worker_id
+            wid = make_worker_id()
+            _thread_local.worker_id = wid
+            worker_start(wid, candidate_info.get("name", ""), req_id, client_code)
+        worker_stage(_thread_local.worker_id, "assessing")
+    except Exception:
+        pass
+
     # Get AI assessment
     ai_result = claude.assess_candidate(
         resume_text=resume_text,
@@ -536,6 +521,276 @@ def assess_with_claude(
     }
 
     return assessment
+
+
+def screen_with_claude(
+    client_code: str,
+    req_id: str,
+    candidate_info: dict,
+    resume_text: str,
+    batch_name: str = None,
+    screening_model: str = "claude-haiku-4-5-20251001",
+) -> dict:
+    """
+    Run the lightweight Haiku screening pass for a candidate.
+
+    Saves a minimal assessment JSON with assessment_mode='screened'.
+    Returns the assessment dict.
+    """
+    framework_text = load_framework_text(client_code, req_id)
+    framework_config = load_framework(client_code, req_id)
+    claude = get_claude_client()
+
+    screening = claude.screen_candidate(
+        resume_text=resume_text,
+        framework_text=framework_text,
+        screening_model=screening_model,
+    )
+
+    # Build a minimal assessment with placeholder scores
+    assessment = {
+        "metadata": {
+            "client_code": client_code,
+            "requisition_id": req_id,
+            "framework_version": framework_config.get("framework_version", "1.0"),
+            "assessed_at": datetime.now().isoformat(),
+            "assessor": f"Claude/{screening_model}",
+        },
+        "candidate": {
+            **candidate_info,
+            "batch": batch_name or "",
+            "source_platform": "Indeed",
+        },
+        "scores": {},
+        "total_score": round(screening["percentage"]),
+        "max_score": 100,
+        "percentage": screening["percentage"],
+        "recommendation": screening["recommendation"],
+        "recommendation_tier": screening["recommendation_tier"],
+        "summary": screening["summary"],
+        "key_strengths": [],
+        "areas_of_concern": [],
+        "interview_focus_areas": [],
+        "assessment_mode": "screened",
+        "screening": screening,
+    }
+
+    return assessment
+
+
+def two_pass_assess_all(
+    client_code: str,
+    req_id: str,
+    screen_threshold: float = 50.0,
+    full_model: str = None,
+    screening_model: str = "claude-haiku-4-5-20251001",
+    workers: int = 4,
+) -> dict:
+    """
+    Two-pass assessment strategy:
+      Pass 1 (Haiku)  — screen ALL pending candidates cheaply.
+      Pass 2 (Sonnet) — full assessment on candidates above screen_threshold.
+
+    Candidates below the threshold are saved as assessment_mode='screened' (DNR).
+    Candidates above the threshold get a full assessment_mode='full' JSON.
+
+    Args:
+        screen_threshold: Minimum % to advance from screening to full assessment (default 50).
+        full_model: Model for the full pass (defaults to settings default_model).
+        screening_model: Model for the screening pass (default Haiku 4.5).
+        workers: Parallel workers for both passes.
+    """
+    assessments_path = get_assessments_path(client_code, req_id, "individual")
+    existing = {f.stem.replace("_assessment", "") for f in assessments_path.glob("*_assessment.json")}
+
+    resume_files = [
+        f for f in list_all_extracted_resumes(client_code, req_id)
+        if f.stem.replace("_resume", "") not in existing
+    ]
+    legacy_path = get_resumes_path(client_code, req_id, "processed")
+    if legacy_path.exists():
+        for f in legacy_path.glob("*.txt"):
+            if f.stem.replace("_resume", "") not in existing:
+                resume_files.append(f)
+
+    total = len(resume_files)
+    print(f"Two-pass assessment: {total} pending candidates")
+    print(f"  Pass 1 model : {screening_model} (screening)")
+    print(f"  Pass 2 model : {full_model or 'default (Sonnet)'} (full)")
+    print(f"  Screen threshold: {screen_threshold}%")
+    print("-" * 40)
+
+    if not resume_files:
+        return {"total": 0, "screened": 0, "advanced": 0, "full_assessed": 0, "errors": 0}
+
+    assessments_path.mkdir(parents=True, exist_ok=True)
+
+    # ── Pass 1: screen all candidates with Haiku ──────────────────────────────
+    print(f"\nPass 1 — Screening {total} candidates with Haiku...")
+    screened: list[tuple[Path, dict]] = []  # (resume_file, screening_assessment)
+    screen_errors = 0
+
+    def _screen_one(resume_file: Path):
+        from utils.activity_writer import worker_start, worker_stage, worker_complete, make_worker_id, _thread_local
+        with open(resume_file, "r", encoding="utf-8") as f:
+            resume_text = f.read()
+        candidate_info = extract_candidate_info(resume_text, resume_file.name)
+        name = candidate_info['name'] or resume_file.stem
+        print(f"  Screening: {name}")
+        wid = make_worker_id()
+        _thread_local.worker_id = wid
+        worker_start(wid, name, req_id, client_code)
+        worker_stage(wid, "screening")
+        try:
+            result = screen_with_claude(
+                client_code, req_id, candidate_info, resume_text,
+                screening_model=screening_model,
+            )
+            worker_complete(wid, score=result.get("percentage"), recommendation=result.get("recommendation", ""), candidate=name)
+            return result, resume_file, candidate_info
+        except Exception as e:
+            worker_complete(wid, error=str(e), candidate=name)
+            raise
+
+    if workers <= 1:
+        for rf in resume_files:
+            try:
+                assessment, rf, _ = _screen_one(rf)
+                screened.append((rf, assessment))
+            except Exception as e:
+                print(f"  Screen error ({rf.stem}): {e}")
+                screen_errors += 1
+    else:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futures = {ex.submit(_screen_one, rf): rf for rf in resume_files}
+            for future in as_completed(futures):
+                try:
+                    assessment, rf, _ = future.result()
+                    screened.append((rf, assessment))
+                except Exception as e:
+                    print(f"  Screen error: {e}")
+                    screen_errors += 1
+
+    # Save DNR screening results and collect candidates to advance
+    to_advance: list[tuple[Path, dict]] = []
+    for rf, assessment in screened:
+        if assessment["percentage"] < screen_threshold:
+            # Save as screened-only (DNR, no full pass needed)
+            name_norm = assessment["candidate"].get("name_normalized") or rf.stem.replace("_resume", "")
+            out_file = assessments_path / f"{name_norm}_assessment.json"
+            with open(out_file, "w", encoding="utf-8") as f:
+                json.dump(assessment, f, indent=2)
+            _save_to_db(assessment, name_norm, rf, use_ai=True)
+        else:
+            to_advance.append((rf, assessment))
+
+    screened_out = len(screened) - len(to_advance)
+    print(f"\nPass 1 complete: {len(screened)} screened, "
+          f"{screened_out} filtered out (<{screen_threshold}%), "
+          f"{len(to_advance)} advancing to full assessment")
+
+    # ── Pass 2: full Sonnet assessment on advanced candidates ─────────────────
+    print(f"\nPass 2 — Full assessment on {len(to_advance)} candidates with Sonnet...")
+    full_errors = 0
+    full_done = 0
+
+    def _full_one(rf: Path, screening_assessment: dict):
+        from utils.activity_writer import worker_start, worker_stage, worker_complete, make_worker_id, _thread_local
+        with open(rf, "r", encoding="utf-8") as f:
+            resume_text = f.read()
+        candidate_info = screening_assessment["candidate"]
+        name = candidate_info.get('name') or rf.stem
+        print(f"  Full assess: {name}")
+        wid = make_worker_id()
+        _thread_local.worker_id = wid
+        worker_start(wid, name, req_id, client_code)
+        worker_stage(wid, "assessing")
+        try:
+            full = assess_with_claude(
+                client_code, req_id, candidate_info, resume_text,
+                model=full_model,
+            )
+            full["screening"] = screening_assessment.get("screening", {})
+            full["assessment_mode"] = "full"
+            worker_complete(wid, score=full.get("percentage"), recommendation=full.get("recommendation", ""), candidate=name)
+            return full, rf
+        except Exception as e:
+            worker_complete(wid, error=str(e), candidate=name)
+            raise
+
+    if workers <= 1:
+        for rf, screen_a in to_advance:
+            try:
+                full_a, rf = _full_one(rf, screen_a)
+                name_norm = full_a["candidate"].get("name_normalized") or rf.stem.replace("_resume", "")
+                out_file = assessments_path / f"{name_norm}_assessment.json"
+                with open(out_file, "w", encoding="utf-8") as f:
+                    json.dump(full_a, f, indent=2)
+                _save_to_db(full_a, name_norm, rf, use_ai=True)
+                full_done += 1
+            except Exception as e:
+                print(f"  Full assess error ({rf.stem}): {e}")
+                full_errors += 1
+    else:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futures = {ex.submit(_full_one, rf, sa): (rf, sa) for rf, sa in to_advance}
+            for future in as_completed(futures):
+                try:
+                    full_a, rf = future.result()
+                    name_norm = full_a["candidate"].get("name_normalized") or rf.stem.replace("_resume", "")
+                    out_file = assessments_path / f"{name_norm}_assessment.json"
+                    with open(out_file, "w", encoding="utf-8") as f:
+                        json.dump(full_a, f, indent=2)
+                    _save_to_db(full_a, name_norm, rf, use_ai=True)
+                    full_done += 1
+                except Exception as e:
+                    print(f"  Full assess error: {e}")
+                    full_errors += 1
+
+    print("-" * 40)
+    print(f"Two-pass complete: {total} total | "
+          f"{screened_out} screened out | "
+          f"{full_done} fully assessed | "
+          f"{screen_errors + full_errors} errors")
+
+    return {
+        "total": total,
+        "screened": len(screened),
+        "advanced": len(to_advance),
+        "full_assessed": full_done,
+        "errors": screen_errors + full_errors,
+    }
+
+
+def _save_to_db(assessment: dict, name_norm: str, resume_file: Path, use_ai: bool):
+    """Save assessment to DB if enabled. Silent on failure."""
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            candidate_info = assessment.get("candidate", {})
+            get_db().save_assessment({
+                "req_id": assessment.get("metadata", {}).get("requisition_id", ""),
+                "name_normalized": name_norm,
+                "name": candidate_info.get("name", name_norm.replace("_", " ").title()),
+                "batch": candidate_info.get("batch"),
+                "source_platform": candidate_info.get("source_platform", "Unknown"),
+                "resume_extracted_path": str(resume_file),
+                "total_score": assessment.get("total_score"),
+                "percentage": assessment.get("percentage"),
+                "recommendation": assessment.get("recommendation"),
+                "assessment_mode": assessment.get("assessment_mode", "ai" if use_ai else "pending"),
+                "ai_model": assessment.get("metadata", {}).get("assessor"),
+                "scores": assessment.get("scores"),
+                "summary": assessment.get("summary"),
+                "key_strengths": assessment.get("key_strengths"),
+                "areas_of_concern": assessment.get("areas_of_concern"),
+                "interview_focus_areas": assessment.get("interview_focus_areas"),
+                "assessed_at": assessment.get("metadata", {}).get("assessed_at"),
+            })
+    except Exception:
+        pass
 
 
 def assess_batch(
@@ -711,7 +966,11 @@ def main():
                        help="Use saved context for client/req")
     parser.add_argument("--use-ai", action="store_true",
                        help="Use Claude AI for assessment (requires API key)")
-    parser.add_argument("--ai-model", help="Override AI model (e.g., claude-sonnet-4-20250514)")
+    parser.add_argument("--ai-model", help="Override AI model (e.g., claude-sonnet-4-6)")
+    parser.add_argument("--two-pass", action="store_true",
+                       help="Two-pass mode: Haiku screening then Sonnet full assessment on survivors")
+    parser.add_argument("--screen-threshold", type=float, default=50.0,
+                       help="Minimum %% score to advance from screening to full assessment (default: 50)")
     parser.add_argument("--workers", "-w", type=int, default=4,
                        help="Number of parallel assessment workers (default: 4)")
     args = parser.parse_args()
@@ -748,6 +1007,14 @@ def main():
                 batch_name=args.batch,
                 use_ai=args.use_ai,
                 ai_model=args.ai_model
+            )
+        elif args.two_pass:
+            two_pass_assess_all(
+                args.client,
+                args.req,
+                screen_threshold=args.screen_threshold,
+                full_model=args.ai_model,
+                workers=args.workers,
             )
         elif args.all_pending:
             assess_all_pending(

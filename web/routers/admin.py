@@ -5,6 +5,7 @@ All routes require admin-level access.
 
 import asyncio
 import io
+import json
 import os
 import shutil
 import sqlite3 as _sqlite3
@@ -22,6 +23,7 @@ import yaml
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
+from web.activity_monitor import get_snapshot as _activity_snapshot
 
 from web.auth.dependencies import require_admin
 from web.auth.config import get_admin_emails, get_allowed_emails
@@ -930,3 +932,42 @@ async def admin_db_backfill(request: Request, _admin=Depends(require_admin)):
                      "raaf_version": "1.0.0"},
         "fs_stats": _collect_fs_stats(),
     })
+
+
+# ---------------------------------------------------------------------------
+# Activity Monitor
+# ---------------------------------------------------------------------------
+
+@router.get("/activity", response_class=HTMLResponse)
+async def admin_activity(request: Request, _admin=Depends(require_admin)):
+    """Live assessment activity monitor page."""
+    return templates.TemplateResponse("admin/activity.html", {
+        "request": request,
+        "user": getattr(request.state, "user", None),
+    })
+
+
+@router.get("/activity/stream")
+async def admin_activity_stream(request: Request, _admin=Depends(require_admin)):
+    """Server-Sent Events stream of live assessment activity."""
+
+    async def _generator():
+        while True:
+            if await request.is_disconnected():
+                break
+            try:
+                snap = await asyncio.to_thread(_activity_snapshot)
+                yield f"data: {json.dumps(snap, default=str)}\n\n"
+            except Exception as exc:
+                yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+            await asyncio.sleep(1)
+
+    return StreamingResponse(
+        _generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",   # prevent Nginx from buffering SSE
+            "Connection": "keep-alive",
+        },
+    )

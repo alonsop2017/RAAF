@@ -37,6 +37,27 @@ class ClaudeResponseError(ClaudeClientError):
     pass
 
 
+# Screening prompt — Haiku-optimised, minimal output for pass 1 of two-pass workflow
+SCREENING_PROMPT = """You are a recruitment screener. Quickly evaluate this candidate against the job framework and return a JSON screening result.
+
+## Assessment Framework (summary)
+{framework_text}
+
+## Candidate Resume
+{resume_text}
+
+## Instructions
+Score the candidate holistically. Focus on whether they meet the minimum bar for the role — do NOT write detailed breakdowns.
+
+Return ONLY this JSON object, no other text:
+{{
+  "percentage": <overall fit score 0-100>,
+  "recommendation": "<STRONG RECOMMEND|RECOMMEND|CONDITIONAL|DO NOT RECOMMEND>",
+  "recommendation_tier": <1=Strong, 2=Recommend, 3=Conditional, 4=DNR>,
+  "summary": "<1-2 sentences: key strengths and main gap if any>"
+}}"""
+
+
 # Assessment prompt template
 ASSESSMENT_PROMPT = """You are an expert recruitment assessment specialist. Your task is to evaluate a candidate's resume against a specific job assessment framework and provide a detailed, evidence-based scoring.
 
@@ -269,6 +290,18 @@ class ClaudeClient:
                     ]
                 )
 
+                # Record token usage for activity monitor
+                try:
+                    from utils.activity_writer import token_use, _thread_local  # noqa: F401
+                    wid = getattr(_thread_local, "worker_id", "")
+                except Exception:
+                    wid = ""
+                try:
+                    from utils.activity_writer import token_use
+                    token_use(model, message.usage.input_tokens, message.usage.output_tokens, wid)
+                except Exception:
+                    pass
+
                 # Extract response text
                 response_text = message.content[0].text
 
@@ -292,6 +325,66 @@ class ClaudeClient:
                 raise
 
         raise last_error
+
+    def screen_candidate(
+        self,
+        resume_text: str,
+        framework_text: str,
+        screening_model: str = "claude-haiku-4-5-20251001",
+    ) -> dict:
+        """
+        Lightweight screening pass using Haiku.
+
+        Returns a minimal dict: {percentage, recommendation, recommendation_tier, summary}.
+        Used as pass 1 of the two-pass workflow to filter out clear DNR candidates cheaply
+        before running the expensive full Sonnet assessment on the remainder.
+        """
+        client = self._get_client()
+        prompt = SCREENING_PROMPT.format(
+            framework_text=framework_text,
+            resume_text=resume_text,
+        )
+
+        message = client.messages.create(
+            model=screening_model,
+            max_tokens=512,
+            temperature=0.1,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        # Record token usage for activity monitor
+        try:
+            from utils.activity_writer import token_use, _thread_local  # noqa: F401
+            wid = getattr(_thread_local, "worker_id", "")
+        except Exception:
+            wid = ""
+        try:
+            from utils.activity_writer import token_use
+            token_use(screening_model, message.usage.input_tokens, message.usage.output_tokens, wid)
+        except Exception:
+            pass
+
+        response_text = message.content[0].text
+        result = self._parse_response(response_text)
+
+        # Normalise — ensure required keys with safe defaults
+        valid_recs = {"STRONG RECOMMEND", "RECOMMEND", "CONDITIONAL", "DO NOT RECOMMEND"}
+        rec = result.get("recommendation", "DO NOT RECOMMEND")
+        if rec not in valid_recs:
+            rec = "DO NOT RECOMMEND"
+
+        pct = float(result.get("percentage", 0))
+        pct = max(0.0, min(100.0, pct))
+
+        tier_map = {"STRONG RECOMMEND": 1, "RECOMMEND": 2, "CONDITIONAL": 3, "DO NOT RECOMMEND": 4}
+        tier = result.get("recommendation_tier", tier_map.get(rec, 4))
+
+        return {
+            "percentage": round(pct, 1),
+            "recommendation": rec,
+            "recommendation_tier": tier,
+            "summary": result.get("summary", ""),
+        }
 
     def _parse_response(self, response_text: str) -> dict:
         """Parse the JSON response from Claude."""

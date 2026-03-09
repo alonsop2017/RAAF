@@ -1,0 +1,664 @@
+{% extends "base.html" %}
+{% block title %}Admin - Activity Monitor{% endblock %}
+
+{% block content %}
+<div class="act-shell">
+
+  <!-- ── Header bar ─────────────────────────────────────────────────── -->
+  <div class="act-header">
+    <div class="act-title">
+      <span class="act-pulse-dot" id="statusDot"></span>
+      Assessment Activity Monitor
+    </div>
+    <div class="act-header-stats">
+      <span class="act-hstat" id="hWorkers">0 active</span>
+      <span class="act-hstat-sep">·</span>
+      <span class="act-hstat" id="hTokens">0 tokens</span>
+      <span class="act-hstat-sep">·</span>
+      <span class="act-hstat" id="hCost">$0.0000</span>
+      <span class="act-hstat-sep">·</span>
+      <span class="act-hstat" id="hCalls">0 API calls</span>
+    </div>
+    <div class="act-conn" id="connBadge">● CONNECTING</div>
+  </div>
+
+  <!-- ── Main grid ──────────────────────────────────────────────────── -->
+  <div class="act-grid">
+
+    <!-- Left: Active Workers ─────────────────────────────────────── -->
+    <section class="act-panel" id="panelWorkers">
+      <h2 class="act-panel-title">
+        <span class="act-panel-icon">⚡</span> Active Workers
+        <span class="act-panel-count" id="workerCount">0</span>
+      </h2>
+      <div class="workers-list" id="workersList">
+        <div class="act-idle" id="workersIdle">
+          <div class="act-idle-icon">😴</div>
+          <div>No active assessments</div>
+          <div class="act-idle-sub">Waiting for work…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right: Token Meters ──────────────────────────────────────── -->
+    <section class="act-panel act-panel-tokens">
+      <h2 class="act-panel-title">
+        <span class="act-panel-icon">🔢</span> Token Usage — Session (24 h)
+      </h2>
+
+      <div class="token-meters">
+        <!-- Input tokens -->
+        <div class="token-meter">
+          <div class="tm-label">Input Tokens</div>
+          <div class="tm-value tm-input" id="tokIn">0</div>
+          <div class="tm-bar-wrap">
+            <div class="tm-bar tm-bar-input" id="barIn" style="width:0%"></div>
+          </div>
+          <div class="tm-sub" id="tokInK">0 K</div>
+        </div>
+        <!-- Output tokens -->
+        <div class="token-meter">
+          <div class="tm-label">Output Tokens</div>
+          <div class="tm-value tm-output" id="tokOut">0</div>
+          <div class="tm-bar-wrap">
+            <div class="tm-bar tm-bar-output" id="barOut" style="width:0%"></div>
+          </div>
+          <div class="tm-sub" id="tokOutK">0 K</div>
+        </div>
+      </div>
+
+      <!-- Cost display -->
+      <div class="cost-panel">
+        <div class="cost-label">Estimated Cost</div>
+        <div class="cost-value" id="costVal">$0.0000</div>
+        <div class="cost-sub">Blended Haiku + Sonnet pricing</div>
+      </div>
+
+      <!-- API calls counter -->
+      <div class="api-calls-panel">
+        <div class="api-calls-grid">
+          <div class="api-stat">
+            <div class="api-stat-val" id="apiCalls">0</div>
+            <div class="api-stat-lbl">API Calls</div>
+          </div>
+          <div class="api-stat">
+            <div class="api-stat-val" id="apiAvgIn">—</div>
+            <div class="api-stat-lbl">Avg Input/call</div>
+          </div>
+          <div class="api-stat">
+            <div class="api-stat-val" id="apiAvgOut">—</div>
+            <div class="api-stat-lbl">Avg Output/call</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Throughput chart -->
+      <div class="throughput-panel">
+        <div class="tp-title">Throughput — last 60 s</div>
+        <div class="tp-chart" id="tpChart">
+          <div class="tp-bar-wrap" title="50–60 s ago"><div class="tp-bar" id="tp0"></div></div>
+          <div class="tp-bar-wrap" title="40–50 s ago"><div class="tp-bar" id="tp1"></div></div>
+          <div class="tp-bar-wrap" title="30–40 s ago"><div class="tp-bar" id="tp2"></div></div>
+          <div class="tp-bar-wrap" title="20–30 s ago"><div class="tp-bar" id="tp3"></div></div>
+          <div class="tp-bar-wrap" title="10–20 s ago"><div class="tp-bar" id="tp4"></div></div>
+          <div class="tp-bar-wrap" title="0–10 s ago" ><div class="tp-bar" id="tp5"></div></div>
+        </div>
+        <div class="tp-labels">
+          <span>60s</span><span>50s</span><span>40s</span>
+          <span>30s</span><span>20s</span><span>10s</span><span>now</span>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /act-grid -->
+
+  <!-- ── Recent completions ─────────────────────────────────────────── -->
+  <section class="act-panel act-panel-recent">
+    <h2 class="act-panel-title">
+      <span class="act-panel-icon">🏁</span> Recent Completions
+    </h2>
+    <div class="recent-log" id="recentLog">
+      <div class="act-idle">
+        <div class="act-idle-icon">📋</div>
+        <div>No completed assessments yet</div>
+      </div>
+    </div>
+  </section>
+
+</div><!-- /act-shell -->
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ════════════════════════════════════════════════════════════════════
+   ACTIVITY MONITOR — Full-panel dark theme
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Override page container padding for immersive feel */
+.container { max-width: 100%; padding: 0 1rem; }
+
+/* ── Shell ───────────────────────────────────────────────────────── */
+.act-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0.5rem 0 2rem;
+}
+
+/* ── Header bar ──────────────────────────────────────────────────── */
+.act-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: #0f172a;
+  border-radius: 10px;
+  padding: 0.7rem 1.1rem;
+  flex-wrap: wrap;
+}
+.act-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+.act-pulse-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: #64748b;
+  display: inline-block;
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+.act-pulse-dot.active { background: #22c55e; animation: pulse-dot 1.4s infinite; }
+.act-pulse-dot.idle   { background: #eab308; }
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.7); }
+  50%       { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+}
+.act-header-stats { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.act-hstat { font-size: 0.78rem; color: #94a3b8; }
+.act-hstat-sep { color: #334155; }
+.act-conn {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: #1e293b;
+  color: #64748b;
+  transition: all 0.3s;
+}
+.act-conn.connected   { background: #14532d; color: #4ade80; }
+.act-conn.disconnected{ background: #7f1d1d; color: #f87171; }
+
+/* ── Main grid ───────────────────────────────────────────────────── */
+.act-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+@media (max-width: 900px) { .act-grid { grid-template-columns: 1fr; } }
+
+/* ── Generic panel ───────────────────────────────────────────────── */
+.act-panel {
+  background: #0f172a;
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  min-height: 260px;
+}
+.act-panel-tokens  { display: flex; flex-direction: column; gap: 0.8rem; }
+.act-panel-recent  { min-height: unset; }
+.act-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.85rem;
+}
+.act-panel-icon { font-size: 1rem; }
+.act-panel-count {
+  margin-left: auto;
+  background: #1e293b;
+  color: #7c3aed;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+/* ── Idle state ──────────────────────────────────────────────────── */
+.act-idle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: #475569;
+  font-size: 0.8rem;
+  gap: 0.3rem;
+  text-align: center;
+}
+.act-idle-icon { font-size: 2rem; margin-bottom: 0.25rem; }
+.act-idle-sub  { font-size: 0.7rem; color: #334155; }
+
+/* ── Worker cards ────────────────────────────────────────────────── */
+.workers-list { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.worker-card {
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem;
+  border-left: 3px solid transparent;
+  animation: slide-in 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.worker-card.stage-queued    { background: #1e293b; border-color: #475569; }
+.worker-card.stage-screening { background: #0c1a2e; border-color: #3b82f6; }
+.worker-card.stage-assessing { background: #1a0e2e; border-color: #8b5cf6; }
+.worker-card.stage-saving    { background: #0c1f17; border-color: #22c55e; }
+
+/* Shimmer on active cards */
+.worker-card.stage-screening::after,
+.worker-card.stage-assessing::after {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 60%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
+  animation: shimmer 2s infinite;
+}
+@keyframes shimmer {
+  0%   { left: -100%; }
+  100% { left: 150%; }
+}
+
+.wc-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+.wc-name    { font-size: 0.82rem; font-weight: 600; color: #e2e8f0; }
+.wc-req     { font-size: 0.68rem; color: #64748b; font-family: monospace; }
+.wc-elapsed { font-size: 0.68rem; color: #64748b; white-space: nowrap; }
+.wc-bottom  { display: flex; align-items: center; gap: 0.6rem; }
+
+.wc-stage-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+}
+.stage-queued    .wc-stage-badge { background:#1e293b; color:#64748b; border:1px solid #334155; }
+.stage-screening .wc-stage-badge { background:#1e3a5f; color:#60a5fa; border:1px solid #2563eb44; }
+.stage-assessing .wc-stage-badge { background:#2e1065; color:#a78bfa; border:1px solid #7c3aed44; }
+.stage-saving    .wc-stage-badge { background:#14532d; color:#4ade80; border:1px solid #16a34a44; }
+
+.wc-tokens {
+  font-size: 0.65rem;
+  color: #475569;
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  margin-left: auto;
+}
+.wc-tok-in  { color: #3b82f6; }
+.wc-tok-out { color: #8b5cf6; }
+
+/* ── Token meters ────────────────────────────────────────────────── */
+.token-meters { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
+.token-meter  { background: #1e293b; border-radius: 8px; padding: 0.75rem; }
+.tm-label  { font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.25rem; }
+.tm-value  { font-size: 1.6rem; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1; margin-bottom: 0.35rem; }
+.tm-input  { color: #60a5fa; }
+.tm-output { color: #a78bfa; }
+.tm-bar-wrap { height: 6px; background: #334155; border-radius: 3px; overflow: hidden; margin-bottom: 0.25rem; }
+.tm-bar { height: 100%; border-radius: 3px; transition: width 0.6s ease; min-width: 3px; }
+.tm-bar-input  { background: linear-gradient(90deg, #1d4ed8, #60a5fa); }
+.tm-bar-output { background: linear-gradient(90deg, #6d28d9, #a78bfa); }
+.tm-sub { font-size: 0.65rem; color: #475569; }
+
+/* ── Cost panel ──────────────────────────────────────────────────── */
+.cost-panel {
+  background: #1e293b;
+  border-radius: 8px;
+  padding: 0.75rem;
+  text-align: center;
+  border: 1px solid #16a34a33;
+}
+.cost-label { font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; }
+.cost-value {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #4ade80;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  margin: 0.15rem 0;
+}
+.cost-sub { font-size: 0.62rem; color: #475569; }
+
+/* ── API calls panel ─────────────────────────────────────────────── */
+.api-calls-panel { background: #1e293b; border-radius: 8px; padding: 0.65rem; }
+.api-calls-grid  { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; text-align: center; }
+.api-stat-val    { font-size: 1.1rem; font-weight: 700; color: #e2e8f0; font-variant-numeric: tabular-nums; }
+.api-stat-lbl    { font-size: 0.6rem; color: #64748b; margin-top: 0.1rem; }
+
+/* ── Throughput chart ────────────────────────────────────────────── */
+.throughput-panel { background: #1e293b; border-radius: 8px; padding: 0.75rem; }
+.tp-title { font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.5rem; }
+.tp-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 60px;
+  padding: 0 2px;
+}
+.tp-bar-wrap {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  background: #0f172a;
+  border-radius: 3px 3px 0 0;
+}
+.tp-bar {
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(180deg, #7c3aed, #3b82f6);
+  transition: height 0.5s ease;
+  min-height: 2px;
+}
+.tp-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.58rem;
+  color: #334155;
+  margin-top: 0.25rem;
+  padding: 0 2px;
+}
+
+/* ── Recent completions ──────────────────────────────────────────── */
+.recent-log {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.recent-log::-webkit-scrollbar { width: 4px; }
+.recent-log::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+
+.rc-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: #1e293b;
+  border-radius: 7px;
+  padding: 0.5rem 0.75rem;
+  animation: slide-in 0.3s ease;
+}
+.rc-rec {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.rc-rec.STRONG-RECOMMEND { background:#14532d; color:#4ade80; }
+.rc-rec.RECOMMEND        { background:#1e3a5f; color:#60a5fa; }
+.rc-rec.CONDITIONAL      { background:#422006; color:#fb923c; }
+.rc-rec.DO-NOT-RECOMMEND { background:#7f1d1d; color:#f87171; }
+.rc-rec.ERROR            { background:#3f0f0f; color:#fca5a5; }
+.rc-name   { font-size: 0.78rem; color: #e2e8f0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-score  { font-size: 0.78rem; font-weight: 700; color: #94a3b8; white-space: nowrap; }
+.rc-req    { font-size: 0.65rem; color: #475569; font-family: monospace; white-space: nowrap; }
+.rc-elapsed{ font-size: 0.65rem; color: #334155; white-space: nowrap; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  "use strict";
+
+  // ── Helpers ───────────────────────────────────────────────────────
+  function fmt(n)  { return n.toLocaleString(); }
+  function fmtK(n) { return n >= 1000 ? (n / 1000).toFixed(1) + ' K' : n.toString(); }
+  function fmtCost(v) { return '$' + v.toFixed(4); }
+  function fmtSec(s) {
+    if (s < 60) return s.toFixed(0) + 's';
+    return Math.floor(s / 60) + 'm ' + (s % 60).toFixed(0) + 's';
+  }
+  function el(id) { return document.getElementById(id); }
+
+  // Animated counter (number rolls up/down)
+  const _targets = {};
+  const _current = {};
+  function animateTo(id, target) {
+    _targets[id] = target;
+    if (!_current[id]) {
+      _current[id] = 0;
+      _tick(id);
+    }
+  }
+  function _tick(id) {
+    const e = el(id);
+    if (!e) return;
+    const target = _targets[id] || 0;
+    const cur = _current[id] || 0;
+    if (cur === target) return;
+    const diff = target - cur;
+    const step = diff > 0 ? Math.max(1, Math.ceil(diff / 8)) : Math.min(-1, Math.floor(diff / 8));
+    _current[id] = cur + step;
+    e.textContent = fmt(_current[id]);
+    requestAnimationFrame(() => _tick(id));
+  }
+
+  // ── Stage label + CSS class ───────────────────────────────────────
+  const STAGE_LABELS = {
+    queued:    '⏳ Queued',
+    screening: '🔍 Screening',
+    assessing: '🤖 Assessing',
+    saving:    '💾 Saving',
+  };
+
+  // ── Recommendation rec-class ──────────────────────────────────────
+  function recClass(r) {
+    return (r || 'UNKNOWN').replace(/ /g, '-');
+  }
+  function recShort(r) {
+    const m = {'STRONG RECOMMEND':'STRONG', 'RECOMMEND':'RECOMMEND',
+                'CONDITIONAL':'CONDITIONAL', 'DO NOT RECOMMEND':'DNR'};
+    return m[r] || (r || '?');
+  }
+
+  // ── Worker card rendering ─────────────────────────────────────────
+  let _prevWorkerIds = new Set();
+
+  function renderWorkers(workers) {
+    const list = el('workersList');
+    const idle = el('workersIdle');
+    el('workerCount').textContent = workers.length;
+    el('hWorkers').textContent = workers.length + ' active';
+
+    // Pulse dot
+    const dot = el('statusDot');
+    if (workers.length > 0) {
+      dot.className = 'act-pulse-dot active';
+    } else {
+      dot.className = 'act-pulse-dot idle';
+    }
+
+    if (!workers.length) {
+      idle.style.display = '';
+      // Remove old cards
+      list.querySelectorAll('.worker-card').forEach(c => c.remove());
+      return;
+    }
+    idle.style.display = 'none';
+
+    const curIds = new Set(workers.map(w => w.id));
+    // Remove departed workers
+    list.querySelectorAll('.worker-card').forEach(c => {
+      if (!curIds.has(c.dataset.wid)) c.remove();
+    });
+
+    workers.forEach(w => {
+      let card = list.querySelector(`[data-wid="${w.id}"]`);
+      if (!card) {
+        card = document.createElement('div');
+        card.className = 'worker-card';
+        card.dataset.wid = w.id;
+        card.innerHTML = `
+          <div class="wc-top">
+            <span class="wc-name"></span>
+            <span class="wc-req"></span>
+            <span class="wc-elapsed"></span>
+          </div>
+          <div class="wc-bottom">
+            <span class="wc-stage-badge"></span>
+            <span class="wc-tokens">
+              <span class="wc-tok-in">↑<span class="wci-val">0</span></span>
+              <span class="wc-tok-out">↓<span class="wco-val">0</span></span>
+              tok
+            </span>
+          </div>`;
+        list.appendChild(card);
+      }
+      card.className = 'worker-card stage-' + (w.stage || 'queued');
+      card.querySelector('.wc-name').textContent    = w.candidate || w.id;
+      card.querySelector('.wc-req').textContent     = w.req_id || '';
+      card.querySelector('.wc-elapsed').textContent = fmtSec(w.elapsed_s || 0);
+      card.querySelector('.wc-stage-badge').textContent = STAGE_LABELS[w.stage] || w.stage;
+      card.querySelector('.wci-val').textContent = fmtK(w.tokens_in || 0);
+      card.querySelector('.wco-val').textContent = fmtK(w.tokens_out || 0);
+    });
+
+    _prevWorkerIds = curIds;
+  }
+
+  // ── Token meters ──────────────────────────────────────────────────
+  function renderTokens(tok) {
+    const inp  = tok.input  || 0;
+    const out  = tok.output || 0;
+    const calls= tok.calls  || 0;
+    const cost = tok.cost_usd || 0;
+    const total = inp + out;
+
+    animateTo('tokIn',  inp);
+    animateTo('tokOut', out);
+    el('tokInK').textContent  = fmtK(inp);
+    el('tokOutK').textContent = fmtK(out);
+
+    const barMax = Math.max(inp, out, 1);
+    el('barIn').style.width  = Math.round(inp / barMax * 100) + '%';
+    el('barOut').style.width = Math.round(out / barMax * 100) + '%';
+
+    el('costVal').textContent = fmtCost(cost);
+    el('hCost').textContent   = fmtCost(cost);
+    el('hTokens').textContent = fmt(total) + ' tok';
+
+    el('apiCalls').textContent  = fmt(calls);
+    el('hCalls').textContent    = fmt(calls) + ' API calls';
+    el('apiAvgIn').textContent  = calls ? fmtK(Math.round(inp / calls)) : '—';
+    el('apiAvgOut').textContent = calls ? fmtK(Math.round(out / calls)) : '—';
+  }
+
+  // ── Throughput chart ──────────────────────────────────────────────
+  function renderThroughput(buckets) {
+    const maxB = Math.max(...buckets, 1);
+    buckets.forEach((v, i) => {
+      const bar = el('tp' + i);
+      if (bar) bar.style.height = Math.max(4, Math.round(v / maxB * 56)) + 'px';
+    });
+  }
+
+  // ── Recent completions ────────────────────────────────────────────
+  let _renderedRecent = [];
+
+  function renderRecent(recent) {
+    const log = el('recentLog');
+
+    // Only re-render if list changed
+    const key = JSON.stringify(recent.map(r => r.id + r.completed_at));
+    if (key === _renderedRecent) return;
+    _renderedRecent = key;
+
+    if (!recent.length) {
+      log.innerHTML = `<div class="act-idle">
+        <div class="act-idle-icon">📋</div>
+        <div>No completed assessments yet</div>
+      </div>`;
+      return;
+    }
+
+    log.innerHTML = recent.map(r => {
+      const cls  = r.error ? 'ERROR' : recClass(r.recommendation);
+      const lbl  = r.error ? 'ERROR' : recShort(r.recommendation);
+      const score = r.score != null ? r.score.toFixed(1) + '%' : '—';
+      const req  = r.req_id ? r.req_id.replace('REQ-', '') : '';
+      const dur  = r.elapsed_s ? fmtSec(r.elapsed_s) : '';
+      return `<div class="rc-row">
+        <span class="rc-rec ${cls}">${lbl}</span>
+        <span class="rc-name">${r.candidate || '?'}</span>
+        <span class="rc-score">${score}</span>
+        <span class="rc-req">${req}</span>
+        <span class="rc-elapsed">${dur}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // ── SSE connection ────────────────────────────────────────────────
+  function connect() {
+    const badge = el('connBadge');
+    badge.textContent = '● CONNECTING';
+    badge.className   = 'act-conn';
+
+    const es = new EventSource('/admin/activity/stream');
+
+    es.onopen = function () {
+      badge.textContent = '● LIVE';
+      badge.className   = 'act-conn connected';
+    };
+
+    es.onmessage = function (ev) {
+      let d;
+      try { d = JSON.parse(ev.data); } catch (e) { return; }
+
+      renderWorkers(d.workers || []);
+      renderTokens(d.session_tokens || {});
+      renderThroughput(d.throughput_buckets || [0,0,0,0,0,0]);
+      renderRecent(d.recent || []);
+    };
+
+    es.onerror = function () {
+      badge.textContent = '● DISCONNECTED';
+      badge.className   = 'act-conn disconnected';
+      el('statusDot').className = 'act-pulse-dot';
+      es.close();
+      setTimeout(connect, 4000);  // auto-reconnect
+    };
+  }
+
+  connect();
+
+})();
+</script>
+{% endblock %}
