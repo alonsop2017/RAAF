@@ -29,37 +29,203 @@
 </div>
 {% endif %}
 
-<div class="admin-grid">
+<!-- ═══════════════════════════════════════════════════════════════════════
+     DATA STORES
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="section-header">Data Stores</div>
 
-    <!-- DB Stats -->
-    <div class="card">
-        <h2 class="card-title">Database</h2>
-        {% if db_size_mb is not none %}
-        <p class="stat-label">File size: <strong>{{ db_size_mb }} MB</strong></p>
-        {% endif %}
+<div class="datastores-grid">
+
+    <!-- ── SQLite Database ─────────────────────────────────────────── -->
+    <div class="card ds-card">
+        <div class="ds-card-head">
+            <span class="ds-icon ds-icon-db">&#x1F5C4;</span>
+            <div>
+                <h2 class="card-title" style="margin:0;">SQLite Database</h2>
+                <div class="ds-subtitle">data/raaf.db</div>
+            </div>
+            {% if db_size_mb is not none %}
+            <span class="ds-badge">{{ db_size_mb }} MB</span>
+            {% endif %}
+        </div>
+
         {% if db_stats %}
-        <table class="data-table" style="margin-top:1rem;">
-            <thead>
-                <tr><th>Table</th><th>Rows</th></tr>
-            </thead>
-            <tbody>
+        {% set max_rows = db_stats.values() | select('number') | list | max if db_stats else 1 %}
+        {% set max_rows = max_rows if max_rows > 0 else 1 %}
+        <div class="ds-table-bars">
+            {% set table_icons = {
+                'clients': '🏢',
+                'requisitions': '📋',
+                'candidates': '👤',
+                'assessments': '📊',
+                'batches': '📦',
+                'reports': '📄'
+            } %}
             {% for table, count in db_stats.items() %}
-                <tr><td>{{ table }}</td><td>{{ count }}</td></tr>
+            {% set pct = ((count / max_rows) * 100) | round(1) if count is number and max_rows > 0 else 0 %}
+            <div class="ds-row">
+                <span class="ds-row-label">
+                    {{ table_icons.get(table, '▪') }} {{ table }}
+                </span>
+                <div class="ds-bar-wrap">
+                    <div class="ds-bar {% if table == 'assessments' or table == 'candidates' %}ds-bar-primary{% elif table == 'reports' %}ds-bar-accent{% else %}ds-bar-secondary{% endif %}"
+                         style="width: {{ pct }}%"></div>
+                </div>
+                <span class="ds-row-count">{{ count }}</span>
+            </div>
             {% endfor %}
-            </tbody>
-        </table>
+        </div>
         {% else %}
-        <p class="text-secondary">No DB stats available.</p>
+        <p class="text-secondary" style="margin-top:1rem;">No database found.</p>
         {% endif %}
+
         <div style="margin-top:1rem;display:flex;gap:0.75rem;flex-wrap:wrap;">
             <form method="post" action="/admin/database/integrity-check">
-                <button type="submit" class="btn btn-secondary btn-sm">Run Integrity Check</button>
+                <span class="db-tooltip-wrap">
+                    <button type="submit" class="btn btn-secondary btn-sm">Integrity Check</button>
+                    <span class="db-tooltip">Runs SQLite's built-in PRAGMA integrity_check to verify the database file is structurally sound — no corruption, missing pages, or broken indexes.</span>
+                </span>
             </form>
             <form method="post" action="/admin/database/backfill">
-                <button type="submit" class="btn btn-secondary btn-sm">Run Backfill</button>
+                <span class="db-tooltip-wrap">
+                    <button type="submit" class="btn btn-secondary btn-sm">Sync Files → DB</button>
+                    <span class="db-tooltip">Scans the clients/ directory for assessment JSON files and requisition configs, then writes any missing records into SQLite. Use this when the file system and DB are out of sync (e.g. after a manual file import).</span>
+                </span>
             </form>
         </div>
     </div>
+
+    <!-- ── File System ─────────────────────────────────────────────── -->
+    {% if fs_stats %}
+    <div class="card ds-card">
+        <div class="ds-card-head">
+            <span class="ds-icon ds-icon-fs">&#x1F4C1;</span>
+            <div>
+                <h2 class="card-title" style="margin:0;">File System</h2>
+                <div class="ds-subtitle">clients/ directory</div>
+            </div>
+            <span class="ds-badge">{{ fs_stats.total_size_mb }} MB</span>
+        </div>
+
+        <!-- Summary tiles -->
+        <div class="fs-tiles">
+            <div class="fs-tile">
+                <div class="fs-tile-icon">📁</div>
+                <div class="fs-tile-val">{{ fs_stats.clients }}</div>
+                <div class="fs-tile-lbl">Clients</div>
+            </div>
+            <div class="fs-tile">
+                <div class="fs-tile-icon">📋</div>
+                <div class="fs-tile-val">{{ fs_stats.requisitions }}</div>
+                <div class="fs-tile-lbl">Requisitions</div>
+            </div>
+            <div class="fs-tile fs-tile-accent">
+                <div class="fs-tile-icon">📄</div>
+                <div class="fs-tile-val">{{ fs_stats.resumes_raw.count }}</div>
+                <div class="fs-tile-lbl">Resumes</div>
+                <div class="fs-tile-size">{{ fs_stats.resumes_raw.size_mb }} MB</div>
+            </div>
+            <div class="fs-tile fs-tile-accent">
+                <div class="fs-tile-icon">📝</div>
+                <div class="fs-tile-val">{{ fs_stats.resumes_extracted.count }}</div>
+                <div class="fs-tile-lbl">Extracted</div>
+                <div class="fs-tile-size">{{ fs_stats.resumes_extracted.size_mb }} MB</div>
+            </div>
+            <div class="fs-tile fs-tile-primary">
+                <div class="fs-tile-icon">📊</div>
+                <div class="fs-tile-val">{{ fs_stats.assessments.count }}</div>
+                <div class="fs-tile-lbl">Assessments</div>
+                <div class="fs-tile-size">{{ fs_stats.assessments.size_mb }} MB</div>
+            </div>
+            <div class="fs-tile fs-tile-success">
+                <div class="fs-tile-icon">📑</div>
+                <div class="fs-tile-val">{{ fs_stats.reports.count }}</div>
+                <div class="fs-tile-lbl">Reports</div>
+                <div class="fs-tile-size">{{ fs_stats.reports.size_mb }} MB</div>
+            </div>
+        </div>
+
+        <!-- Storage breakdown bar -->
+        {% set total_tracked = fs_stats.resumes_raw.size_mb + fs_stats.resumes_extracted.size_mb + fs_stats.assessments.size_mb + fs_stats.reports.size_mb + fs_stats.frameworks.size_mb %}
+        {% if total_tracked > 0 %}
+        <div style="margin-top:1rem;">
+            <div class="ds-subtitle" style="margin-bottom:0.4rem;">Storage breakdown</div>
+            <div class="storage-stacked-bar">
+                {% set rr_pct = ((fs_stats.resumes_raw.size_mb / total_tracked) * 100) | round(1) %}
+                {% set re_pct = ((fs_stats.resumes_extracted.size_mb / total_tracked) * 100) | round(1) %}
+                {% set as_pct = ((fs_stats.assessments.size_mb / total_tracked) * 100) | round(1) %}
+                {% set rp_pct = ((fs_stats.reports.size_mb / total_tracked) * 100) | round(1) %}
+                {% set fw_pct = ((fs_stats.frameworks.size_mb / total_tracked) * 100) | round(1) %}
+                <div class="ssb-seg ssb-resumes"   style="width:{{ rr_pct }}%" title="Resumes: {{ fs_stats.resumes_raw.size_mb }} MB"></div>
+                <div class="ssb-seg ssb-extracted"  style="width:{{ re_pct }}%" title="Extracted text: {{ fs_stats.resumes_extracted.size_mb }} MB"></div>
+                <div class="ssb-seg ssb-assessments" style="width:{{ as_pct }}%" title="Assessments: {{ fs_stats.assessments.size_mb }} MB"></div>
+                <div class="ssb-seg ssb-reports"    style="width:{{ rp_pct }}%" title="Reports: {{ fs_stats.reports.size_mb }} MB"></div>
+                <div class="ssb-seg ssb-frameworks" style="width:{{ fw_pct }}%" title="Frameworks: {{ fs_stats.frameworks.size_mb }} MB"></div>
+            </div>
+            <div class="ssb-legend">
+                <span class="ssb-dot ssb-resumes"></span> Resumes {{ fs_stats.resumes_raw.size_mb }} MB &nbsp;
+                <span class="ssb-dot ssb-extracted"></span> Extracted {{ fs_stats.resumes_extracted.size_mb }} MB &nbsp;
+                <span class="ssb-dot ssb-assessments"></span> Assessments {{ fs_stats.assessments.size_mb }} MB &nbsp;
+                <span class="ssb-dot ssb-reports"></span> Reports {{ fs_stats.reports.size_mb }} MB
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- ── Per-client breakdown ─────────────────────────────────────────── -->
+{% if fs_stats and fs_stats.by_client %}
+<div class="card" style="margin-top:1rem;">
+    <h2 class="card-title">File System — By Client</h2>
+    <div class="client-breakdown-grid">
+        {% for c in fs_stats.by_client %}
+        <div class="cb-card">
+            <div class="cb-header">
+                <span class="cb-name">{{ c.code }}</span>
+                <span class="cb-size">{{ c.size_mb }} MB</span>
+            </div>
+            <div class="cb-stats">
+                <div class="cb-stat">
+                    <span class="cb-stat-val">{{ c.requisitions }}</span>
+                    <span class="cb-stat-lbl">Reqs</span>
+                </div>
+                <div class="cb-stat">
+                    <span class="cb-stat-val">{{ c.resumes_raw }}</span>
+                    <span class="cb-stat-lbl">Resumes</span>
+                </div>
+                <div class="cb-stat cb-stat-primary">
+                    <span class="cb-stat-val">{{ c.assessments }}</span>
+                    <span class="cb-stat-lbl">Assessed</span>
+                </div>
+                <div class="cb-stat cb-stat-success">
+                    <span class="cb-stat-val">{{ c.reports }}</span>
+                    <span class="cb-stat-lbl">Reports</span>
+                </div>
+            </div>
+            {% if c.resumes_raw > 0 %}
+            <div class="cb-progress-row">
+                <div class="cb-progress-label">Coverage</div>
+                {% set cov = ((c.assessments / c.resumes_raw) * 100) | round(0) | int if c.resumes_raw > 0 else 0 %}
+                <div class="progress-bar-container" style="flex:1;">
+                    <div class="progress-bar" style="width:{{ cov }}%;background:{% if cov >= 90 %}var(--success-color){% elif cov >= 50 %}var(--warning-color){% else %}var(--danger-color){% endif %};"></div>
+                </div>
+                <span class="cb-progress-pct">{{ cov }}%</span>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     SYSTEM
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="section-header" style="margin-top:2rem;">System</div>
+
+<div class="admin-grid">
 
     <!-- Disk Usage -->
     <div class="card">
@@ -119,11 +285,223 @@
 
 {% block extra_css %}
 <style>
+/* ── Section headers ──────────────────────────────────────────────── */
+.section-header {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+/* ── Top-level layout ─────────────────────────────────────────────── */
+.datastores-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 0;
+}
 .admin-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 1.5rem;
 }
+
+/* ── DS card header ───────────────────────────────────────────────── */
+.ds-card { padding: 1.25rem; }
+.ds-card-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+.ds-icon { font-size: 1.6rem; line-height: 1; }
+.ds-subtitle { font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.1rem; font-family: monospace; }
+.ds-badge {
+    margin-left: auto;
+    background: var(--accent-color, #2563eb);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+/* ── DB bar rows ──────────────────────────────────────────────────── */
+.ds-table-bars { display: flex; flex-direction: column; gap: 0.55rem; }
+.ds-row { display: flex; align-items: center; gap: 0.6rem; }
+.ds-row-label {
+    width: 120px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.ds-bar-wrap {
+    flex: 1;
+    height: 10px;
+    background: var(--border-color);
+    border-radius: 5px;
+    overflow: hidden;
+}
+.ds-bar {
+    height: 100%;
+    border-radius: 5px;
+    min-width: 3px;
+    transition: width 0.4s ease;
+}
+.ds-bar-primary   { background: #2563eb; }
+.ds-bar-secondary { background: #64748b; }
+.ds-bar-accent    { background: #7c3aed; }
+.ds-row-count {
+    width: 40px;
+    text-align: right;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* ── FS tiles ─────────────────────────────────────────────────────── */
+.fs-tiles {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.6rem;
+    margin-top: 0.25rem;
+}
+.fs-tile {
+    background: var(--bg-secondary, #f8fafc);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.6rem 0.4rem;
+    text-align: center;
+}
+.fs-tile-icon { font-size: 1.2rem; }
+.fs-tile-val  { font-size: 1.35rem; font-weight: 700; color: var(--text-primary); line-height: 1.2; }
+.fs-tile-lbl  { font-size: 0.65rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; }
+.fs-tile-size { font-size: 0.65rem; color: var(--text-secondary); margin-top: 0.1rem; }
+.fs-tile-primary { border-color: #2563eb33; background: #eff6ff; }
+.fs-tile-primary .fs-tile-val { color: #1d4ed8; }
+.fs-tile-accent  { border-color: #64748b33; }
+.fs-tile-success { border-color: #16a34a33; background: #f0fdf4; }
+.fs-tile-success .fs-tile-val { color: #15803d; }
+
+/* ── Stacked storage bar ──────────────────────────────────────────── */
+.storage-stacked-bar {
+    display: flex;
+    height: 12px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--border-color);
+}
+.ssb-seg { height: 100%; min-width: 2px; transition: width 0.4s; }
+.ssb-resumes     { background: #3b82f6; }
+.ssb-extracted   { background: #93c5fd; }
+.ssb-assessments { background: #2563eb; }
+.ssb-reports     { background: #7c3aed; }
+.ssb-frameworks  { background: #d1d5db; }
+.ssb-legend {
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    margin-top: 0.4rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0;
+    align-items: center;
+}
+.ssb-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 3px;
+    vertical-align: middle;
+}
+
+/* ── Per-client breakdown ─────────────────────────────────────────── */
+.client-breakdown-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-top: 0.5rem;
+}
+.cb-card {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.85rem;
+    background: var(--bg-secondary, #f8fafc);
+}
+.cb-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.6rem;
+}
+.cb-name { font-size: 0.8rem; font-weight: 700; font-family: monospace; color: var(--text-primary); }
+.cb-size { font-size: 0.7rem; color: var(--text-secondary); }
+.cb-stats { display: flex; gap: 0.5rem; justify-content: space-between; margin-bottom: 0.6rem; }
+.cb-stat {
+    flex: 1;
+    text-align: center;
+    background: var(--bg-primary, #fff);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0.3rem 0.2rem;
+}
+.cb-stat-val { display: block; font-size: 1.05rem; font-weight: 700; color: var(--text-primary); line-height: 1.1; }
+.cb-stat-lbl { display: block; font-size: 0.6rem; color: var(--text-secondary); text-transform: uppercase; }
+.cb-stat-primary { border-color: #2563eb44; }
+.cb-stat-primary .cb-stat-val { color: #1d4ed8; }
+.cb-stat-success { border-color: #16a34a44; }
+.cb-stat-success .cb-stat-val { color: #15803d; }
+.cb-progress-row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.7rem; }
+.cb-progress-label { color: var(--text-secondary); white-space: nowrap; }
+.cb-progress-pct { color: var(--text-secondary); white-space: nowrap; }
+
+/* ── DB button tooltips ───────────────────────────────────────────── */
+.db-tooltip-wrap {
+    position: relative;
+    display: inline-block;
+}
+.db-tooltip {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 280px;
+    background: #1e293b;
+    color: #e2e8f0;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    padding: 0.55rem 0.75rem;
+    border-radius: 7px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    transition: opacity 0.15s ease, visibility 0.15s ease;
+    z-index: 100;
+    white-space: normal;
+    text-align: left;
+}
+/* Arrow pointing down */
+.db-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: #1e293b;
+}
+.db-tooltip-wrap:hover .db-tooltip {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* ── Misc ─────────────────────────────────────────────────────────── */
 .stat-label { margin: 0.25rem 0; color: var(--text-secondary); }
 .stat-label strong { color: var(--text-primary); }
 .progress-bar-container {
