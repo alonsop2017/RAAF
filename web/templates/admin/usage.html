@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}Admin — Usage Log{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:center;">
+    <h1>Application Usage Log</h1>
+    <a href="/admin/usage/export?days={{ days }}" class="btn btn-sm">&#8595; Export CSV</a>
+</div>
+
+<!-- Summary Cards -->
+<div class="usage-cards">
+    <div class="usage-card">
+        <div class="usage-card-value">{{ stats.total_requests }}</div>
+        <div class="usage-card-label">Requests (last {{ days }}d)</div>
+    </div>
+    <div class="usage-card">
+        <div class="usage-card-value">{{ stats.unique_users }}</div>
+        <div class="usage-card-label">Unique Users</div>
+    </div>
+    <div class="usage-card usage-card-{{ 'warn' if stats.error_count > 0 else 'ok' }}">
+        <div class="usage-card-value">{{ stats.error_count }}</div>
+        <div class="usage-card-label">Errors (4xx/5xx)</div>
+    </div>
+    <div class="usage-card">
+        <div class="usage-card-value">{{ stats.avg_response_ms }} ms</div>
+        <div class="usage-card-label">Avg Response Time</div>
+    </div>
+    <div class="usage-card">
+        <div class="usage-card-value">{{ stats.login_count_today }}</div>
+        <div class="usage-card-label">Logins Today</div>
+    </div>
+</div>
+
+<!-- Top Pages -->
+{% if stats.top_paths %}
+<div class="card" style="margin-bottom:1.5rem;">
+    <h2 class="card-title">Top Pages (last {{ days }}d)</h2>
+    <table class="usage-table">
+        <thead><tr><th>Path</th><th style="text-align:right;">Requests</th></tr></thead>
+        <tbody>
+        {% for p in stats.top_paths %}
+            <tr>
+                <td><code>{{ p.path }}</code></td>
+                <td style="text-align:right;">{{ p.count }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<!-- Filter Bar -->
+<div class="card" style="margin-bottom:1rem;">
+    <form method="get" action="/admin/usage" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-end;">
+        <div>
+            <label class="form-label" style="font-size:0.8rem;">Period</label>
+            <select name="days" class="form-input" style="width:120px;">
+                {% for d in [1, 7, 14, 30, 90] %}
+                <option value="{{ d }}" {% if days|int == d %}selected{% endif %}>Last {{ d }} day{{ 's' if d != 1 }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="form-label" style="font-size:0.8rem;">Event Type</label>
+            <select name="event_type" class="form-input" style="width:130px;">
+                <option value="">All types</option>
+                {% for t in ['login','logout','nav','error'] %}
+                <option value="{{ t }}" {% if event_type == t %}selected{% endif %}>{{ t }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="form-label" style="font-size:0.8rem;">Email</label>
+            <input type="text" name="email" class="form-input" value="{{ email_filter }}"
+                   placeholder="filter by email" style="width:200px;">
+        </div>
+        <button type="submit" class="btn btn-primary" style="padding:0.4rem 1rem;">Filter</button>
+        <a href="/admin/usage" class="btn" style="padding:0.4rem 1rem;">Reset</a>
+    </form>
+</div>
+
+<!-- Event Log Table -->
+<div class="card">
+    <h2 class="card-title">Recent Events (showing up to 200)</h2>
+    {% if logs %}
+    <div style="overflow-x:auto;">
+        <table class="usage-table">
+            <thead>
+                <tr>
+                    <th>Date / Time</th>
+                    <th>Type</th>
+                    <th>User</th>
+                    <th>Method</th>
+                    <th>Path</th>
+                    <th>Status</th>
+                    <th style="text-align:right;">ms</th>
+                    <th>Detail</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for e in logs %}
+            <tr class="usage-row-{{ e.event_type }}">
+                <td style="white-space:nowrap;font-size:0.82rem;">{{ e.datetime }}</td>
+                <td><span class="usage-badge usage-badge-{{ e.event_type }}">{{ e.event_type }}</span></td>
+                <td style="font-size:0.82rem;">{{ e.email }}</td>
+                <td style="font-size:0.82rem;">{{ e.method }}</td>
+                <td style="font-size:0.82rem;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ e.path }}">{{ e.path }}</td>
+                <td>
+                    {% if e.status_code %}
+                    <span style="font-size:0.82rem;color:{{ '#dc2626' if e.status_code >= 500 else ('#d97706' if e.status_code >= 400 else '#16a34a') }};">
+                        {{ e.status_code }}
+                    </span>
+                    {% else %}—{% endif %}
+                </td>
+                <td style="text-align:right;font-size:0.82rem;">{{ e.duration_ms if e.duration_ms is not none else '—' }}</td>
+                <td style="font-size:0.8rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ e.detail }}">{{ e.detail }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-secondary">No events found for the selected filters.</p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.usage-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+.usage-card {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    text-align: center;
+}
+.usage-card-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    line-height: 1.2;
+}
+.usage-card-label {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+}
+.usage-card-warn .usage-card-value { color: #dc2626; }
+.usage-card-ok  .usage-card-value { color: #16a34a; }
+
+.usage-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+.usage-table th {
+    background: #D5E8F0;
+    font-weight: 600;
+    padding: 0.45rem 0.7rem;
+    text-align: left;
+    border: 1px solid #ccc;
+    white-space: nowrap;
+}
+.usage-table td {
+    padding: 0.4rem 0.7rem;
+    border: 1px solid #e5e7eb;
+    vertical-align: middle;
+}
+.usage-table tr:nth-child(even) td { background: #f9fafb; }
+.usage-row-error td { background: #fff5f5 !important; }
+
+.usage-badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+.usage-badge-login  { background: #dcfce7; color: #166534; }
+.usage-badge-logout { background: #f3f4f6; color: #374151; }
+.usage-badge-nav    { background: #dbeafe; color: #1e40af; }
+.usage-badge-error  { background: #fee2e2; color: #991b1b; }
+</style>
+{% endblock %}

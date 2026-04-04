@@ -36,6 +36,7 @@ _SETTINGS_PATH = Path(__file__).parent.parent.parent / "config" / "settings.yaml
 _DB_PATH = Path(__file__).parent.parent.parent / "data" / "raaf.db"
 _CLIENTS_PATH = Path(__file__).parent.parent.parent / "clients"
 _BACKUP_LOG_PATH = Path(__file__).parent.parent.parent / "logs" / "backup.log"
+_SYSTEM_REPORTS_DIR = Path(__file__).parent.parent.parent / "data" / "system-reports"
 
 
 def _load_settings() -> dict:
@@ -971,3 +972,39 @@ async def admin_activity_stream(request: Request, _admin=Depends(require_admin))
             "Connection": "keep-alive",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# System Performance Reports
+# ---------------------------------------------------------------------------
+
+@router.get("/system-reports", response_class=HTMLResponse)
+async def admin_system_reports(request: Request, _admin=Depends(require_admin)):
+    """List available system performance report PDFs."""
+    _SYSTEM_REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    reports = sorted(_SYSTEM_REPORTS_DIR.glob("*.pdf"), reverse=True)
+    report_list = [
+        {
+            "filename": r.name,
+            "size_kb": round(r.stat().st_size / 1024, 1),
+            "created": datetime.fromtimestamp(r.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+        }
+        for r in reports
+    ]
+    return templates.TemplateResponse("admin/system_reports.html", {
+        "request": request,
+        "user": getattr(request.state, "user", None),
+        "reports": report_list,
+    })
+
+
+@router.get("/system-reports/download/{filename}")
+async def admin_system_reports_download(filename: str, _admin=Depends(require_admin)):
+    """Download a system performance report PDF."""
+    from fastapi.responses import FileResponse
+    if "/" in filename or ".." in filename or not filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    report_path = _SYSTEM_REPORTS_DIR / filename
+    if not report_path.exists():
+        raise HTTPException(status_code=404, detail="Report not found")
+    return FileResponse(str(report_path), media_type="application/pdf", filename=filename)

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Admin — System Reports{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>System Performance Reports</h1>
+</div>
+
+<div class="card">
+    <h2 class="card-title">Weekly Reports</h2>
+    <p style="color:#7F8C8D; margin-bottom:1rem;">
+        Auto-generated weekly PDF summaries covering development activity, pending CV assessments,
+        backup operations, and system health. Reports are stored in
+        <code>data/system-reports/</code>.
+    </p>
+
+    {% if reports %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Report</th>
+                <th>Generated</th>
+                <th>Size</th>
+                <th>Download</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in reports %}
+            <tr>
+                <td>{{ r.filename }}</td>
+                <td>{{ r.created }}</td>
+                <td>{{ r.size_kb }} KB</td>
+                <td>
+                    <a href="/admin/system-reports/download/{{ r.filename }}"
+                       class="btn btn-sm">&#x2B73; PDF</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="alert alert-info">
+        No reports generated yet. The weekly report runs every Monday at 06:00.
+        <br>To generate one now, run:<br>
+        <code>cd /home/alonsop/RAAF &amp;&amp; python scripts/generate_system_report.py</code>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

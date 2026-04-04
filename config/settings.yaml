@@ -1,35 +1,25 @@
-# Global Settings - Resume Assessment Automation Framework
-# Archtekt Consulting Inc.
-
-# Authentication settings
 auth:
   google:
-    client_id: "344797612488-91k92gaufbvhbutq4j0ouof9u0qhmu80.apps.googleusercontent.com"
-    client_secret_env: "GOOGLE_CLIENT_SECRET"
+    client_id: 344797612488-91k92gaufbvhbutq4j0ouof9u0qhmu80.apps.googleusercontent.com
+    client_secret_env: GOOGLE_CLIENT_SECRET
   session:
-    secret_key_env: "SESSION_SECRET_KEY"
-    cookie_name: "raaf_session"
+    secret_key_env: SESSION_SECRET_KEY
+    cookie_name: raaf_session
     max_age_hours: 8
-  allowed_domains: []  # Optional: ["archtekt.ca"] to restrict login
+  allowed_domains: []
   allowed_emails:
-    - alonso.perez@archtektconsultinginc.com
-    - charlesg6@gmail.com
+  - alonso.perez@archtektconsultinginc.com
+  - charlesg06@gmail.com
   admin_emails:
-    - alonso.perez@archtektconsultinginc.com
-
-# Database for user credentials (email/password auth)
+  - alonso.perez@archtektconsultinginc.com
 database:
-  url: "sqlite:///config/users.db"
-
-# Default assessment settings (can be overridden per requisition)
+  url: sqlite:///config/users.db
 assessment:
   default_max_score: 100
   default_thresholds:
     strong_recommend: 85
     recommend: 70
     conditional: 55
-
-# Job stability scoring weights
 stability:
   weights:
     four_plus_years: 10
@@ -38,62 +28,50 @@ stability:
     eighteen_months_to_two_years: 4
     one_to_eighteen_months: 2
     less_than_one_year: 0
-
-# Report formatting settings
 report:
   font_family: Arial
   body_font_size: 11
   heading_font_size: 14
   margins_inches: 1.0
-  header_shading: "D5E8F0"
-
-# Output formatting
+  header_shading: D5E8F0
 output:
-  date_format: "%Y-%m-%d"
-  filename_date_format: "%y%m%d"
-
-# Path patterns (use {client} and {req} placeholders)
+  date_format: '%Y-%m-%d'
+  filename_date_format: '%y%m%d'
 paths:
-  client_root: "clients/{client}"
-  requisition_root: "clients/{client}/requisitions/{req}"
-  archive_root: "archive/{client}"
-  log_root: "logs/{client}"
-
-# Context persistence
+  client_root: clients/{client}
+  requisition_root: clients/{client}/requisitions/{req}
+  archive_root: archive/{client}
+  log_root: logs/{client}
 context:
-  file: ".current_context.yaml"
+  file: .current_context.yaml
   auto_save: true
-
-# PCRecruiter integration settings
 pcr:
-  api_base_url: "https://www2.pcrecruiter.net/rest/api"
-  api_version: "v2"
+  api_base_url: https://www2.pcrecruiter.net/rest/api
+  api_version: v2
   session_timeout_minutes: 60
   sync_interval_minutes: 15
   default_pipeline_statuses:
-    new: "New Applicant"
-    assessed: "Assessed"
-    interview: "Interview Scheduled"
-    hold: "On Hold"
-    rejected: "Not Selected"
-    hired: "Hired"
-
-# Batch processing settings
+    new: New Applicant
+    assessed: Assessed
+    interview: Interview Scheduled
+    hold: On Hold
+    rejected: Not Selected
+    hired: Hired
 batch:
   max_candidates_per_batch: 50
   auto_create_batch: true
-  batch_naming_pattern: "batch_{date}_{n}"
-
-# Logging settings
+  batch_naming_pattern: batch_{date}_{n}
 logging:
   level: INFO
-  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
   rotate_size_mb: 10
   backup_count: 5
-
-# Claude API settings (for AI-powered assessments)
 claude:
-  default_model: "claude-sonnet-4-6"
+  default_model: claude-sonnet-4-6
   max_tokens: 8192
   temperature: 0.1
   timeout_seconds: 120
+backup:
+  drive_folder_id: 1ESLhisZ7ixBB3t6SrKNM494yV4EO4KQY
+  drive_keep_n: 3
+  lan_path: /media/alonsop/Backup/RBPi5_Backup
