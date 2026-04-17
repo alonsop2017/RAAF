@@ -36,7 +36,7 @@ app = FastAPI(
 # Add session middleware for OAuth state (required by Authlib)
 # Use a fallback secret for development if not set
 session_secret = get_session_secret_key() or "dev-secret-change-in-production"
-app.add_middleware(SessionMiddleware, secret_key=session_secret)
+app.add_middleware(SessionMiddleware, secret_key=session_secret, https_only=False, same_site="lax")
 
 # Setup OAuth
 setup_oauth()
