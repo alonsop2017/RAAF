@@ -50,7 +50,8 @@
         </div>
 
         {% if db_stats %}
-        {% set max_rows = db_stats.values() | select('number') | list | max if db_stats else 1 %}
+        {% set _numeric_vals = db_stats.values() | select('number') | list %}
+        {% set max_rows = (_numeric_vals | max) if _numeric_vals else 1 %}
         {% set max_rows = max_rows if max_rows > 0 else 1 %}
         <div class="ds-table-bars">
             {% set table_icons = {

@@ -103,13 +103,14 @@ async def create_client(
         'active_requisitions': []
     }
 
-    if _files_mode():
-        with open(client_root / "client_info.yaml", 'w') as f:
-            yaml.dump(client_info, f, default_flow_style=False)
+    # Always write client_info.yaml — it is the file-based source of truth
+    # for get_client_info() regardless of DB mode.
+    with open(client_root / "client_info.yaml", 'w') as f:
+        yaml.dump(client_info, f, default_flow_style=False)
 
-    # Write to DB when enabled
-    try:
-        if _use_database():
+    # Also write to DB when enabled
+    if _use_database():
+        try:
             billing = client_info.get("billing", {})
             get_db().create_client({
                 "client_code": code,
@@ -120,8 +121,9 @@ async def create_client(
                 "payment_terms": billing.get("payment_terms"),
                 "contacts": client_info.get("contacts", {}),
             })
-    except Exception:
-        pass
+        except Exception as e:
+            import sys
+            print(f"DB_WARN create_client {code}: {e}", file=sys.stderr, flush=True)
 
     return RedirectResponse(url=f"/clients/{code}", status_code=303)
 

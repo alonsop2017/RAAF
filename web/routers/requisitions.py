@@ -288,9 +288,10 @@ async def create_requisition(
             'linked_date': datetime.now().strftime("%Y-%m-%d"),
         }
 
-    if _files_mode():
-        with open(req_root / "requisition.yaml", 'w') as f:
-            yaml.dump(req_config, f, default_flow_style=False)
+    # Always write requisition.yaml — it is the file-based source of truth
+    # for get_requisition_config() regardless of DB mode.
+    with open(req_root / "requisition.yaml", 'w') as f:
+        yaml.dump(req_config, f, default_flow_style=False)
 
     # Generate or copy assessment framework
     framework_generated = False
@@ -355,9 +356,8 @@ async def create_requisition(
         if req_id not in client_config['active_requisitions']:
             client_config['active_requisitions'].append(req_id)
 
-        if _files_mode():
-            with open(client_config_path, 'w') as f:
-                yaml.dump(client_config, f, default_flow_style=False)
+        with open(client_config_path, 'w') as f:
+            yaml.dump(client_config, f, default_flow_style=False)
 
     # Write to DB when enabled
     try:
@@ -667,9 +667,8 @@ async def update_requisition(
             except Exception as e:
                 logger.warning(f"Failed to extract JD text during update: {e}")
 
-    if _files_mode():
-        with open(config_path, 'w', encoding='utf-8') as f:
-            yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+    with open(config_path, 'w', encoding='utf-8') as f:
+        yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
 
     # Write to DB when enabled
     try:
@@ -725,9 +724,8 @@ async def update_requisition_status(
 
     config['status'] = status
 
-    if _files_mode():
-        with open(config_path, 'w', encoding='utf-8') as f:
-            yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+    with open(config_path, 'w', encoding='utf-8') as f:
+        yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
 
     # Write to DB when enabled
     try:
@@ -738,6 +736,36 @@ async def update_requisition_status(
         pass
 
     return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}", status_code=303)
+
+
+@router.post("/{client_code}/{req_id}/archive")
+async def archive_requisition_route(
+    request: Request,
+    client_code: str,
+    req_id: str,
+    archive_note: str = Form(""),
+    final_status: str = Form("filled"),
+):
+    """Archive a requisition (filled, on_hold, or any non-active status)."""
+    req_root = get_requisition_root(client_code, req_id)
+    if not (req_root / "requisition.yaml").exists():
+        raise HTTPException(status_code=404, detail="Requisition not found")
+    try:
+        archive_requisition(
+            client_code=client_code,
+            req_id=req_id,
+            status=final_status,
+            note=archive_note or f"Archived via web interface ({final_status})",
+        )
+        try:
+            from scripts.utils.database import get_db, _use_database
+            if _use_database():
+                get_db().update_requisition(req_id, {"status": final_status})
+        except Exception:
+            pass
+        return RedirectResponse(url="/requisitions/?archived=1", status_code=303)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to archive: {str(e)}")
 
 
 @router.post("/{client_code}/{req_id}/link-pcr")
@@ -1007,12 +1035,11 @@ async def update_job_description(
     logger.info(f"Updated job description for {req_id}: {jd_path}")
 
     # Update requisition.yaml
-    if _files_mode():
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
-        config.setdefault('job', {})['description_file'] = job_description.filename
-        with open(config_path, 'w', encoding='utf-8') as f:
-            yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+    with open(config_path, 'r', encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+    config.setdefault('job', {})['description_file'] = job_description.filename
+    with open(config_path, 'w', encoding='utf-8') as f:
+        yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
 
     # Write to DB when enabled
     try:

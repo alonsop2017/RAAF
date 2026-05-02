@@ -6,6 +6,7 @@ auth:
   google:
     client_id: "344797612488-91k92gaufbvhbutq4j0ouof9u0qhmu80.apps.googleusercontent.com"
     client_secret_env: "GOOGLE_CLIENT_SECRET"
+    redirect_uri: "https://raaf.peoplefindinc.com/auth/callback"
   session:
     secret_key_env: "SESSION_SECRET_KEY"
     cookie_name: "raaf_session"
@@ -97,3 +98,19 @@ claude:
   max_tokens: 8192
   temperature: 0.1
   timeout_seconds: 120
+
+# Recruiter profile (shown on reports and correspondence)
+recruiter:
+  name: "Alonso Perez"
+  title: "Senior Recruiter"
+  email: "alonso.perez@archtektconsultinginc.com"
+  phone: ""
+  agency: "Archtekt Consulting Inc."
+
+# Candidate invitation email templates
+invitation_template:
+  subject: "Invitation to Interview"
+  opening: "We are pleased to invite you to interview for the following position."
+  call_to_action: "Please reply to this email to confirm your availability."
+  not_interested: "If you are no longer interested, please let us know."
+  closing: "We look forward to hearing from you."

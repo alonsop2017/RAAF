@@ -89,7 +89,7 @@ echo "      Waiting for services to be ready..."
 sleep 8
 
 # Run certbot
-docker compose run --rm certbot certonly \
+docker compose run --rm --entrypoint certbot certbot certonly \
     --webroot \
     --webroot-path=/var/www/certbot \
     --email "$EMAIL" \

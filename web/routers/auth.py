@@ -69,6 +69,7 @@ async def login_email(
 
     session_token = session_manager.create_session(user_data)
 
+    is_https = request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https"
     response = RedirectResponse(url="/", status_code=302)
     response.set_cookie(
         key=session_manager.cookie_name,
@@ -76,7 +77,7 @@ async def login_email(
         max_age=session_manager.max_age,
         httponly=True,
         samesite="lax",
-        secure=False,  # Set to True in production with HTTPS
+        secure=is_https,
     )
     return response
 
@@ -164,75 +165,90 @@ async def auth_callback(request: Request):
     try:
         token = await oauth.google.authorize_access_token(request)
     except Exception as e:
+        import sys
+        print(f"OAUTH_ERROR {type(e).__name__}: {e}", file=sys.stderr, flush=True)
         return RedirectResponse(
             url="/auth/login?error=OAuth+authorization+failed",
             status_code=302
         )
 
-    # Get user info from the ID token
-    user_info = token.get('userinfo')
-    if not user_info:
+    try:
+        # Get user info from the ID token
+        user_info = token.get('userinfo')
+        if not user_info:
+            return RedirectResponse(
+                url="/auth/login?error=Failed+to+get+user+info",
+                status_code=302
+            )
+
+        # Check allowed domains if configured
+        allowed_domains = get_allowed_domains()
+        if allowed_domains:
+            email = user_info.get('email', '')
+            domain = email.split('@')[-1] if '@' in email else ''
+            if domain not in allowed_domains:
+                return RedirectResponse(
+                    url="/auth/login?error=Email+domain+not+allowed",
+                    status_code=302
+                )
+
+        # Check allowed emails whitelist if configured
+        allowed_emails = get_allowed_emails()
+        if allowed_emails:
+            if user_info.get('email', '').lower() not in allowed_emails:
+                return RedirectResponse(
+                    url="/auth/login?error=Email+not+authorized",
+                    status_code=302
+                )
+
+        # Create session data
+        user_data = {
+            'email': user_info.get('email'),
+            'name': user_info.get('name'),
+            'given_name': user_info.get('given_name'),
+            'family_name': user_info.get('family_name'),
+            'picture': user_info.get('picture'),
+            'email_verified': user_info.get('email_verified', False)
+        }
+
+        # Store OAuth token (access + refresh) for Drive API use
+        email = user_info.get('email')
+        if email:
+            token_data = {
+                'access_token': token.get('access_token'),
+                'refresh_token': token.get('refresh_token'),
+                'expires_at': token.get('expires_at'),
+                'token_type': token.get('token_type', 'Bearer'),
+            }
+            try:
+                store_token(email, token_data)
+            except Exception as e:
+                import sys
+                print(f"OAUTH_WARN store_token failed: {e}", file=sys.stderr, flush=True)
+
+        # Create signed session token
+        session_token = session_manager.create_session(user_data)
+
+        # Redirect to dashboard with session cookie
+        is_https = request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https"
+        response = RedirectResponse(url="/", status_code=302)
+        response.set_cookie(
+            key=session_manager.cookie_name,
+            value=session_token,
+            max_age=session_manager.max_age,
+            httponly=True,
+            samesite="lax",
+            secure=is_https,
+        )
+        return response
+
+    except Exception as e:
+        import sys
+        print(f"OAUTH_ERROR callback_post_token {type(e).__name__}: {e}", file=sys.stderr, flush=True)
         return RedirectResponse(
-            url="/auth/login?error=Failed+to+get+user+info",
+            url="/auth/login?error=Authentication+failed+please+try+again",
             status_code=302
         )
-
-    # Check allowed domains if configured
-    allowed_domains = get_allowed_domains()
-    if allowed_domains:
-        email = user_info.get('email', '')
-        domain = email.split('@')[-1] if '@' in email else ''
-        if domain not in allowed_domains:
-            return RedirectResponse(
-                url="/auth/login?error=Email+domain+not+allowed",
-                status_code=302
-            )
-
-    # Check allowed emails whitelist if configured
-    allowed_emails = get_allowed_emails()
-    if allowed_emails:
-        if user_info.get('email', '').lower() not in allowed_emails:
-            return RedirectResponse(
-                url="/auth/login?error=Email+not+authorized",
-                status_code=302
-            )
-
-    # Create session data
-    user_data = {
-        'email': user_info.get('email'),
-        'name': user_info.get('name'),
-        'given_name': user_info.get('given_name'),
-        'family_name': user_info.get('family_name'),
-        'picture': user_info.get('picture'),
-        'email_verified': user_info.get('email_verified', False)
-    }
-
-    # Store OAuth token (access + refresh) for Drive API use
-    email = user_info.get('email')
-    if email:
-        token_data = {
-            'access_token': token.get('access_token'),
-            'refresh_token': token.get('refresh_token'),
-            'expires_at': token.get('expires_at'),
-            'token_type': token.get('token_type', 'Bearer'),
-        }
-        store_token(email, token_data)
-
-    # Create signed session token
-    session_token = session_manager.create_session(user_data)
-
-    # Redirect to dashboard with session cookie
-    response = RedirectResponse(url="/", status_code=302)
-    response.set_cookie(
-        key=session_manager.cookie_name,
-        value=session_token,
-        max_age=session_manager.max_age,
-        httponly=True,
-        samesite="lax",
-        secure=request.headers.get("x-forwarded-proto") == "https"
-    )
-
-    return response
 
 
 @router.get("/refresh-token")

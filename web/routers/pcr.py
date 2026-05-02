@@ -2,7 +2,9 @@
 PCRecruiter integration routes for RAAF Web Application.
 """
 
+import asyncio
 import sys
+from functools import partial
 from pathlib import Path
 import subprocess
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -23,21 +25,24 @@ router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
 
 
-def run_pcr_script(script_name: str, *args):
-    """Run a PCR script and return results."""
+def run_pcr_script(script_name: str, *args, timeout: int = 60):
+    """Run a PCR script and return results. Raises subprocess.TimeoutExpired if it takes too long."""
     script_path = get_project_root() / "scripts" / "pcr" / script_name
 
     cmd = ["python3", str(script_path)] + list(args)
     env = {**__import__('os').environ, "PYTHONIOENCODING": "utf-8"}
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        cwd=str(get_project_root()),
-        env=env
-    )
-
-    return result.returncode == 0, result.stdout, result.stderr
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=str(get_project_root()),
+            env=env,
+            timeout=timeout,
+        )
+        return result.returncode == 0, result.stdout, result.stderr
+    except subprocess.TimeoutExpired:
+        return False, "", f"Script timed out after {timeout}s — PCR API may be unreachable"
 
 
 def run_pcr_script_async(script_name: str, *args):
@@ -268,30 +273,70 @@ async def api_list_positions(request: Request, search: str = Query(""), include_
 @router.get("/positions", response_class=HTMLResponse)
 async def list_pcr_positions(request: Request):
     """List available positions from PCR."""
-    success, stdout, stderr = run_pcr_script("sync_positions.py", "--list-only")
+    def _fetch_positions():
+        import sqlite3 as _sqlite3
+        from scripts.utils.pcr_client import PCRClient, PCRClientError
 
-    if not success:
+        # Load PCR job IDs for active requisitions from the DB
+        linked: dict[str, dict] = {}  # pcr_job_id -> requisition info
+        db_path = get_project_root() / "data" / "raaf.db"
+        if db_path.exists():
+            try:
+                conn = _sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+                rows = conn.execute(
+                    "SELECT req_id, pcr_job_id FROM requisitions "
+                    "WHERE status='active' AND pcr_job_id IS NOT NULL"
+                ).fetchall()
+                conn.close()
+                linked = {str(row[1]): {"req_id": row[0]} for row in rows}
+            except Exception:
+                pass
+
+        client = PCRClient()
+        client.ensure_authenticated()
+        page = client.get_positions(status="Open", limit=200, offset=0)
+
+        results = []
+        for p in (page or []):
+            job_id = str(p.get("JobId", ""))
+            req_info = linked.get(job_id, {})
+            results.append({
+                "job_id": job_id,
+                "position_id": p.get("PositionId", ""),
+                "title": p.get("JobTitle") or p.get("Title", ""),
+                "company": p.get("CompanyName", ""),
+                "location": p.get("City", ""),
+                "status": p.get("Status", "Open"),
+                "req_id": req_info.get("req_id", ""),
+                "linked": bool(req_info),
+            })
+
+        # Sort: linked requisitions first, then unlinked
+        results.sort(key=lambda x: (not x["linked"], x["title"]))
+        return results
+
+    try:
+        positions = await asyncio.wait_for(
+            asyncio.to_thread(_fetch_positions),
+            timeout=60,
+        )
+    except asyncio.TimeoutError:
         return templates.TemplateResponse("pcr/error.html", {
             "request": request,
             "user": getattr(request.state, 'user', None),
-            "error": stderr or "Failed to fetch positions from PCR"
+            "error": "PCR API timed out after 60 seconds. The PCR server may be slow — please try again.",
         })
-
-    # Parse positions from output (this is simplified - real implementation would use JSON output)
-    positions = []
-    for line in stdout.split('\n'):
-        if line.strip() and ':' in line:
-            parts = line.split(':', 1)
-            if len(parts) == 2:
-                positions.append({
-                    'id': parts[0].strip(),
-                    'title': parts[1].strip()
-                })
+    except Exception as e:
+        return templates.TemplateResponse("pcr/error.html", {
+            "request": request,
+            "user": getattr(request.state, 'user', None),
+            "error": str(e),
+        })
 
     return templates.TemplateResponse("pcr/positions.html", {
         "request": request,
         "user": getattr(request.state, 'user', None),
-        "positions": positions
+        "positions": positions,
     })
 
 

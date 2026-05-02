@@ -62,7 +62,7 @@ async def admin_dashboard(request: Request, _admin=Depends(require_admin)):
     if _DB_PATH.exists():
         db_size_mb = round(_DB_PATH.stat().st_size / (1024 * 1024), 2)
         try:
-            conn = sqlite3.connect(str(_DB_PATH))
+            conn = sqlite3.connect(f"file:{_DB_PATH}?mode=ro", uri=True)
             for table in ("clients", "requisitions", "candidates", "assessments", "batches", "reports"):
                 try:
                     row = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
@@ -971,3 +971,67 @@ async def admin_activity_stream(request: Request, _admin=Depends(require_admin))
             "Connection": "keep-alive",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Bulk Archive
+# ---------------------------------------------------------------------------
+
+@router.get("/archive", response_class=HTMLResponse)
+async def admin_archive_page(request: Request, _admin=Depends(require_admin)):
+    """Bulk archive page — lists requisitions eligible for archiving."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+    from scripts.utils.client_utils import list_clients, list_requisitions, get_requisition_config
+
+    candidates = []
+    for client_code in sorted(list_clients()):
+        for req_id in list_requisitions(client_code):
+            try:
+                cfg = get_requisition_config(client_code, req_id)
+                status = cfg.get("status", "active")
+                if status in ("filled", "cancelled", "on_hold"):
+                    candidates.append({
+                        "client_code": client_code,
+                        "req_id": req_id,
+                        "title": cfg.get("job", {}).get("title", req_id),
+                        "status": status,
+                        "created_date": cfg.get("created_date", ""),
+                    })
+            except Exception:
+                continue
+
+    return templates.TemplateResponse("admin/archive.html", {
+        "request": request,
+        "user": getattr(request.state, "user", None),
+        "candidates": candidates,
+        "archived": request.query_params.get("archived", "0"),
+    })
+
+
+@router.post("/archive/bulk")
+async def admin_bulk_archive(request: Request, _admin=Depends(require_admin)):
+    """Archive all selected requisitions."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+    from scripts.utils.archive_requisition import archive_requisition
+
+    form = await request.form()
+    selected = form.getlist("selected")
+    note = form.get("note", "Bulk archived via Admin")
+
+    archived, failed = 0, []
+    for item in selected:
+        try:
+            client_code, req_id = item.split("|", 1)
+            from scripts.utils.client_utils import get_requisition_config
+            cfg = get_requisition_config(client_code, req_id)
+            archive_requisition(client_code, req_id, status=cfg.get("status", "filled"), note=note)
+            archived += 1
+        except Exception as e:
+            failed.append(f"{item}: {e}")
+
+    qs = f"archived={archived}"
+    if failed:
+        qs += f"&failed={len(failed)}"
+    return RedirectResponse(url=f"/admin/archive?{qs}", status_code=303)

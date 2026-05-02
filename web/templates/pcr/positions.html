@@ -9,42 +9,89 @@
 
 <div class="page-header">
     <h1>PCR Positions</h1>
-    <p class="subtitle">Available positions from PCRecruiter</p>
+    <p class="subtitle">Open positions from PCRecruiter — linked to active RAAF requisitions</p>
 </div>
 
-{% if positions %}
+{% set linked_positions = positions | selectattr("linked") | list %}
+{% set unlinked_positions = positions | rejectattr("linked") | list %}
+
+{% if linked_positions %}
 <div class="card">
+    <div class="card-header">
+        <h2>Linked to Active Requisitions ({{ linked_positions | length }})</h2>
+    </div>
     <div class="table-container">
         <table>
             <thead>
                 <tr>
-                    <th>Position ID</th>
+                    <th>PCR Job ID</th>
                     <th>Title</th>
+                    <th>Company</th>
+                    <th>Location</th>
+                    <th>RAAF Requisition</th>
                 </tr>
             </thead>
             <tbody>
-                {% for pos in positions %}
+                {% for pos in linked_positions %}
                 <tr>
-                    <td>{{ pos.id }}</td>
+                    <td><code>{{ pos.job_id }}</code></td>
                     <td>{{ pos.title }}</td>
+                    <td>{{ pos.company }}</td>
+                    <td>{{ pos.location }}</td>
+                    <td>
+                        <a href="/requisitions/{{ pos.req_id }}">{{ pos.req_id }}</a>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 </div>
-{% else %}
+{% endif %}
+
+{% if unlinked_positions %}
+<div class="card" style="margin-top:1.5rem;">
+    <div class="card-header">
+        <h2>Other Open PCR Positions ({{ unlinked_positions | length }})</h2>
+        <p class="subtitle" style="margin:0;">These exist in PCR but are not linked to an active RAAF requisition.</p>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>PCR Job ID</th>
+                    <th>Title</th>
+                    <th>Company</th>
+                    <th>Location</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pos in unlinked_positions %}
+                <tr style="color: var(--text-muted, #888);">
+                    <td><code>{{ pos.job_id }}</code></td>
+                    <td>{{ pos.title }}</td>
+                    <td>{{ pos.company }}</td>
+                    <td>{{ pos.location }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{% if not positions %}
 <div class="card">
     <div class="card-body">
         <div class="empty-state">
-            <h3>No Positions Found</h3>
-            <p>No open positions were found in PCRecruiter, or there was an error fetching them.</p>
+            <h3>No Open Positions Found</h3>
+            <p>No open positions were found in PCRecruiter.</p>
         </div>
     </div>
 </div>
 {% endif %}
 
-<div class="action-buttons">
+<div class="action-buttons" style="margin-top:1.5rem;">
     <a href="/pcr" class="btn btn-primary">Back to PCR Dashboard</a>
 </div>
 {% endblock %}

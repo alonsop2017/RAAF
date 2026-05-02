@@ -394,6 +394,52 @@
     </div>
 </div>
 
+<!-- Archive Button (for filled / on_hold requisitions) -->
+{% if req.status in ['filled', 'on_hold', 'cancelled'] %}
+<div class="card" style="margin-top:1rem; border-left: 4px solid var(--warning, #f59e0b);">
+    <div class="card-body" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
+        <div>
+            <strong>Archive this requisition</strong>
+            <p style="margin:0.25rem 0 0; color:var(--text-muted,#888);">
+                Move all data to the archive folder and remove from the active list.
+            </p>
+        </div>
+        <button type="button" class="btn btn-outline" id="openArchiveModal">Archive Requisition</button>
+    </div>
+</div>
+{% endif %}
+
+<!-- Archive Confirmation Modal -->
+<div id="archiveModal" class="modal" style="display:none;">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+        <div class="modal-header"><h3>Archive Requisition?</h3></div>
+        <div class="modal-body">
+            <p>This will move all requisition data to the archive folder and remove it from the active list.</p>
+            <div class="form-group" style="margin-top:1rem;">
+                <label class="form-label" for="archiveFinalStatus">Final Status:</label>
+                <select id="archiveFinalStatus" class="form-select">
+                    <option value="filled">Filled</option>
+                    <option value="cancelled">Cancelled</option>
+                    <option value="on_hold">On Hold</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-top:0.75rem;">
+                <label class="form-label" for="archiveReason">Note (optional):</label>
+                <textarea class="form-textarea" id="archiveReason" rows="2" placeholder="e.g., Position filled, candidate started 2026-05-01"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-outline" id="archiveModalClose">Cancel</button>
+            <form id="archiveForm" action="/requisitions/{{ client_code }}/{{ req_id }}/archive" method="POST" style="display:inline;">
+                <input type="hidden" name="archive_note" id="archiveNoteInput">
+                <input type="hidden" name="final_status" id="archiveFinalStatusInput">
+                <button type="submit" class="btn btn-warning">Archive</button>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Cancel Confirmation Modal -->
 <div id="cancelModal" class="modal" style="display: none;">
     <div class="modal-overlay"></div>
@@ -458,6 +504,25 @@ var PAGE_REQ_ID = {{ req_id | tojson }};
         archiveNote.value = cancelReason.value;
         statusForm.submit();
     });
+
+    // Archive modal
+    const archiveModal = document.getElementById('archiveModal');
+    const openArchiveModal = document.getElementById('openArchiveModal');
+    if (openArchiveModal) {
+        openArchiveModal.addEventListener('click', function() {
+            archiveModal.style.display = 'flex';
+        });
+        document.getElementById('archiveModalClose').addEventListener('click', function() {
+            archiveModal.style.display = 'none';
+        });
+        archiveModal.querySelector('.modal-overlay').addEventListener('click', function() {
+            archiveModal.style.display = 'none';
+        });
+        document.getElementById('archiveForm').addEventListener('submit', function() {
+            document.getElementById('archiveNoteInput').value = document.getElementById('archiveReason').value;
+            document.getElementById('archiveFinalStatusInput').value = document.getElementById('archiveFinalStatus').value;
+        });
+    }
 
     // Close modal on overlay click
     cancelModal.querySelector('.modal-overlay').addEventListener('click', function() {

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Bulk Archive — Admin{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> / <a href="/admin">Admin</a> / <span>Archive</span>
+</div>
+
+<div class="page-header">
+    <h1>Bulk Archive Requisitions</h1>
+    <p class="subtitle">Archive filled, cancelled, or on-hold requisitions in one step.</p>
+</div>
+
+{% if request.query_params.get('archived') and request.query_params.get('archived') != '0' %}
+<div class="alert alert-success">
+    Successfully archived {{ request.query_params.get('archived') }} requisition(s).
+    {% if request.query_params.get('failed') %}
+    <strong>{{ request.query_params.get('failed') }} failed</strong> — check logs for details.
+    {% endif %}
+</div>
+{% endif %}
+
+{% if candidates %}
+<form method="POST" action="/admin/archive/bulk">
+    <div class="card">
+        <div class="card-header" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
+            <h2>Eligible Requisitions ({{ candidates | length }})</h2>
+            <div style="display:flex; gap:0.5rem; align-items:center;">
+                <label style="font-size:0.9rem;">
+                    <input type="checkbox" id="selectAll" style="margin-right:0.35rem;">
+                    Select All
+                </label>
+            </div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:2.5rem;"></th>
+                        <th>Client</th>
+                        <th>Requisition</th>
+                        <th>Title</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in candidates %}
+                    <tr>
+                        <td><input type="checkbox" name="selected" value="{{ r.client_code }}|{{ r.req_id }}" class="row-check"></td>
+                        <td>{{ r.client_code }}</td>
+                        <td><a href="/requisitions/{{ r.client_code }}/{{ r.req_id }}">{{ r.req_id }}</a></td>
+                        <td>{{ r.title }}</td>
+                        <td>
+                            <span class="badge badge-{% if r.status == 'filled' %}success{% elif r.status == 'cancelled' %}danger{% else %}warning{% endif %}">
+                                {{ r.status }}
+                            </span>
+                        </td>
+                        <td>{{ r.created_date }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card-body" style="border-top:1px solid var(--border,#e5e7eb); display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
+            <div class="form-group" style="flex:1; min-width:200px; margin:0;">
+                <label class="form-label" for="archiveNote">Archive note (applied to all selected):</label>
+                <input type="text" id="archiveNote" name="note" class="form-input"
+                    placeholder="e.g., End of Q2 cleanup" style="margin-top:0.25rem;">
+            </div>
+            <button type="submit" class="btn btn-warning" id="bulkArchiveBtn" disabled>
+                Archive Selected
+            </button>
+        </div>
+    </div>
+</form>
+{% else %}
+<div class="card">
+    <div class="card-body">
+        <div class="empty-state">
+            <h3>Nothing to Archive</h3>
+            <p>All requisitions are currently active, or there are no requisitions in the system.</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="action-buttons" style="margin-top:1.5rem;">
+    <a href="/admin" class="btn btn-outline">Back to Admin</a>
+</div>
+
+<script>
+(function () {
+    const selectAll = document.getElementById('selectAll');
+    const checks = document.querySelectorAll('.row-check');
+    const btn = document.getElementById('bulkArchiveBtn');
+
+    function updateBtn() {
+        const anyChecked = Array.from(checks).some(c => c.checked);
+        if (btn) btn.disabled = !anyChecked;
+    }
+
+    if (selectAll) {
+        selectAll.addEventListener('change', function () {
+            checks.forEach(c => c.checked = this.checked);
+            updateBtn();
+        });
+    }
+
+    checks.forEach(c => c.addEventListener('change', updateBtn));
+})();
+</script>
+{% endblock %}

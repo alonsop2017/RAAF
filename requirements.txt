@@ -21,9 +21,10 @@ requests>=2.31.0
 anthropic>=0.40.0
 
 # Web Application
-fastapi>=0.109.0
+fastapi>=0.109.0,<0.116.0
 uvicorn>=0.27.0
-jinja2>=3.1.0
+starlette>=0.37.0,<1.0.0
+jinja2>=3.1.0,<3.1.5
 python-multipart>=0.0.6
 
 # Authentication

@@ -1,8 +1,8 @@
-# RAAF - Resume Assessment Automation Framework
+.L# RAAF - Resume Assessment Automation Framework
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Node.js 18+](https://img.shields.io/badge/node.js-18+-green.svg)](https://nodejs.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-teal.svg)](https://fastapi.tiangolo.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-teal.svgJJ)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/license-Proprietary-red.svg)]()
 
 A comprehensive automation framework for recruitment firms to assess candidate resumes against job requirements, producing professional assessment reports with hiring recommendations.
