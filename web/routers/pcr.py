@@ -261,6 +261,8 @@ async def api_list_positions(request: Request, search: str = Query(""), include_
             "status": detail_status,
         }
 
+    if not matched:
+        return JSONResponse([])
     with ThreadPoolExecutor(max_workers=min(len(matched), 20)) as executor:
         results = list(executor.map(fetch_detail, matched))
 
