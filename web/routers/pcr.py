@@ -131,70 +131,64 @@ async def test_connection(request: Request):
 
 @router.get("/api/positions")
 async def api_list_positions(request: Request, search: str = Query(""), include_closed: bool = Query(False)):
-    """Return PCR positions as JSON, filtered by company name.
-
-    Fetches multiple pages in parallel since the PCR API does not support
-    server-side filtering by company name.  Closed positions are excluded
-    by default; pass include_closed=true to show them.
-    """
+    """Return PCR positions as JSON, filtered by company name."""
     search_lower = search.strip().lower()
     if not search_lower:
         return JSONResponse([])
 
-    try:
+    def _fetch_all_positions():
         from scripts.utils.pcr_client import PCRClient
         from concurrent.futures import ThreadPoolExecutor
         import requests as http_requests
         from urllib.parse import urljoin
         from scripts.utils.database import get_db, _use_database
 
-        # Always authenticate — needed for detail fetches even on cache hit
         client = PCRClient()
         client.ensure_authenticated()
         headers = client._get_headers()
 
-        # --- DB cache fast path for bulk position list ---
-        all_positions = None
+        # DB cache fast path
         if _use_database():
             try:
-                all_positions = get_db().get_cached_pcr_positions(max_age_seconds=3600)
+                cached = get_db().get_cached_pcr_positions(max_age_seconds=3600)
+                if cached is not None:
+                    return cached, client, headers
             except Exception:
                 pass
 
-        if all_positions is None:
-            # Cache miss — fetch all pages from PCR API
-            url = urljoin(client.base_url + "/", "positions")
+        url = urljoin(client.base_url + "/", "positions")
 
-            def fetch_page(page: int) -> tuple:
-                r = http_requests.get(
-                    url,
-                    headers=headers,
-                    params={"ResultsPerPage": 500, "Page": page, "Status": "Open"},
-                    timeout=30,
-                )
-                data = r.json()
-                return data.get("Results", []), data.get("TotalRecords")
+        def fetch_page(page: int) -> tuple:
+            r = http_requests.get(
+                url, headers=headers,
+                params={"ResultsPerPage": 500, "Page": page, "Status": "Open"},
+                timeout=30,
+            )
+            data = r.json()
+            return data.get("Results", []), data.get("TotalRecords")
 
-            # Fetch first page to get results and total count
-            first_results, total = fetch_page(1)
-            if total is None:
-                total = 5000  # conservative fallback
-            max_pages = (total + 499) // 500
-            all_positions = list(first_results)
+        first_results, total = fetch_page(1)
+        if total is None:
+            total = 5000
+        max_pages = (total + 499) // 500
+        all_positions = list(first_results)
 
-            if max_pages > 1:
-                with ThreadPoolExecutor(max_workers=min(max_pages - 1, 20)) as executor:
-                    extra_pages = list(executor.map(fetch_page, range(2, max_pages + 1)))
-                for results, _ in extra_pages:
-                    all_positions.extend(results)
+        if max_pages > 1:
+            with ThreadPoolExecutor(max_workers=min(max_pages - 1, 20)) as executor:
+                extra_pages = list(executor.map(fetch_page, range(2, max_pages + 1)))
+            for results, _ in extra_pages:
+                all_positions.extend(results)
 
-            # Populate cache for next request
-            if _use_database():
-                try:
-                    get_db().cache_pcr_positions(all_positions)
-                except Exception:
-                    pass
+        if _use_database():
+            try:
+                get_db().cache_pcr_positions(all_positions)
+            except Exception:
+                pass
 
+        return all_positions, client, headers
+
+    try:
+        all_positions, client, headers = await asyncio.to_thread(_fetch_all_positions)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -221,50 +215,54 @@ async def api_list_positions(request: Request, search: str = Query(""), include_
         # Word-based: every token must appear in the company name
         return all(word in c for word in p.split())
 
-    # Filter by company name first so we only detail-fetch the matches
+    # Filter by company name first
     matched = []
     for pos in all_positions:
         company = pos.get("CompanyName", "") or ""
         if not _matches(company, search_lower):
             continue
-        # Only filter by status when the API actually returns the field;
-        # PCR position records often omit it entirely (returns None).
         status = (pos.get("Status") or "").strip()
         if status and status.lower() not in ("open", "active"):
             continue
         matched.append(pos)
 
-    # Fetch position details in parallel to get the human-readable PositionId
-    # (e.g. "SIC0001234") which is what PCR shows in its UI.  The list
-    # endpoint only returns the internal JobId numeric key.
-    def fetch_detail(pos: dict) -> dict:
-        job_id = pos.get("JobId", "")
-        position_id = ""
-        detail_status = (pos.get("Status") or "").strip()
-        if job_id:
-            try:
-                from urllib.parse import urljoin as _urljoin
-                detail_url = _urljoin(client.base_url + "/", f"positions/{job_id}")
-                r = http_requests.get(detail_url, headers=headers, timeout=15)
-                detail = r.json()
-                position_id = detail.get("PositionId") or ""
-                detail_status = (detail.get("Status") or detail_status).strip()
-            except Exception:
-                pass
-        company = pos.get("CompanyName", "") or ""
-        return {
-            "job_id": job_id,
-            "position_id": position_id,
-            "title": pos.get("JobTitle", pos.get("Title", "")),
-            "company": company,
-            "location": pos.get("City", ""),
-            "status": detail_status,
-        }
-
     if not matched:
         return JSONResponse([])
-    with ThreadPoolExecutor(max_workers=min(len(matched), 20)) as executor:
-        results = list(executor.map(fetch_detail, matched))
+
+    def _fetch_details(positions, pcr_client, pcr_headers):
+        import requests as _req
+        from urllib.parse import urljoin as _urljoin
+        from concurrent.futures import ThreadPoolExecutor as _TPE
+
+        def fetch_one(pos):
+            job_id = pos.get("JobId", "")
+            position_id = ""
+            detail_status = (pos.get("Status") or "").strip()
+            if job_id:
+                try:
+                    url = _urljoin(pcr_client.base_url + "/", f"positions/{job_id}")
+                    r = _req.get(url, headers=pcr_headers, timeout=15)
+                    detail = r.json()
+                    position_id = detail.get("PositionId") or ""
+                    detail_status = (detail.get("Status") or detail_status).strip()
+                except Exception:
+                    pass
+            return {
+                "job_id": job_id,
+                "position_id": position_id,
+                "title": pos.get("JobTitle", pos.get("Title", "")),
+                "company": pos.get("CompanyName", "") or "",
+                "location": pos.get("City", ""),
+                "status": detail_status,
+            }
+
+        with _TPE(max_workers=min(len(positions), 20)) as ex:
+            return list(ex.map(fetch_one, positions))
+
+    try:
+        results = await asyncio.to_thread(_fetch_details, matched, client, headers)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
     if not include_closed:
         results = [r for r in results if (r.get("status") or "").lower() != "closed"]
