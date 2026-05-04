@@ -215,28 +215,28 @@ async def update_client(
     config['company_name'] = company_name
     config['industry'] = industry
     config['status'] = status
+    config.setdefault('contacts', {}).setdefault('primary', {})
     config['contacts']['primary']['name'] = primary_contact_name
     config['contacts']['primary']['email'] = primary_contact_email
     config['contacts']['primary']['phone'] = primary_contact_phone
-    config['billing']['default_commission_rate'] = commission_rate
+    config.setdefault('billing', {})['default_commission_rate'] = commission_rate
 
-    # Save
-    if _files_mode():
-        with open(config_path, 'w') as f:
-            yaml.dump(config, f, default_flow_style=False)
+    # Always write YAML so file-based reads stay in sync
+    with open(config_path, 'w') as f:
+        yaml.dump(config, f, default_flow_style=False)
 
     # Write to DB when enabled
     try:
         if _use_database():
-            billing = config.get("billing", {})
             get_db().update_client(client_code, {
                 "company_name": company_name,
                 "industry": industry,
                 "status": status,
-                "default_commission_rate": billing.get("default_commission_rate"),
+                "default_commission_rate": commission_rate,
                 "contacts": config.get("contacts", {}),
             })
-    except Exception:
-        pass
+    except Exception as e:
+        import sys
+        print(f"DB update_client error: {e}", file=sys.stderr)
 
     return RedirectResponse(url=f"/clients/{client_code}", status_code=303)
