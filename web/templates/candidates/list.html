@@ -38,6 +38,7 @@
                     <th>%</th>
                     <th>Stability</th>
                     <th>Recommendation</th>
+                    <th>Date Assessed</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -99,6 +100,11 @@
                         {% else %}
                         <span class="badge rec-pending">PENDING</span>
                         {% endif %}
+                    </td>
+                    <td>
+                        <span class="text-muted" style="font-size:0.85rem;">
+                            {{ candidate.assessed_at if candidate.assessed_at else '—' }}
+                        </span>
                     </td>
                     <td>
                         <div class="action-buttons">

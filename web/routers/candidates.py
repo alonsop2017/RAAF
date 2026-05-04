@@ -105,6 +105,8 @@ async def list_candidates(request: Request, client_code: str, req_id: str):
             candidate_data['recommendation'] = assessment.get('recommendation', 'PENDING')
             candidate_data['name'] = assessment.get('candidate', {}).get('name', name_normalized)
             candidate_data['stability'] = assessment.get('scores', {}).get('job_stability', {}).get('tenure_analysis', {}).get('risk_level', 'N/A')
+            raw_at = assessment.get('metadata', {}).get('assessed_at', '')
+            candidate_data['assessed_at'] = raw_at[:10] if raw_at else ''
         else:
             candidate_data['name'] = name_normalized.replace("_", " ").title()
 
@@ -135,6 +137,8 @@ async def list_candidates(request: Request, client_code: str, req_id: str):
                 candidate_data['recommendation'] = assessment.get('recommendation', 'PENDING')
                 candidate_data['name'] = assessment.get('candidate', {}).get('name', name_normalized)
                 candidate_data['stability'] = assessment.get('scores', {}).get('job_stability', {}).get('tenure_analysis', {}).get('risk_level', 'N/A')
+                raw_at = assessment.get('metadata', {}).get('assessed_at', '')
+                candidate_data['assessed_at'] = raw_at[:10] if raw_at else ''
             else:
                 candidate_data['name'] = name_normalized.replace("_", " ").title()
             candidates.append(candidate_data)
