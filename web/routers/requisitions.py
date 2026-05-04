@@ -735,7 +735,7 @@ async def update_requisition_status(
     except Exception:
         pass
 
-    return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}", status_code=303)
+    return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}?updated=1", status_code=303)
 
 
 @router.post("/{client_code}/{req_id}/archive")
@@ -838,7 +838,7 @@ async def link_pcr_position(
     except Exception:
         pass
 
-    return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}", status_code=303)
+    return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}?pcr_linked=1", status_code=303)
 
 
 @router.post("/{client_code}/{req_id}/unlink-pcr")
@@ -901,7 +901,7 @@ async def unlink_pcr_position(
     except Exception:
         pass
 
-    return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}", status_code=303)
+    return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}?pcr_unlinked=1", status_code=303)
 
 
 @router.post("/{client_code}/{req_id}/regenerate-framework")

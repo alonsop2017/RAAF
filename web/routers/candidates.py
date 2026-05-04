@@ -229,9 +229,8 @@ async def upload_resumes(
         'source_files': source_files,
         'status': 'uploaded',
     }
-    if _files_mode():
-        with open(batch_dir / "batch_manifest.yaml", 'w') as f:
-            yaml.dump(manifest, f, default_flow_style=False)
+    with open(batch_dir / "batch_manifest.yaml", 'w') as f:
+        yaml.dump(manifest, f, default_flow_style=False)
 
     # Write to DB when enabled
     try:
@@ -548,9 +547,8 @@ async def drive_import_files(
         'source_files': source_files,
         'status': 'uploaded',
     }
-    if _files_mode():
-        with open(batch_dir / "batch_manifest.yaml", 'w') as f:
-            yaml.dump(manifest, f, default_flow_style=False)
+    with open(batch_dir / "batch_manifest.yaml", 'w') as f:
+        yaml.dump(manifest, f, default_flow_style=False)
 
     # Write to DB when enabled
     try:

@@ -52,6 +52,12 @@
 {% if request.query_params.get('updated') == '1' %}
 <div class="alert alert-success">Requisition updated successfully.</div>
 {% endif %}
+{% if request.query_params.get('pcr_linked') == '1' %}
+<div class="alert alert-success">PCR position linked successfully.</div>
+{% endif %}
+{% if request.query_params.get('pcr_unlinked') == '1' %}
+<div class="alert alert-success">PCR position unlinked.</div>
+{% endif %}
 {% if request.query_params.get('jd') == 'updated' %}
 <div class="alert alert-success">Job description has been updated successfully.</div>
 {% elif request.query_params.get('jd') == 'empty' %}
