@@ -686,7 +686,7 @@ async def update_requisition(
     except Exception:
         pass
 
-    return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}", status_code=303)
+    return RedirectResponse(url=f"/requisitions/{client_code}/{req_id}?updated=1", status_code=303)
 
 
 @router.post("/{client_code}/{req_id}/update-status")
