@@ -127,6 +127,7 @@
                             <th>%</th>
                             <th>Stability</th>
                             <th>Recommendation</th>
+                            <th>Date Assessed</th>
                             <th>Pipeline</th>
                             <th>Actions</th>
                         </tr>
@@ -152,6 +153,11 @@
                                 {% else %}
                                 <span class="badge rec-conditional">CONDITIONAL</span>
                                 {% endif %}
+                            </td>
+                            <td>
+                                <span class="text-muted" style="font-size:0.85rem;">
+                                    {{ (a.assessed_at or '')[:10] or '—' }}
+                                </span>
                             </td>
                             <td>
                                 <select onchange="setLifecycle('{{ client_code }}', '{{ req_id }}', '{{ a.name_normalized }}', this.value, this)"
@@ -189,6 +195,11 @@
                             <td style="color: #6b7280;">{{ a.stability }}</td>
                             <td><span class="badge rec-dnr">DNR</span></td>
                             <td>
+                                <span class="text-muted" style="font-size:0.85rem;">
+                                    {{ (a.assessed_at or '')[:10] or '—' }}
+                                </span>
+                            </td>
+                            <td>
                                 <select onchange="setLifecycle('{{ client_code }}', '{{ req_id }}', '{{ a.name_normalized }}', this.value, this)"
                                         style="font-size: 0.8rem; padding: 2px 6px; border-radius: 4px; border: 1px solid #d1d5db; background: white; cursor: pointer;">
                                     <option value="" {% if not a.lifecycle %}selected{% endif %}>—</option>
@@ -212,7 +223,7 @@
                     </tbody>
                     <tfoot>
                         <tr>
-                            <td colspan="8" style="padding: 0.6rem 1rem; border-top: 1px solid #e5e7eb; background: #f9fafb; text-align: center;">
+                            <td colspan="9" style="padding: 0.6rem 1rem; border-top: 1px solid #e5e7eb; background: #f9fafb; text-align: center;">
                                 {% if dnr_assessments %}
                                 <span class="badge rec-dnr" style="margin-right: 0.75rem;">{{ dnr_assessments|length }} Do Not Recommend</span>
                                 <a href="#" id="toggle-dnr-link" onclick="toggleDNR(event)"
