@@ -20,6 +20,10 @@
     </div>
 </div>
 
+{% if request.query_params.get('updated') == '1' %}
+<div class="alert alert-success">Client information updated successfully.</div>
+{% endif %}
+
 <div class="two-column">
     <div>
         <!-- Requisitions -->

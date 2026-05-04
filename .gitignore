@@ -63,4 +63,4 @@ data/*.db-wal
 
 # Draft reports (optional - uncomment if you want to ignore drafts)
 # clients/*/requisitions/*/reports/drafts/
-clients/
+/clients/

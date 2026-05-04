@@ -239,4 +239,4 @@ async def update_client(
         import sys
         print(f"DB update_client error: {e}", file=sys.stderr)
 
-    return RedirectResponse(url=f"/clients/{client_code}", status_code=303)
+    return RedirectResponse(url=f"/clients/{client_code}?updated=1", status_code=303)
