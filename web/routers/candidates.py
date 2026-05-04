@@ -604,16 +604,37 @@ async def view_candidate(request: Request, client_code: str, req_id: str, name_n
         legacy = req_root / "resumes" / "processed" / f"{name_normalized}_resume.txt"
         if legacy.exists():
             resume_file = legacy
-    if not resume_file:
-        raise HTTPException(status_code=404, detail="Candidate resume not found")
 
-    # Read resume
-    with open(resume_file, 'r', encoding='utf-8') as f:
-        resume_text = f.read()
+    # Also check the DB-stored path directly
+    if not resume_file:
+        try:
+            from scripts.utils.database import get_db, _use_database
+            if _use_database():
+                rows = get_db()._conn().__enter__().execute(
+                    "SELECT c.resume_extracted_path FROM candidates c "
+                    "JOIN requisitions r ON c.requisition_id = r.id "
+                    "WHERE r.req_id = ? AND c.name_normalized = ?",
+                    (req_id, name_normalized)
+                ).fetchone()
+                if rows and rows[0] and Path(rows[0]).exists():
+                    resume_file = Path(rows[0])
+        except Exception:
+            pass
+
+    # Read resume text — graceful if file is missing
+    if resume_file and Path(resume_file).exists():
+        with open(resume_file, 'r', encoding='utf-8') as f:
+            resume_text = f.read()
+    else:
+        resume_text = None
+
+    # Only 404 if there's also no assessment to show
+    assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
+    if resume_text is None and not assessment_file.exists():
+        raise HTTPException(status_code=404, detail="Candidate not found")
 
     # Check for assessment
     assessment = None
-    assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
     if assessment_file.exists():
         with open(assessment_file, 'r') as f:
             assessment = json.load(f)

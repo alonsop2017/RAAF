@@ -39,7 +39,11 @@
                 <h3>Resume</h3>
             </div>
             <div class="card-body">
+                {% if resume_text %}
                 <pre class="resume-preview">{{ resume_text }}</pre>
+                {% else %}
+                <p class="text-muted">Resume file not available — it may have been submitted before the current data volume was attached.</p>
+                {% endif %}
             </div>
         </div>
     </div>
