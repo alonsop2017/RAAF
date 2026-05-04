@@ -426,6 +426,7 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
             seen_norms = set()
             for row in db.list_assessments(req_id):
                 seen_norms.add(row['name_normalized'])
+                assessed_at = row.get('assessed_at') or ''
                 candidates.append({
                     'name_normalized': row['name_normalized'],
                     'resume_file': f"{row['name_normalized']}_resume.txt",
@@ -434,6 +435,7 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
                     'percentage': row.get('percentage', 0) or 0,
                     'recommendation': row.get('recommendation', 'PENDING'),
                     'name': row.get('name', row['name_normalized']),
+                    'assessed_at': assessed_at[:10] if assessed_at else '',
                 })
             for cand in db.list_candidates(req_id, status='pending'):
                 if cand['name_normalized'] not in seen_norms:
@@ -471,6 +473,8 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
                 candidate_data['percentage'] = assessment.get('percentage', 0)
                 candidate_data['recommendation'] = assessment.get('recommendation', 'PENDING')
                 candidate_data['name'] = assessment.get('candidate', {}).get('name', name_normalized)
+                raw_at = assessment.get('metadata', {}).get('assessed_at', '')
+                candidate_data['assessed_at'] = raw_at[:10] if raw_at else ''
             else:
                 candidate_data['name'] = name_normalized.replace("_", " ").title()
             candidates.append(candidate_data)

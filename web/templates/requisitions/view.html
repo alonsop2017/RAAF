@@ -116,6 +116,7 @@
                             <th>Candidate</th>
                             <th>Score</th>
                             <th>Recommendation</th>
+                            <th>Date Assessed</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -152,6 +153,11 @@
                                 {% else %}
                                 <span class="badge rec-pending">PENDING</span>
                                 {% endif %}
+                            </td>
+                            <td>
+                                <span class="text-muted" style="font-size:0.85rem;">
+                                    {{ candidate.assessed_at if candidate.assessed_at else '—' }}
+                                </span>
                             </td>
                             <td>
                                 <a href="/candidates/{{ client_code }}/{{ req_id }}/{{ candidate.name_normalized }}"
