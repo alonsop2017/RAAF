@@ -90,23 +90,23 @@ async def main(keep_n: int = 3) -> int:
         log(f"ERROR: Could not access Drive folder: {e}")
         return 1
 
-    # Build the backup zip
+    # Build the backup zip — "quick" (DB + settings) keeps it small;
+    # resume PDFs can be re-downloaded from PCR if needed.
     log("Building backup zip...")
-    tmp_path, filename = await asyncio.to_thread(_build_zip_to_file, "full")
-    try:
-        size_mb = tmp_path.stat().st_size / 1_048_576
-        log(f"Zip built: {filename} ({size_mb:.1f} MB)")
-        data = tmp_path.read_bytes()
-    finally:
-        tmp_path.unlink(missing_ok=True)
+    tmp_path, filename = await asyncio.to_thread(_build_zip_to_file, "quick")
+    size_mb = tmp_path.stat().st_size / 1_048_576
+    log(f"Zip built: {filename} ({size_mb:.1f} MB)")
 
-    # Upload
+    # Upload using file_path to avoid loading the whole zip into RAM
     log(f"Uploading to Drive folder {folder_id}...")
     try:
-        await upload_backup(access_token, folder_id, filename, data)
+        await upload_backup(access_token, folder_id, filename, file_path=tmp_path)
     except (DriveAPIError, DrivePermissionError, TokenExpiredError) as e:
         log(f"ERROR: Upload failed: {e}")
+        tmp_path.unlink(missing_ok=True)
         return 1
+    finally:
+        tmp_path.unlink(missing_ok=True)
     log(f"Upload complete: {filename}")
 
     # Prune old backups

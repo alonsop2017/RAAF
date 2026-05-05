@@ -269,26 +269,72 @@ async def get_or_create_backup_folder(access_token: str) -> str:
         return resp.json()["id"]
 
 
-async def upload_backup(access_token: str, folder_id: str, filename: str, data: bytes) -> str:
-    """Upload a backup zip to Drive, return the new file ID."""
+async def upload_backup(access_token: str, folder_id: str, filename: str,
+                        data: "bytes | None" = None, file_path: "Path | None" = None) -> str:
+    """Upload a backup zip to Drive using a resumable upload.
+
+    Pass either `data` (bytes) or `file_path` (Path, streamed in chunks to avoid OOM).
+    """
+    import json as _json
+
     headers = {"Authorization": f"Bearer {access_token}"}
     metadata = {"name": filename, "parents": [folder_id]}
-    async with httpx.AsyncClient(timeout=120) as client:
-        resp = await client.post(
-            "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-            headers=headers,
-            files={
-                "metadata": (None, __import__("json").dumps(metadata), "application/json"),
-                "file": (filename, data, "application/zip"),
+
+    if file_path is not None:
+        file_size = file_path.stat().st_size
+    elif data is not None:
+        file_size = len(data)
+    else:
+        raise ValueError("Either data or file_path must be provided")
+
+    # Step 1: Initiate resumable upload session
+    async with httpx.AsyncClient(timeout=60) as client:
+        init_resp = await client.post(
+            "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable",
+            headers={
+                **headers,
+                "Content-Type": "application/json",
+                "X-Upload-Content-Type": "application/zip",
+                "X-Upload-Content-Length": str(file_size),
             },
+            content=_json.dumps(metadata).encode(),
         )
-    if resp.status_code == 401:
+    if init_resp.status_code == 401:
         raise TokenExpiredError("Access token expired")
-    if resp.status_code == 403:
+    if init_resp.status_code == 403:
         raise DrivePermissionError("Insufficient Drive permissions")
-    if resp.status_code not in (200, 201):
-        raise DriveAPIError(f"Upload failed ({resp.status_code}): {resp.text}")
-    return resp.json()["id"]
+    if init_resp.status_code != 200:
+        raise DriveAPIError(f"Resumable upload init failed ({init_resp.status_code}): {init_resp.text}")
+
+    upload_url = init_resp.headers.get("Location")
+    if not upload_url:
+        raise DriveAPIError("No upload URL returned from Drive")
+
+    # Step 2: Upload — stream file in 8 MB chunks so we never hold the full zip in RAM
+    CHUNK = 8 * 1024 * 1024
+
+    async def _iter_chunks():
+        if file_path is not None:
+            with open(file_path, "rb") as fh:
+                while True:
+                    chunk = fh.read(CHUNK)
+                    if not chunk:
+                        break
+                    yield chunk
+        else:
+            for i in range(0, len(data), CHUNK):
+                yield data[i:i + CHUNK]
+
+    async with httpx.AsyncClient(timeout=600) as client:
+        upload_resp = await client.put(
+            upload_url,
+            content=_iter_chunks(),
+            headers={"Content-Type": "application/zip", "Content-Length": str(file_size)},
+        )
+
+    if upload_resp.status_code not in (200, 201):
+        raise DriveAPIError(f"Upload failed ({upload_resp.status_code}): {upload_resp.text}")
+    return upload_resp.json()["id"]
 
 
 async def list_drive_backups(access_token: str, folder_id: str) -> list[dict]:
