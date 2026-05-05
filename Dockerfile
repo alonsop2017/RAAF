@@ -65,7 +65,8 @@ COPY config/claude_credentials_template.yaml  config/claude_credentials_template
 # ── Entrypoint & cron ────────────────────────────────────────────────────────
 COPY docker/entrypoint.sh /entrypoint.sh
 COPY docker/crontab       /app/docker/crontab
-RUN chmod +x /entrypoint.sh
+COPY backup.sh            /app/backup.sh
+RUN chmod +x /entrypoint.sh /app/backup.sh
 
 # ── Volume mount points (created here so ownership is correct) ───────────────
 RUN mkdir -p data clients archive logs config/clients \

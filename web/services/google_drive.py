@@ -32,6 +32,11 @@ class FolderNotFoundError(DriveAPIError):
     pass
 
 
+class DrivePermissionError(DriveAPIError):
+    """Insufficient permissions to access the Drive resource."""
+    pass
+
+
 # ---------------------------------------------------------------------------
 # URL / ID parsing
 # ---------------------------------------------------------------------------
@@ -219,3 +224,100 @@ async def download_file(
         f.write(resp.content)
 
     return destination
+
+
+# ---------------------------------------------------------------------------
+# Backup helpers
+# ---------------------------------------------------------------------------
+
+_BACKUP_FOLDER_NAME = "RAAF Backups"
+
+
+async def get_or_create_backup_folder(access_token: str) -> str:
+    """Return the ID of the 'RAAF Backups' folder, creating it if absent."""
+    headers = {"Authorization": f"Bearer {access_token}"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        # Search for existing folder
+        resp = await client.get(
+            f"{DRIVE_API_BASE}/files",
+            headers=headers,
+            params={
+                "q": f"name='{_BACKUP_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false",
+                "fields": "files(id,name)",
+                "pageSize": 1,
+            },
+        )
+        if resp.status_code == 401:
+            raise TokenExpiredError("Access token expired")
+        if resp.status_code == 403:
+            raise DrivePermissionError("Insufficient Drive permissions")
+        if resp.status_code != 200:
+            raise DriveAPIError(f"Drive API error {resp.status_code}: {resp.text}")
+
+        files = resp.json().get("files", [])
+        if files:
+            return files[0]["id"]
+
+        # Create the folder
+        resp = await client.post(
+            f"{DRIVE_API_BASE}/files",
+            headers=headers,
+            json={"name": _BACKUP_FOLDER_NAME, "mimeType": "application/vnd.google-apps.folder"},
+        )
+        if resp.status_code not in (200, 201):
+            raise DriveAPIError(f"Failed to create backup folder: {resp.text}")
+        return resp.json()["id"]
+
+
+async def upload_backup(access_token: str, folder_id: str, filename: str, data: bytes) -> str:
+    """Upload a backup zip to Drive, return the new file ID."""
+    headers = {"Authorization": f"Bearer {access_token}"}
+    metadata = {"name": filename, "parents": [folder_id]}
+    async with httpx.AsyncClient(timeout=120) as client:
+        resp = await client.post(
+            "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+            headers=headers,
+            files={
+                "metadata": (None, __import__("json").dumps(metadata), "application/json"),
+                "file": (filename, data, "application/zip"),
+            },
+        )
+    if resp.status_code == 401:
+        raise TokenExpiredError("Access token expired")
+    if resp.status_code == 403:
+        raise DrivePermissionError("Insufficient Drive permissions")
+    if resp.status_code not in (200, 201):
+        raise DriveAPIError(f"Upload failed ({resp.status_code}): {resp.text}")
+    return resp.json()["id"]
+
+
+async def list_drive_backups(access_token: str, folder_id: str) -> list[dict]:
+    """List backup zips in a Drive folder, newest first."""
+    headers = {"Authorization": f"Bearer {access_token}"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(
+            f"{DRIVE_API_BASE}/files",
+            headers=headers,
+            params={
+                "q": f"'{folder_id}' in parents and name contains 'raaf_backup' and trashed=false",
+                "fields": "files(id,name,createdTime,size)",
+                "orderBy": "createdTime desc",
+                "pageSize": 50,
+            },
+        )
+    if resp.status_code == 401:
+        raise TokenExpiredError("Access token expired")
+    if resp.status_code != 200:
+        raise DriveAPIError(f"Drive API error {resp.status_code}: {resp.text}")
+    return resp.json().get("files", [])
+
+
+async def delete_drive_file(access_token: str, file_id: str) -> None:
+    """Permanently delete a Drive file."""
+    headers = {"Authorization": f"Bearer {access_token}"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.delete(f"{DRIVE_API_BASE}/files/{file_id}", headers=headers)
+    if resp.status_code == 401:
+        raise TokenExpiredError("Access token expired")
+    if resp.status_code not in (200, 204):
+        raise DriveAPIError(f"Delete failed ({resp.status_code}): {resp.text}")
