@@ -2,29 +2,29 @@
 # RAAF Backup Script
 # Usage:
 #   ./backup.sh --target local --local-path /path/to/backups
-#   ./backup.sh --target gdrive --gdrive-remote raaf-backup:RAAF-Backups
-#   ./backup.sh --target gdrive --gdrive-remote raaf-backup:RAAF-Backups --quiet
+#   ./backup.sh --target onedrive --remote "onedrive:PeopleFind/RAAF-backups"
+#   ./backup.sh --target gdrive   --remote "gdrive:RAAF-Backups"
 
 set -euo pipefail
 
-RAAF_DIR="/home/alonsop/RAAF"
-LOG_FILE="$RAAF_DIR/logs/backup.log"
+LOG_FILE="/app/logs/backup.log"
 RETENTION_COUNT=30
+RCLONE_CONFIG="/app/config/rclone.conf"
 
 # Defaults
 TARGET=""
 LOCAL_PATH=""
-GDRIVE_REMOTE=""
+REMOTE=""
 QUIET=false
 
 usage() {
-    echo "Usage: $0 --target local|gdrive [OPTIONS]"
+    echo "Usage: $0 --target local|onedrive|gdrive [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  --target local|gdrive       Backup destination (required)"
-    echo "  --local-path /path          Local backup directory (required for local target)"
-    echo "  --gdrive-remote remote:path rclone remote and path (required for gdrive target)"
-    echo "  --quiet                     Suppress output (for cron usage)"
+    echo "  --target local|onedrive|gdrive   Backup destination (required)"
+    echo "  --local-path /path               Local backup directory (required for local)"
+    echo "  --remote remote:path             rclone remote and path (required for cloud targets)"
+    echo "  --quiet                          Suppress output (for cron usage)"
     exit 1
 }
 
@@ -40,22 +40,12 @@ log() {
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --target)
-            TARGET="$2"
-            shift 2
-            ;;
-        --local-path)
-            LOCAL_PATH="$2"
-            shift 2
-            ;;
-        --gdrive-remote)
-            GDRIVE_REMOTE="$2"
-            shift 2
-            ;;
-        --quiet)
-            QUIET=true
-            shift
-            ;;
+        --target)      TARGET="$2";     shift 2 ;;
+        --local-path)  LOCAL_PATH="$2"; shift 2 ;;
+        --remote)      REMOTE="$2";     shift 2 ;;
+        --quiet)       QUIET=true;      shift   ;;
+        # Legacy compat
+        --gdrive-remote) REMOTE="$2"; TARGET="gdrive"; shift 2 ;;
         *)
             echo "Unknown option: $1"
             usage
@@ -63,23 +53,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Validate arguments
-if [ -z "$TARGET" ]; then
-    echo "Error: --target is required"
-    usage
-fi
+# Validate
+if [ -z "$TARGET" ]; then echo "Error: --target is required"; usage; fi
+if [ "$TARGET" = "local" ] && [ -z "$LOCAL_PATH" ]; then echo "Error: --local-path required for local"; usage; fi
+if [ "$TARGET" != "local" ] && [ -z "$REMOTE" ]; then echo "Error: --remote required for $TARGET"; usage; fi
 
-if [ "$TARGET" = "local" ] && [ -z "$LOCAL_PATH" ]; then
-    echo "Error: --local-path is required for local target"
-    usage
-fi
-
-if [ "$TARGET" = "gdrive" ] && [ -z "$GDRIVE_REMOTE" ]; then
-    echo "Error: --gdrive-remote is required for gdrive target"
-    usage
-fi
-
-# Create timestamp and archive name
+# Create archive
 TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
 ARCHIVE_NAME="raaf_backup_${TIMESTAMP}.tar.gz"
 TMP_DIR=$(mktemp -d)
@@ -87,65 +66,65 @@ TMP_ARCHIVE="$TMP_DIR/$ARCHIVE_NAME"
 
 log "Starting RAAF backup (target: $TARGET)"
 
-# Create the backup archive
+# Back up DB snapshot + config + assessment data (no resume PDFs — recoverable from PCR)
 log "Creating archive: $ARCHIVE_NAME"
 tar -czf "$TMP_ARCHIVE" \
-    -C "$RAAF_DIR" \
-    clients/ \
+    -C /app \
+    data/ \
     config/ \
-    archive/ \
+    --exclude="config/.token_store.json" \
+    --exclude="config/users.db" \
     2>/dev/null || true
 
 ARCHIVE_SIZE=$(du -h "$TMP_ARCHIVE" | cut -f1)
 log "Archive created: $ARCHIVE_SIZE"
 
-# Deliver backup to target
+# Deliver
 if [ "$TARGET" = "local" ]; then
     mkdir -p "$LOCAL_PATH"
     cp "$TMP_ARCHIVE" "$LOCAL_PATH/"
     log "Backup saved to $LOCAL_PATH/$ARCHIVE_NAME"
 
-    # Retention: keep last N backups, delete older ones
     BACKUP_COUNT=$(ls -1 "$LOCAL_PATH"/raaf_backup_*.tar.gz 2>/dev/null | wc -l)
     if [ "$BACKUP_COUNT" -gt "$RETENTION_COUNT" ]; then
         DELETE_COUNT=$((BACKUP_COUNT - RETENTION_COUNT))
         ls -1t "$LOCAL_PATH"/raaf_backup_*.tar.gz | tail -n "$DELETE_COUNT" | xargs rm -f
-        log "Retention: deleted $DELETE_COUNT old backup(s), keeping last $RETENTION_COUNT"
+        log "Retention: deleted $DELETE_COUNT old backup(s)"
     fi
 
-elif [ "$TARGET" = "gdrive" ]; then
+else
+    # Cloud target via rclone (onedrive, gdrive, or any rclone remote)
     if ! command -v rclone &>/dev/null; then
-        log "ERROR: rclone is not installed. Install it with: sudo apt install rclone"
+        log "ERROR: rclone is not installed"
         rm -rf "$TMP_DIR"
         exit 1
     fi
 
-    REMOTE_NAME=$(echo "$GDRIVE_REMOTE" | cut -d: -f1)
-    if ! rclone listremotes | grep -q "^${REMOTE_NAME}:$"; then
-        log "ERROR: rclone remote '$REMOTE_NAME' not configured. Run: rclone config"
+    RCLONE_ARGS="--config $RCLONE_CONFIG"
+    REMOTE_NAME=$(echo "$REMOTE" | cut -d: -f1)
+
+    if ! rclone $RCLONE_ARGS listremotes | grep -q "^${REMOTE_NAME}:$"; then
+        log "ERROR: rclone remote '${REMOTE_NAME}' not configured. Run: rclone --config $RCLONE_CONFIG config"
         rm -rf "$TMP_DIR"
         exit 1
     fi
 
-    log "Uploading to Google Drive: $GDRIVE_REMOTE"
-    rclone copy "$TMP_ARCHIVE" "$GDRIVE_REMOTE" --progress 2>&1 | while read -r line; do
-        if [ "$QUIET" = false ]; then echo "$line"; fi
-    done
-    log "Upload complete: $GDRIVE_REMOTE/$ARCHIVE_NAME"
+    log "Uploading to ${TARGET}: $REMOTE"
+    rclone $RCLONE_ARGS copy "$TMP_ARCHIVE" "$REMOTE" --transfers=1 2>&1 | \
+        while read -r line; do if [ "$QUIET" = false ]; then echo "$line"; fi; done
+    log "Upload complete: $REMOTE/$ARCHIVE_NAME"
 
-    # Retention: keep last N backups on Google Drive
-    REMOTE_FILES=$(rclone lsf "$GDRIVE_REMOTE" --include "raaf_backup_*.tar.gz" | sort)
-    REMOTE_COUNT=$(echo "$REMOTE_FILES" | grep -c . || true)
+    # Retention
+    REMOTE_FILES=$(rclone $RCLONE_ARGS lsf "$REMOTE" --include "raaf_backup_*.tar.gz" | sort)
+    REMOTE_COUNT=$(echo "$REMOTE_FILES" | grep -c . 2>/dev/null || echo 0)
     if [ "$REMOTE_COUNT" -gt "$RETENTION_COUNT" ]; then
         DELETE_COUNT=$((REMOTE_COUNT - RETENTION_COUNT))
         echo "$REMOTE_FILES" | head -n "$DELETE_COUNT" | while read -r file; do
-            rclone deletefile "$GDRIVE_REMOTE/$file"
-            log "Retention: deleted remote backup $file"
+            rclone $RCLONE_ARGS deletefile "$REMOTE/$file"
+            log "Retention: deleted $file"
         done
     fi
 fi
 
-# Cleanup temp files
 rm -rf "$TMP_DIR"
-
 log "Backup completed successfully"

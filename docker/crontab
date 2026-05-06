@@ -7,5 +7,5 @@
 # Daily local backup at 12:30 AM UTC
 30 0 * * * PYTHONPATH=/app /app/backup.sh --target local --local-path /app/backups >> /app/logs/backup.log 2>&1
 
-# Daily Drive backup at 1:00 AM UTC
-0 1 * * * PYTHONPATH=/app RAAF_DB_MODE=db python /app/scripts/backup_to_drive.py --keep 7 >> /app/logs/backup.log 2>&1
+# Daily OneDrive backup at 1:00 AM UTC
+0 1 * * * PYTHONPATH=/app /app/backup.sh --target onedrive --remote "onedrive:PeopleFind/RAAF-backups" --quiet >> /app/logs/backup.log 2>&1

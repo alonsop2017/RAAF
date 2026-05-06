@@ -3,6 +3,7 @@ FROM python:3.11-slim
 # ── System dependencies ──────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
+        unzip \
         # pymupdf / pdfplumber
         libmupdf-dev \
         libglib2.0-0 \
@@ -16,6 +17,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         rsync \
         sqlite3 \
     && rm -rf /var/lib/apt/lists/*
+
+# ── rclone (for OneDrive / cloud backups) ────────────────────────────────────
+RUN ARCH=$(dpkg --print-architecture) && \
+    curl -fsSL "https://downloads.rclone.org/rclone-current-linux-${ARCH}.zip" -o /tmp/rclone.zip && \
+    unzip -q /tmp/rclone.zip -d /tmp/rclone && \
+    mv /tmp/rclone/rclone-*/rclone /usr/local/bin/rclone && \
+    chmod +x /usr/local/bin/rclone && \
+    rm -rf /tmp/rclone.zip /tmp/rclone
 
 # ── Node.js 18 ───────────────────────────────────────────────────────────────
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
