@@ -72,8 +72,9 @@ COPY config/pcr_credentials_template.yaml  config/pcr_credentials_template.yaml
 COPY config/claude_credentials_template.yaml  config/claude_credentials_template.yaml
 
 # ── Entrypoint & cron ────────────────────────────────────────────────────────
-COPY docker/entrypoint.sh /entrypoint.sh
-COPY docker/crontab       /app/docker/crontab
+COPY docker/entrypoint.sh        /entrypoint.sh
+COPY docker/crontab              /app/docker/crontab
+COPY docker/logging_config.json  /app/docker/logging_config.json
 COPY backup.sh            /app/backup.sh
 RUN chmod +x /entrypoint.sh /app/backup.sh
 

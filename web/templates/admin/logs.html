@@ -2,23 +2,31 @@
 {% block title %}Admin — Logs{% endblock %}
 
 {% block content %}
-<div class="page-header" style="display:flex;justify-content:space-between;align-items:center;">
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;">
     <h1>Admin — System Logs</h1>
     <div style="display:flex;gap:0.5rem;align-items:center;">
         <input type="text" id="log-filter" class="form-input" placeholder="Filter logs..."
-               style="width:250px;" oninput="filterLogs()">
-        <a href="/admin/logs" class="btn btn-secondary btn-sm">Refresh</a>
+               style="width:220px;" oninput="filterLogs()">
+        <a href="/admin/logs?source={{ source }}" class="btn btn-secondary btn-sm">Refresh</a>
     </div>
 </div>
 
+<!-- Log source tabs -->
+<div style="display:flex;gap:0.35rem;margin-bottom:1rem;flex-wrap:wrap;">
+    {% for s in log_sources %}
+    <a href="/admin/logs?source={{ s.key }}"
+       class="btn btn-sm {% if s.active %}btn-primary{% else %}btn-outline{% endif %}"
+       {% if not s.exists %}style="opacity:0.55;"{% endif %}>
+        {{ s.label }}{% if not s.exists %} <span style="font-size:0.75em;">(empty)</span>{% endif %}
+    </a>
+    {% endfor %}
+</div>
+
 {% if error %}
-<div class="alert alert-danger">{{ error }}</div>
+<div class="alert alert-warning">{{ error }}</div>
 {% endif %}
 
 <div class="card">
-    <p class="text-secondary" style="margin-bottom:0.75rem;font-size:0.875rem;">
-        Last 200 lines from <code>journalctl -u raaf-web</code>. Newest entries at the bottom.
-    </p>
     <pre id="log-pre" class="log-viewer">{{ log_lines }}</pre>
 </div>
 {% endblock %}
@@ -33,22 +41,21 @@
     font-size: 0.78rem;
     line-height: 1.5;
     overflow-x: auto;
-    max-height: 70vh;
+    max-height: 72vh;
     overflow-y: auto;
     white-space: pre-wrap;
     word-break: break-all;
 }
 .alert { padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; }
-.alert-danger { background: #fee2e2; color: #991b1b; }
+.alert-warning { background: #fefce8; color: #854d0e; border: 1px solid #fde047; }
 </style>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-// Auto-scroll to bottom on load
 document.addEventListener('DOMContentLoaded', function() {
     var pre = document.getElementById('log-pre');
-    pre.scrollTop = pre.scrollHeight;
+    if (pre) pre.scrollTop = pre.scrollHeight;
 });
 
 var allLines = null;
@@ -56,18 +63,15 @@ var allLines = null;
 function filterLogs() {
     var pre = document.getElementById('log-pre');
     var filter = document.getElementById('log-filter').value.toLowerCase();
-
     if (allLines === null) {
         allLines = pre.textContent.split('\n');
     }
-
     if (!filter) {
         pre.textContent = allLines.join('\n');
     } else {
-        var filtered = allLines.filter(function(line) {
-            return line.toLowerCase().includes(filter);
-        });
-        pre.textContent = filtered.join('\n');
+        pre.textContent = allLines.filter(function(l) {
+            return l.toLowerCase().includes(filter);
+        }).join('\n');
     }
     pre.scrollTop = pre.scrollHeight;
 }

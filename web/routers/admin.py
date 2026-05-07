@@ -834,28 +834,56 @@ async def admin_settings_update(
 # ---------------------------------------------------------------------------
 
 @router.get("/logs", response_class=HTMLResponse)
-async def admin_logs(request: Request, _admin=Depends(require_admin)):
-    """Display recent service logs."""
+async def admin_logs(request: Request, _admin=Depends(require_admin),
+                     source: str = "app"):
+    """Display recent service logs from on-disk log files."""
+    from pathlib import Path as _Path
+
+    logs_dir = _Path("/app/logs")
+
+    log_sources = [
+        ("app",      "App / Errors",  logs_dir / "app.log"),
+        ("access",   "HTTP Access",   logs_dir / "access.log"),
+        ("pcr_sync", "PCR Sync",      logs_dir / "pcr_sync.log"),
+        ("backup",   "Backup",        logs_dir / "backup.log"),
+    ]
+
+    # Find the selected log file
+    log_path = None
+    for key, label, path in log_sources:
+        if key == source:
+            log_path = path
+            break
+
     log_lines = ""
     error = None
-    try:
-        result = subprocess.run(
-            ["journalctl", "-u", "raaf-web", "-n", "200", "--no-pager", "--output=short"],
-            capture_output=True, text=True, timeout=10
-        )
-        log_lines = result.stdout or "(no log output)"
-    except FileNotFoundError:
-        error = "journalctl not available on this system"
-    except subprocess.TimeoutExpired:
-        error = "Log retrieval timed out"
-    except Exception as e:
-        error = f"Error retrieving logs: {e}"
+
+    if log_path is None:
+        error = f"Unknown log source: {source}"
+    elif not log_path.exists():
+        error = f"Log file not yet created: {log_path.name} — it will appear once the service writes its first entry."
+    else:
+        try:
+            # Read last 500 lines efficiently
+            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()
+            log_lines = "".join(lines[-500:]) or "(empty log file)"
+        except Exception as e:
+            error = f"Error reading log: {e}"
+
+    # Build list of available sources with existence flag for the template
+    available_sources = [
+        {"key": k, "label": lbl, "exists": p.exists(), "active": k == source}
+        for k, lbl, p in log_sources
+    ]
 
     return templates.TemplateResponse("admin/logs.html", {
         "request": request,
         "user": getattr(request.state, "user", None),
         "log_lines": log_lines,
         "error": error,
+        "source": source,
+        "log_sources": available_sources,
     })
 
 

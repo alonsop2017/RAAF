@@ -31,7 +31,8 @@ case "$1" in
             --host 0.0.0.0 \
             --port 8000 \
             --proxy-headers \
-            "--forwarded-allow-ips=*"
+            "--forwarded-allow-ips=*" \
+            --log-config /app/docker/logging_config.json
         ;;
     cron)
         echo "[entrypoint] Starting cron scheduler..."
