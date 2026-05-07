@@ -234,6 +234,43 @@ def check_requisition(
                 except Exception as e:
                     print(f"  Auto-assessment error: {e}")
 
+    # Always catch pending DB candidates with no resume on disk —
+    # covers the case where sync_candidates ran before watch_applicants
+    # and set last_sync, making those candidates invisible to the date filter.
+    if auto_download:
+        try:
+            sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+            from scripts.utils.database import get_db, _use_database
+            if _use_database():
+                pending = get_db().list_candidates(req_id, status="pending")
+                missing = [
+                    c for c in pending
+                    if c.get("pcr_candidate_id")
+                    and (
+                        not c.get("resume_extracted_path")
+                        or not Path(c["resume_extracted_path"]).exists()
+                    )
+                ]
+                if missing:
+                    missing_ids = [c["pcr_candidate_id"] for c in missing]
+                    print(f"  {client_code}/{req_id}: downloading resumes for "
+                          f"{len(missing)} pending candidate(s) with no resume")
+                    from download_resumes import download_resumes
+                    download_resumes(client_code, req_id, candidate_ids=missing_ids)
+                    if auto_assess:
+                        try:
+                            from assess_candidate import assess_all_pending
+                            result = assess_all_pending(
+                                client_code, req_id, use_ai=True, workers=4
+                            )
+                            assessed = result.get("assessed", 0)
+                            if assessed:
+                                print(f"  Auto-assessment complete: {assessed} candidates assessed")
+                        except Exception as e:
+                            print(f"  Auto-assessment error: {e}")
+        except Exception as e:
+            print(f"  Resume catchup check error: {e}")
+
     return len(new_candidates)
 
 
