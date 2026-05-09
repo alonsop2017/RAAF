@@ -61,7 +61,7 @@
                         <div class="text-muted" style="font-size: 0.875rem;">{{ req.req_id }}</div>
                     </td>
                     <td>{{ req.client_name }}</td>
-                    <td>{{ req.pcr_job_id or 'N/A' }}</td>
+                    <td>{{ req.pcr_position_id or req.pcr_job_id or 'N/A' }}</td>
                     <td>{{ req.last_sync }}</td>
                     <td>
                         <a href="/pcr/sync/{{ req.client_code }}/{{ req.req_id }}" class="btn btn-sm btn-primary">Sync</a>

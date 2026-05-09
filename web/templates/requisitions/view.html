@@ -307,20 +307,21 @@
                             <tr style="border-bottom:1px solid var(--border-color);">
                                 <th style="text-align:left; padding:0.3rem 0.5rem;">Position</th>
                                 <th style="text-align:left; padding:0.3rem 0.5rem;">Company</th>
-                                <th style="text-align:left; padding:0.3rem 0.5rem;">Job ID</th>
+                                <th style="text-align:left; padding:0.3rem 0.5rem;">PCR ID</th>
                                 <th style="padding:0.3rem 0.5rem;"></th>
                             </tr>
                         </thead>
                         <tbody>
                         {% for pos in positions %}
+                            {% set display_id = pos.position_id if pos.position_id else pos.job_id %}
                             <tr style="border-bottom:1px solid var(--border-color);">
                                 <td style="padding:0.3rem 0.5rem;">{{ pos.job_title or 'N/A' }}</td>
                                 <td style="padding:0.3rem 0.5rem;">{{ pos.company_name or 'N/A' }}</td>
-                                <td style="padding:0.3rem 0.5rem;">{{ pos.job_id }}</td>
+                                <td style="padding:0.3rem 0.5rem;"><code>{{ display_id }}</code></td>
                                 <td style="padding:0.3rem 0.5rem; text-align:right;">
                                     <form action="/requisitions/{{ client_code }}/{{ req_id }}/unlink-pcr" method="POST" style="display:inline;">
                                         <input type="hidden" name="job_id" value="{{ pos.job_id }}">
-                                        <button type="submit" class="btn btn-sm btn-outline" style="padding:0.1rem 0.4rem; font-size:0.75rem;" onclick="return confirm('Unlink position {{ pos.job_id }}?')">Remove</button>
+                                        <button type="submit" class="btn btn-sm btn-outline" style="padding:0.1rem 0.4rem; font-size:0.75rem;" onclick="return confirm('Unlink position {{ display_id }}?')">Remove</button>
                                     </form>
                                 </td>
                             </tr>
@@ -328,7 +329,7 @@
                         </tbody>
                     </table>
                     {% else %}
-                    <p><strong>Job ID:</strong> {{ pcr_integration.job_id }}</p>
+                    <p><strong>PCR ID:</strong> <code>{{ pcr_integration.position_id or pcr_integration.job_id }}</code></p>
                     {% endif %}
                     <p class="mt-1"><strong>Last Sync:</strong> <span id="lastSyncTime">{{ pcr_integration.last_sync or 'Never' }}</span></p>
                     <p class="mt-1 text-muted" style="font-size: 0.8rem;">Auto-sync runs every hour</p>
@@ -616,6 +617,7 @@ var PAGE_REQ_ID = {{ req_id | tojson }};
                         var cb = document.createElement('input');
                         cb.type = 'checkbox';
                         cb.value = pos.job_id;
+                        cb.dataset.positionId = pos.position_id || '';
                         cb.dataset.title = pos.title;
                         cb.dataset.company = pos.company;
                         cb.style.marginTop = '0.2rem';
@@ -657,6 +659,7 @@ var PAGE_REQ_ID = {{ req_id | tojson }};
             checked.forEach(function(cb) {
                 var body = new URLSearchParams();
                 body.append('job_id', cb.value);
+                body.append('position_id', cb.dataset.positionId || '');
                 body.append('job_title', cb.dataset.title || '');
                 body.append('company_name', cb.dataset.company || '');
                 promises.push(

@@ -24,7 +24,7 @@
         <table>
             <thead>
                 <tr>
-                    <th>PCR Job ID</th>
+                    <th>PCR Position ID</th>
                     <th>Title</th>
                     <th>Company</th>
                     <th>Location</th>
@@ -34,7 +34,7 @@
             <tbody>
                 {% for pos in linked_positions %}
                 <tr>
-                    <td><code>{{ pos.job_id }}</code></td>
+                    <td><code>{{ pos.position_id or pos.job_id }}</code></td>
                     <td>{{ pos.title }}</td>
                     <td>{{ pos.company }}</td>
                     <td>{{ pos.location }}</td>
@@ -59,7 +59,7 @@
         <table>
             <thead>
                 <tr>
-                    <th>PCR Job ID</th>
+                    <th>PCR Position ID</th>
                     <th>Title</th>
                     <th>Company</th>
                     <th>Location</th>
@@ -68,7 +68,7 @@
             <tbody>
                 {% for pos in unlinked_positions %}
                 <tr style="color: var(--text-muted, #888);">
-                    <td><code>{{ pos.job_id }}</code></td>
+                    <td><code>{{ pos.position_id or pos.job_id }}</code></td>
                     <td>{{ pos.title }}</td>
                     <td>{{ pos.company }}</td>
                     <td>{{ pos.location }}</td>

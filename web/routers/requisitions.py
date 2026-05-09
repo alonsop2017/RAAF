@@ -778,6 +778,7 @@ async def link_pcr_position(
     client_code: str,
     req_id: str,
     job_id: str = Form(...),
+    position_id: str = Form(""),
     job_title: str = Form(""),
     company_name: str = Form(""),
 ):
@@ -808,6 +809,7 @@ async def link_pcr_position(
     if str(job_id) not in existing_ids:
         positions.append({
             'job_id': job_id,
+            'position_id': position_id,
             'job_title': job_title,
             'company_name': company_name,
             'linked_date': datetime.now().strftime("%Y-%m-%d"),

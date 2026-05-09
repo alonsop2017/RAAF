@@ -96,12 +96,15 @@ async def pcr_dashboard(request: Request):
                 req_config = get_requisition_config(client_code, req_id)
                 pcr_info = req_config.get('pcr_integration', {})
                 if pcr_info:
+                    positions = pcr_info.get('positions', [])
+                    first_pos_id = positions[0].get('position_id', '') if positions else ''
                     pcr_requisitions.append({
                         'client_code': client_code,
                         'client_name': client_config.get('company_name', client_code),
                         'req_id': req_id,
                         'title': req_config.get('job', {}).get('title', req_id),
                         'pcr_job_id': pcr_info.get('job_id'),
+                        'pcr_position_id': first_pos_id,
                         'last_sync': pcr_info.get('last_sync', 'Never')
                     })
         except Exception:
