@@ -59,7 +59,12 @@
 <div class="alert alert-success">PCR position unlinked.</div>
 {% endif %}
 {% if request.query_params.get('jd') == 'updated' %}
-<div class="alert alert-success">Job description has been updated successfully.</div>
+<div class="alert alert-success" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.75rem;">
+    <span>Job description updated successfully. Regenerate the assessment framework to reflect the new JD.</span>
+    <form action="/requisitions/{{ client_code }}/{{ req_id }}/regenerate-framework" method="POST" style="margin:0;">
+        <button type="submit" class="btn btn-primary btn-sm">Regenerate Framework</button>
+    </form>
+</div>
 {% elif request.query_params.get('jd') == 'empty' %}
 <div class="alert alert-warning">The uploaded file was empty. Job description was not updated.</div>
 {% endif %}
@@ -268,6 +273,9 @@
                 <p><strong>File:</strong> {{ jd_filename }}</p>
                 <div class="action-buttons mt-2">
                     <a href="/requisitions/{{ client_code }}/{{ req_id }}/download-jd" class="btn btn-sm btn-primary">Download</a>
+                    <form action="/requisitions/{{ client_code }}/{{ req_id }}/regenerate-framework" method="POST" style="display:inline;">
+                        <button type="submit" class="btn btn-sm btn-outline">Regenerate Framework</button>
+                    </form>
                 </div>
                 <hr style="margin: 1rem 0; border-color: var(--border-color);">
                 <p class="text-muted" style="font-size: 0.85rem; margin-bottom: 0.5rem;">Replace job description:</p>
