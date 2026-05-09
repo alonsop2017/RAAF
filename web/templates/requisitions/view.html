@@ -36,14 +36,14 @@
 {% elif request.query_params.get('framework') == 'extraction_failed' %}
 <div class="alert alert-warning">
     <strong>Warning:</strong> Could not extract text from the uploaded job description. A generic template was used instead.
-    <form action="/requisitions/{{ client_code }}/{{ req_id }}/regenerate-framework" method="POST" style="display:inline; margin-left: 0.5rem;">
+    <form action="/requisitions/{{ client_code }}/{{ req_id }}/regenerate-framework" method="POST" style="display:inline; margin-left: 0.5rem;" class="regen-framework-form">
         <button type="submit" class="btn btn-sm btn-primary">Retry Framework Generation</button>
     </form>
 </div>
 {% elif request.query_params.get('framework') == 'generation_failed' %}
 <div class="alert alert-warning">
     <strong>Warning:</strong> AI framework generation failed. A generic template was used instead.
-    <form action="/requisitions/{{ client_code }}/{{ req_id }}/regenerate-framework" method="POST" style="display:inline; margin-left: 0.5rem;">
+    <form action="/requisitions/{{ client_code }}/{{ req_id }}/regenerate-framework" method="POST" style="display:inline; margin-left: 0.5rem;" class="regen-framework-form">
         <button type="submit" class="btn btn-sm btn-primary">Retry Framework Generation</button>
     </form>
 </div>
@@ -61,7 +61,7 @@
 {% if request.query_params.get('jd') == 'updated' %}
 <div class="alert alert-success" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.75rem;">
     <span>Job description updated successfully. Regenerate the assessment framework to reflect the new JD.</span>
-    <form action="/requisitions/{{ client_code }}/{{ req_id }}/regenerate-framework" method="POST" style="margin:0;">
+    <form action="/requisitions/{{ client_code }}/{{ req_id }}/regenerate-framework" method="POST" style="margin:0;" class="regen-framework-form">
         <button type="submit" class="btn btn-primary btn-sm">Regenerate Framework</button>
     </form>
 </div>
@@ -273,7 +273,7 @@
                 <p><strong>File:</strong> {{ jd_filename }}</p>
                 <div class="action-buttons mt-2">
                     <a href="/requisitions/{{ client_code }}/{{ req_id }}/download-jd" class="btn btn-sm btn-primary">Download</a>
-                    <form action="/requisitions/{{ client_code }}/{{ req_id }}/regenerate-framework" method="POST" style="display:inline;">
+                    <form action="/requisitions/{{ client_code }}/{{ req_id }}/regenerate-framework" method="POST" style="display:inline;" class="regen-framework-form">
                         <button type="submit" class="btn btn-sm btn-outline">Regenerate Framework</button>
                     </form>
                 </div>
@@ -815,5 +815,58 @@ var PAGE_REQ_ID = {{ req_id | tojson }};
 .btn-danger:hover {
     background-color: #dc2626;
 }
+
+/* Framework regeneration overlay */
+#regen-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+#regen-overlay.active { display: flex; }
+#regen-overlay .regen-box {
+    background: #fff;
+    border-radius: 10px;
+    padding: 2rem 2.5rem;
+    text-align: center;
+    max-width: 360px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+}
+#regen-overlay .regen-spinner {
+    width: 44px; height: 44px;
+    border: 4px solid #e5e7eb;
+    border-top-color: var(--primary-color, #2563eb);
+    border-radius: 50%;
+    animation: regen-spin 0.9s linear infinite;
+    margin: 0 auto 1rem;
+}
+@keyframes regen-spin { to { transform: rotate(360deg); } }
 </style>
+
+<!-- Framework regeneration loading overlay -->
+<div id="regen-overlay">
+    <div class="regen-box">
+        <div class="regen-spinner"></div>
+        <h3 style="margin:0 0 0.5rem; font-size:1.1rem;">Generating Framework</h3>
+        <p style="margin:0; color:#6b7280; font-size:0.9rem;">Claude AI is analysing the job description and building your assessment framework. This takes about 20–30 seconds.</p>
+    </div>
+</div>
+
+<script>
+document.querySelectorAll('.regen-framework-form').forEach(function(form) {
+    form.addEventListener('submit', function() {
+        var overlay = document.getElementById('regen-overlay');
+        if (overlay) overlay.classList.add('active');
+        // Disable all regen buttons to prevent double-submit
+        document.querySelectorAll('.regen-framework-form button').forEach(function(btn) {
+            btn.disabled = true;
+        });
+    });
+});
+</script>
 {% endblock %}
