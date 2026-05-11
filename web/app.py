@@ -18,7 +18,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 
-from web.routers import clients, requisitions, candidates, assessments, reports, pcr, search
+from web.routers import clients, requisitions, candidates, assessments, reports, pcr, search, correspondence
 from web.routers import admin as admin_router
 from web.routers import auth as auth_router
 from web.auth.oauth import setup_oauth
@@ -110,6 +110,7 @@ app.include_router(requisitions.router, prefix="/requisitions", tags=["requisiti
 app.include_router(candidates.router, prefix="/candidates", tags=["candidates"])
 app.include_router(assessments.router, prefix="/assessments", tags=["assessments"])
 app.include_router(reports.router, prefix="/reports", tags=["reports"])
+app.include_router(correspondence.router, prefix="/correspondence", tags=["correspondence"])
 app.include_router(pcr.router, prefix="/pcr", tags=["pcr"])
 app.include_router(search.router, prefix="/search", tags=["search"])
 
