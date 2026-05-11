@@ -7,6 +7,13 @@
     <a href="/">Dashboard</a> / <a href="/clients/{{ client_code }}">{{ client_name }}</a> / <a href="/requisitions/{{ client_code }}/{{ req_id }}">{{ req_id }}</a> / <span>Reports</span>
 </div>
 
+{% if request.query_params.get('generated') %}
+<div class="alert alert-success" style="margin-bottom:1rem; padding:0.85rem 1.2rem; background:#d1fae5; border:1px solid #6ee7b7; border-radius:8px; color:#065f46; display:flex; align-items:center; gap:0.6rem;">
+    <svg style="width:18px;height:18px;flex-shrink:0" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+    <strong>Report generated successfully.</strong>&nbsp;Download it from the table below.
+</div>
+{% endif %}
+
 <div class="page-header">
     <div class="flex flex-between flex-center">
         <div>
@@ -14,10 +21,10 @@
             <p class="subtitle">{{ req_title }} | {{ client_name }}</p>
         </div>
         {% if can_generate %}
-        <form action="/reports/{{ client_code }}/{{ req_id }}/generate" method="POST">
+        <form action="/reports/{{ client_code }}/{{ req_id }}/generate" method="POST" class="report-gen-form">
             <input type="hidden" name="output_type" value="final">
             <input type="hidden" name="top_candidates" value="6">
-            <button type="submit" class="btn btn-primary">Generate New Report</button>
+            <button type="submit" class="btn btn-primary report-gen-btn">Generate New Report</button>
         </form>
         {% endif %}
     </div>
@@ -91,9 +98,9 @@
                     <h3>No Reports Yet</h3>
                     <p>Generate your first report once candidates are assessed.</p>
                     {% if can_generate %}
-                    <form action="/reports/{{ client_code }}/{{ req_id }}/generate" method="POST" class="mt-2">
+                    <form action="/reports/{{ client_code }}/{{ req_id }}/generate" method="POST" class="mt-2 report-gen-form">
                         <input type="hidden" name="output_type" value="final">
-                        <button type="submit" class="btn btn-primary">Generate Report</button>
+                        <button type="submit" class="btn btn-primary report-gen-btn">Generate Report</button>
                     </form>
                     {% else %}
                     <p class="text-muted mt-2">Assess candidates first to generate reports.</p>
@@ -160,11 +167,34 @@
                                title="Number of detailed candidate profiles shown in the report (default 6)">
                         <small class="text-muted">Top-ranked candidates with full detail (max 100)</small>
                     </div>
-                    <button type="submit" class="btn btn-primary">Generate Report</button>
+                    <button type="submit" class="btn btn-primary report-gen-btn">Generate Report</button>
                 </form>
             </div>
         </div>
         {% endif %}
     </div>
 </div>
+
+<!-- Loading overlay -->
+<div id="report-loading-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999; align-items:center; justify-content:center; flex-direction:column; gap:1rem;">
+    <div style="background:#fff; border-radius:12px; padding:2rem 2.5rem; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.18);">
+        <div style="width:40px;height:40px;border:4px solid #e2e8f0;border-top-color:#3b82f6;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 1rem;"></div>
+        <div style="font-size:1.05rem;font-weight:600;color:#1e293b;">Generating Report…</div>
+        <div style="font-size:0.875rem;color:#64748b;margin-top:0.25rem;">This may take 15–30 seconds</div>
+    </div>
+</div>
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+
+<script>
+document.querySelectorAll('.report-gen-form').forEach(function(form) {
+    form.addEventListener('submit', function() {
+        var overlay = document.getElementById('report-loading-overlay');
+        overlay.style.display = 'flex';
+        form.querySelectorAll('.report-gen-btn').forEach(function(btn) {
+            btn.disabled = true;
+            btn.textContent = 'Generating…';
+        });
+    });
+});
+</script>
 {% endblock %}
