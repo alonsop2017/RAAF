@@ -14,13 +14,13 @@
 
 <div class="card" style="max-width: 600px;">
     <div class="card-body">
-        <form action="/candidates/{{ client_code }}/{{ req_id }}/upload" method="POST" enctype="multipart/form-data">
+        <form id="upload-form" action="/candidates/{{ client_code }}/{{ req_id }}/upload" method="POST" enctype="multipart/form-data">
             <div class="form-group">
                 <label class="form-label" for="files">Select Resume Files</label>
                 <input type="file" id="files" name="files" class="form-input" multiple
                        accept=".pdf,.docx,.doc,.txt"
                        style="padding: 1rem; border-style: dashed;">
-                <p class="form-hint">Supported formats: PDF, DOCX, DOC, TXT. You can select multiple files.</p>
+                <p class="form-hint" id="file-count-hint">Supported formats: PDF, DOCX, DOC, TXT. You can select multiple files.</p>
             </div>
 
             <div class="alert alert-info">
@@ -29,11 +29,58 @@
             </div>
 
             <div class="action-buttons mt-3">
-                <button type="submit" class="btn btn-primary btn-lg">Upload Resumes</button>
+                <button type="submit" id="upload-btn" class="btn btn-primary btn-lg">Upload Resumes</button>
                 <a href="/candidates/{{ client_code }}/{{ req_id }}/files/incoming" class="btn btn-outline">File Manager</a>
                 <a href="/candidates/{{ client_code }}/{{ req_id }}" class="btn btn-outline">Cancel</a>
             </div>
         </form>
+
+        <!-- Processing overlay -->
+        <div id="upload-overlay" style="display:none; margin-top:1.5rem;">
+            <div class="alert alert-info" style="display:flex; align-items:center; gap:1rem;">
+                <div style="width:20px;height:20px;border:3px solid #3b82f6;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div>
+                <div>
+                    <strong id="overlay-title">Uploading and extracting resumes…</strong>
+                    <p style="margin:0.25rem 0 0; color:#6b7280; font-size:0.9rem;" id="overlay-detail">Reading text from PDFs and DOCX files. Please wait.</p>
+                </div>
+            </div>
+        </div>
+
+        <style>
+            @keyframes spin { to { transform: rotate(360deg); } }
+        </style>
+
+        <script>
+        (function () {
+            const filesInput = document.getElementById('files');
+            const hint = document.getElementById('file-count-hint');
+            const form = document.getElementById('upload-form');
+            const btn = document.getElementById('upload-btn');
+            const overlay = document.getElementById('upload-overlay');
+            const overlayTitle = document.getElementById('overlay-title');
+            const overlayDetail = document.getElementById('overlay-detail');
+
+            filesInput.addEventListener('change', function () {
+                const n = this.files.length;
+                if (n === 0) {
+                    hint.textContent = 'Supported formats: PDF, DOCX, DOC, TXT. You can select multiple files.';
+                } else {
+                    hint.textContent = n + ' file' + (n !== 1 ? 's' : '') + ' selected.';
+                }
+            });
+
+            form.addEventListener('submit', function () {
+                const n = filesInput.files.length;
+                btn.disabled = true;
+                btn.textContent = 'Uploading…';
+                overlay.style.display = 'block';
+                if (n > 0) {
+                    overlayTitle.textContent = 'Uploading and extracting ' + n + ' resume' + (n !== 1 ? 's' : '') + '…';
+                    overlayDetail.textContent = 'Reading text from PDFs and DOCX files. This may take a few seconds per file.';
+                }
+            });
+        })();
+        </script>
 
         <div class="alert alert-info mt-3">
             <strong>Have resumes in Google Drive?</strong>
