@@ -529,6 +529,16 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
                 'created': datetime.fromtimestamp(report_file.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
             })
 
+    # Ensure req_config has all keys the template expects so sparse PCR-imported
+    # requisitions (which only have job.title + pcr_integration) don't crash.
+    req_config.setdefault('requirements', {})
+    req_config.setdefault('assessment', {})
+    req_config['job'] = req_config.get('job') or {}
+    req_config['job'].setdefault('salary_range', {})
+    req_config['assessment'].setdefault('thresholds', {
+        'strong_recommend': 85, 'recommend': 70, 'conditional': 55
+    })
+
     # PCR integration data
     pcr_integration = req_config.get('pcr_integration', {})
     pcr_company_name = client_config.get('pcr_company_name', '')
