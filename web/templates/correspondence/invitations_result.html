@@ -8,12 +8,18 @@
 .draft-header { background: #f1f5f9; padding: 0.75rem 1rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; }
 .draft-header-left { display: flex; align-items: center; gap: 0.75rem; }
 .draft-email-body { font-family: 'Courier New', Courier, monospace; font-size: 0.8rem; line-height: 1.6; padding: 1rem; background: #fff; white-space: pre-wrap; word-break: break-word; max-height: 420px; overflow-y: auto; border: none; resize: none; width: 100%; box-sizing: border-box; color: #1e293b; }
-.draft-actions { padding: 0.6rem 1rem; background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; gap: 0.5rem; align-items: center; }
+.draft-actions { padding: 0.6rem 1rem; background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .copy-btn { cursor: pointer; }
 .copy-btn.copied { background: #16a34a !important; }
+.send-row { padding: 0.6rem 1rem; background: #f0f9ff; border-top: 1px solid #bae6fd; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.send-email-input { flex: 1; min-width: 200px; padding: 0.35rem 0.65rem; font-size: 0.85rem; border: 1px solid #cbd5e1; border-radius: 6px; }
+.send-status { font-size: 0.82rem; margin-left: 0.5rem; }
+.send-status.ok { color: #16a34a; font-weight: 600; }
+.send-status.err { color: #dc2626; }
 .saved-files-list { list-style: none; padding: 0; margin: 0; }
 .saved-files-list li { padding: 0.35rem 0; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; font-size: 0.875rem; }
 .saved-files-list li:last-child { border-bottom: none; }
+.gmail-reauth-banner { background: #fef9c3; border: 1px solid #fde047; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem; font-size: 0.9rem; color: #713f12; }
 </style>
 {% endblock %}
 
@@ -38,6 +44,19 @@
     </div>
 </div>
 
+{% if not gmail_enabled %}
+<div class="gmail-reauth-banner">
+    <svg style="width:20px;height:20px;flex-shrink:0" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+    </svg>
+    <span>
+        <strong>Gmail sending not authorized.</strong>
+        Your account needs Gmail send permission to use the Send feature.
+        <a href="/auth/login/google" style="font-weight:600; text-decoration:underline; margin-left:0.4rem;">Re-authorize with Google &rarr;</a>
+    </span>
+</div>
+{% endif %}
+
 {% if saved_filenames %}
 <div class="card" style="margin-bottom: 1.5rem;">
     <div class="card-header">
@@ -61,16 +80,19 @@
 {% endif %}
 
 <p style="margin-bottom: 1rem; font-size: 0.9rem; color: #475569;">
-    Review each draft below. Copy the email body and paste directly into your email client.
-    Personalize as needed before sending.
+    Review each draft below. Use <strong>Send via Gmail</strong> to send directly, or copy and paste into your email client.
 </p>
 
 {% for draft in drafts %}
-<div class="draft-card">
+<div class="draft-card" id="card-{{ loop.index }}">
     <div class="draft-header">
         <div class="draft-header-left">
             <strong>{{ draft.name }}</strong>
+            {% if draft.email %}
             <span class="text-muted" style="font-size: 0.875rem;">{{ draft.email }}</span>
+            {% else %}
+            <span style="font-size: 0.8rem; color: #f59e0b;">⚠ no email on file</span>
+            {% endif %}
         </div>
         <div style="display: flex; align-items: center; gap: 0.5rem;">
             {% if draft.recommendation == 'STRONG RECOMMEND' %}
@@ -98,14 +120,28 @@
         >
             Copy to Clipboard
         </button>
-        {% if draft.name_normalized %}
-        <a href="/correspondence/{{ client_code }}/{{ req_id }}/invitations/download/{{ draft.name_normalized }}_invitation_{{ 'today' }}.txt"
-           class="btn btn-sm btn-secondary" style="display: none;">Download</a>
-        {% endif %}
         <span style="font-size: 0.8rem; color: #94a3b8; margin-left: auto;">
             Candidate {{ loop.index }} of {{ total }}
         </span>
     </div>
+    {% if gmail_enabled %}
+    <div class="send-row">
+        <svg style="width:16px;height:16px;flex-shrink:0;color:#4285F4" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+        <input
+            type="email"
+            class="send-email-input"
+            id="to-{{ loop.index }}"
+            placeholder="Recipient email address"
+            value="{{ draft.email }}"
+        >
+        <button
+            class="btn btn-sm btn-primary"
+            id="send-btn-{{ loop.index }}"
+            onclick="sendDraft({{ loop.index }}, '{{ client_code }}', '{{ req_id }}')"
+        >Send via Gmail</button>
+        <span class="send-status" id="send-status-{{ loop.index }}"></span>
+    </div>
+    {% endif %}
 </div>
 {% endfor %}
 
@@ -129,19 +165,78 @@ function copyDraft(index, btn) {
         navigator.clipboard.writeText(textarea.value).then(function() {
             btn.textContent = 'Copied!';
             btn.classList.add('copied');
-            setTimeout(function() {
-                btn.textContent = 'Copy to Clipboard';
-                btn.classList.remove('copied');
-            }, 2000);
+            setTimeout(function() { btn.textContent = 'Copy to Clipboard'; btn.classList.remove('copied'); }, 2000);
         });
     } catch (e) {
         document.execCommand('copy');
         btn.textContent = 'Copied!';
         btn.classList.add('copied');
-        setTimeout(function() {
-            btn.textContent = 'Copy to Clipboard';
-            btn.classList.remove('copied');
-        }, 2000);
+        setTimeout(function() { btn.textContent = 'Copy to Clipboard'; btn.classList.remove('copied'); }, 2000);
+    }
+}
+
+function parseSubjectFromDraft(text) {
+    const match = text.match(/^SUBJECT:\s*(.+)$/m);
+    return match ? match[1].trim() : 'Interview Opportunity';
+}
+
+function parseBodyFromDraft(text) {
+    const parts = text.split(/\n---\n/);
+    return parts.length > 1 ? parts.slice(1).join('\n---\n').trim() : text.trim();
+}
+
+async function sendDraft(index, clientCode, reqId) {
+    const toInput = document.getElementById('to-' + index);
+    const statusEl = document.getElementById('send-status-' + index);
+    const btn = document.getElementById('send-btn-' + index);
+    const draftText = document.getElementById('draft-' + index).value;
+
+    const toEmail = toInput.value.trim();
+    if (!toEmail || !toEmail.includes('@')) {
+        statusEl.className = 'send-status err';
+        statusEl.textContent = 'Enter a valid email address.';
+        return;
+    }
+
+    const subject = parseSubjectFromDraft(draftText);
+    const body = parseBodyFromDraft(draftText);
+
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    statusEl.className = 'send-status';
+    statusEl.textContent = '';
+
+    const formData = new FormData();
+    formData.append('to_email', toEmail);
+    formData.append('subject', subject);
+    formData.append('body', body);
+
+    try {
+        const resp = await fetch(
+            `/correspondence/${clientCode}/${reqId}/invitations/send`,
+            { method: 'POST', body: formData }
+        );
+        const data = await resp.json();
+
+        if (data.ok) {
+            statusEl.className = 'send-status ok';
+            statusEl.textContent = '✓ Sent';
+            btn.textContent = 'Sent ✓';
+            btn.style.background = '#16a34a';
+        } else {
+            statusEl.className = 'send-status err';
+            statusEl.textContent = data.error || 'Send failed.';
+            btn.disabled = false;
+            btn.textContent = 'Send via Gmail';
+            if (data.reauth) {
+                statusEl.innerHTML += ' <a href="/auth/login/google" style="text-decoration:underline">Re-authorize →</a>';
+            }
+        }
+    } catch (err) {
+        statusEl.className = 'send-status err';
+        statusEl.textContent = 'Network error. Please try again.';
+        btn.disabled = false;
+        btn.textContent = 'Send via Gmail';
     }
 }
 </script>

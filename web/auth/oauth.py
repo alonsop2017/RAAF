@@ -31,7 +31,10 @@ def setup_oauth():
         client_secret=client_secret,
         server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
         client_kwargs={
-            'scope': 'openid email profile https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly'
+            'scope': 'openid email profile '
+                     'https://www.googleapis.com/auth/drive.file '
+                     'https://www.googleapis.com/auth/drive.readonly '
+                     'https://www.googleapis.com/auth/gmail.send'
         }
     )
     return oauth

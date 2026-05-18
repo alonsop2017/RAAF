@@ -14,8 +14,9 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from fastapi import APIRouter, Request, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+from web.services.gmail_sender import check_gmail_scope, send_email, parse_subject_from_draft, parse_body_from_draft
 
 from scripts.utils.client_utils import (
     get_requisition_root,
@@ -182,11 +183,16 @@ async def generate_invitations(
 
     saved_filenames = [p.name for p in saved_paths]
 
+    # Check if the logged-in user's token can send Gmail
+    user = getattr(request.state, "user", None)
+    user_email = user.get("email", "") if user else ""
+    gmail_enabled = await check_gmail_scope(user_email) if user_email else False
+
     return templates.TemplateResponse(
         "correspondence/invitations_result.html",
         {
             "request": request,
-            "user": getattr(request.state, "user", None),
+            "user": user,
             "client_code": client_code,
             "req_id": req_id,
             "req_title": req_config.get("job", {}).get("title", req_id),
@@ -194,8 +200,35 @@ async def generate_invitations(
             "drafts": draft_previews,
             "saved_filenames": saved_filenames,
             "total": len(drafts),
+            "gmail_enabled": gmail_enabled,
+            "user_email": user_email,
         },
     )
+
+
+@router.post("/{client_code}/{req_id}/invitations/send")
+async def send_invitation_email(
+    request: Request,
+    client_code: str,
+    req_id: str,
+    to_email: str = Form(...),
+    subject: str = Form(...),
+    body: str = Form(...),
+):
+    """Send a single invitation email via Gmail on behalf of the logged-in user."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        return JSONResponse({"ok": False, "error": "Not authenticated.", "reauth": True}, status_code=401)
+
+    user_email = user.get("email", "")
+    from_name = user.get("name", "")
+
+    if not to_email or "@" not in to_email:
+        return JSONResponse({"ok": False, "error": "Invalid recipient email address.", "reauth": False}, status_code=400)
+
+    result = await send_email(user_email, to_email, subject, body, from_name=from_name)
+    status = 200 if result["ok"] else (401 if result.get("reauth") else 502)
+    return JSONResponse(result, status_code=status)
 
 
 @router.post("/settings")
