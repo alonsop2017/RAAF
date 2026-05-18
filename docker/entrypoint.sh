@@ -17,8 +17,9 @@ done
 # ── First-run: ensure data directories exist ─────────────────────────────────
 mkdir -p data clients archive logs backups
 # Pre-create log files so RotatingFileHandler can open them regardless of dir ownership
-touch logs/app.log logs/access.log logs/pcr_sync.log logs/backup.log
-chmod 664 logs/app.log logs/access.log logs/pcr_sync.log logs/backup.log 2>/dev/null || true
+touch logs/app.log logs/access.log logs/pcr_sync.log logs/backup.log logs/email_ingestion.log
+chmod 664 logs/app.log logs/access.log logs/pcr_sync.log logs/backup.log logs/email_ingestion.log 2>/dev/null || true
+mkdir -p Direct_Submissions/unmatched
 
 # ── Run DB migrations / backfill if DB is empty ──────────────────────────────
 if [ ! -f "data/raaf.db" ]; then

@@ -34,7 +34,8 @@ def setup_oauth():
             'scope': 'openid email profile '
                      'https://www.googleapis.com/auth/drive.file '
                      'https://www.googleapis.com/auth/drive.readonly '
-                     'https://www.googleapis.com/auth/gmail.send'
+                     'https://www.googleapis.com/auth/gmail.send '
+                     'https://www.googleapis.com/auth/gmail.modify'
         }
     )
     return oauth
