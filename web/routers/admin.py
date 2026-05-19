@@ -36,6 +36,7 @@ _SETTINGS_PATH = Path(__file__).parent.parent.parent / "config" / "settings.yaml
 _DB_PATH = Path(__file__).parent.parent.parent / "data" / "raaf.db"
 _CLIENTS_PATH = Path(__file__).parent.parent.parent / "clients"
 _BACKUP_LOG_PATH = Path(__file__).parent.parent.parent / "logs" / "backup.log"
+_INGESTION_LOG_PATH = Path(__file__).parent.parent.parent / "logs" / "email_ingestion.log"
 
 
 def _load_settings() -> dict:
@@ -110,6 +111,20 @@ async def admin_dashboard(request: Request, _admin=Depends(require_admin)):
         except Exception:
             backup_log = None
 
+    # Read last 100 lines of email ingestion log
+    ingestion_log = None
+    ingestion_log_mtime = None
+    if _INGESTION_LOG_PATH.exists():
+        try:
+            lines = _INGESTION_LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines()
+            ingestion_log = "\n".join(lines[-100:])
+            import datetime as _dt
+            ingestion_log_mtime = _dt.datetime.fromtimestamp(
+                _INGESTION_LOG_PATH.stat().st_mtime
+            ).strftime("%Y-%m-%d %H:%M UTC")
+        except Exception:
+            ingestion_log = None
+
     fs_stats = _collect_fs_stats()
 
     return templates.TemplateResponse("admin/dashboard.html", {
@@ -121,6 +136,8 @@ async def admin_dashboard(request: Request, _admin=Depends(require_admin)):
         "service_info": service_info,
         "app_info": app_info,
         "backup_log": backup_log,
+        "ingestion_log": ingestion_log,
+        "ingestion_log_mtime": ingestion_log_mtime,
         "fs_stats": fs_stats,
     })
 

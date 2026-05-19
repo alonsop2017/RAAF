@@ -273,6 +273,21 @@
 
 </div>
 
+<!-- Email Ingestion Log -->
+<div class="card" style="margin-top:1.5rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+        <h2 class="card-title" style="margin:0;">Email Ingestion Log</h2>
+        {% if ingestion_log_mtime %}
+        <span style="font-size:0.8rem; color:var(--text-secondary);">Last run: {{ ingestion_log_mtime }}</span>
+        {% endif %}
+    </div>
+    {% if ingestion_log %}
+    <pre class="backup-log-viewer" style="max-height:400px;">{{ ingestion_log }}</pre>
+    {% else %}
+    <p class="text-secondary">No ingestion log found — runs daily at 6:00 AM UTC.</p>
+    {% endif %}
+</div>
+
 <!-- Backup Log -->
 <div class="card" style="margin-top:1.5rem;">
     <h2 class="card-title">Backup Log</h2>
