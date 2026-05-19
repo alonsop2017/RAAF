@@ -21,6 +21,10 @@ TOKEN_REFRESH_URL = "https://oauth2.googleapis.com/token"
 
 REQUIRED_SCOPE = "https://www.googleapis.com/auth/gmail.send"
 
+# Primary RAAF account — always used for sending regardless of who is logged in.
+# This avoids per-user OAuth scope issues for non-Workspace Google accounts.
+RAAF_SENDER_EMAIL = "alonso.perez@archtektconsultinginc.com"
+
 
 async def _refresh_access_token(refresh_token: str) -> Optional[dict]:
     """Exchange a refresh token for a fresh access token."""
@@ -61,10 +65,11 @@ async def _get_valid_token(user_email: str) -> Optional[str]:
 
 async def check_gmail_scope(user_email: str) -> bool:
     """
-    Return True if the stored token can reach the Gmail API.
-    Makes a lightweight profile call; returns False on 401/403.
+    Return True if the primary RAAF sender account can reach the Gmail API.
+    Always checks the RAAF_SENDER_EMAIL token, not the logged-in user's token,
+    since all sends go through the primary account.
     """
-    access_token = await _get_valid_token(user_email)
+    access_token = await _get_valid_token(RAAF_SENDER_EMAIL)
     if not access_token:
         return False
     async with httpx.AsyncClient() as client:
@@ -84,19 +89,21 @@ async def send_email(
     from_name: Optional[str] = None,
 ) -> dict:
     """
-    Send an email via the Gmail API on behalf of user_email.
+    Send an email via the Gmail API using the primary RAAF sender account.
+    user_email is used only for the display name; all sends go through
+    RAAF_SENDER_EMAIL so no per-user Gmail authorization is required.
 
     Returns:
         {"ok": True, "message_id": "..."}           on success
         {"ok": False, "error": "...", "reauth": bool}  on failure
     """
-    access_token = await _get_valid_token(user_email)
+    access_token = await _get_valid_token(RAAF_SENDER_EMAIL)
     if not access_token:
-        return {"ok": False, "error": "No valid OAuth token. Please re-authenticate.", "reauth": True}
+        return {"ok": False, "error": "RAAF Gmail account not authorized. Please log in as the primary RAAF account.", "reauth": True}
 
-    # Build RFC 2822 message
+    # Build RFC 2822 message — show the logged-in user's name but send from RAAF account
     msg = MIMEMultipart("alternative")
-    from_header = f"{from_name} <{user_email}>" if from_name else user_email
+    from_header = f"{from_name} via RAAF <{RAAF_SENDER_EMAIL}>" if from_name else RAAF_SENDER_EMAIL
     msg["From"] = from_header
     msg["To"] = to_email
     msg["Subject"] = subject
