@@ -859,10 +859,11 @@ async def admin_logs(request: Request, _admin=Depends(require_admin),
     logs_dir = _Path("/app/logs")
 
     log_sources = [
-        ("app",      "App / Errors",  logs_dir / "app.log"),
-        ("access",   "HTTP Access",   logs_dir / "access.log"),
-        ("pcr_sync", "PCR Sync",      logs_dir / "pcr_sync.log"),
-        ("backup",   "Backup",        logs_dir / "backup.log"),
+        ("app",       "App / Errors",    logs_dir / "app.log"),
+        ("access",    "HTTP Access",     logs_dir / "access.log"),
+        ("pcr_sync",  "PCR Sync",        logs_dir / "pcr_sync.log"),
+        ("email",     "Email Ingestion", logs_dir / "email_ingestion.log"),
+        ("backup",    "Backup",          logs_dir / "backup.log"),
     ]
 
     # Find the selected log file
