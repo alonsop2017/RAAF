@@ -506,17 +506,41 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
     # Sort by score (assessed first, then by score descending)
     candidates.sort(key=lambda x: (x['assessed'], x.get('score', 0)), reverse=True)
 
-    # Get batches
+    # Get batches — include per-candidate assessment status for the drawer
     batches = []
+    assessments_dir = req_root / "assessments" / "individual"
     batches_dir = req_root / "resumes" / "batches"
     if batches_dir.exists():
         for batch_dir in sorted(batches_dir.iterdir(), reverse=True):
             if batch_dir.is_dir():
                 extracted_dir = batch_dir / "extracted"
-                batch_files = list(extracted_dir.glob("*.txt")) if extracted_dir.exists() else []
+                batch_files = sorted(extracted_dir.glob("*.txt")) if extracted_dir.exists() else []
+                candidates_in_batch = []
+                for txt in batch_files:
+                    name_norm = txt.stem.replace("_resume", "")
+                    assessment_file = assessments_dir / f"{name_norm}_assessment.json"
+                    entry = {"name_normalized": name_norm,
+                             "display_name": name_norm.replace("_", " ").title(),
+                             "assessed": False, "score": None,
+                             "percentage": None, "recommendation": None}
+                    if assessment_file.exists():
+                        try:
+                            import json as _json
+                            a = _json.loads(assessment_file.read_text())
+                            entry["assessed"] = True
+                            entry["display_name"] = a.get("candidate", {}).get("name", entry["display_name"])
+                            entry["score"] = a.get("total_score")
+                            entry["percentage"] = a.get("percentage")
+                            entry["recommendation"] = a.get("recommendation")
+                        except Exception:
+                            pass
+                    candidates_in_batch.append(entry)
+                assessed_count = sum(1 for c in candidates_in_batch if c["assessed"])
                 batches.append({
                     'name': batch_dir.name,
-                    'candidate_count': len(batch_files)
+                    'candidate_count': len(batch_files),
+                    'assessed_count': assessed_count,
+                    'candidates': candidates_in_batch,
                 })
 
     # Check for reports

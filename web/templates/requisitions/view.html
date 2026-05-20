@@ -405,16 +405,167 @@
             <div class="card-header">
                 <h3>Assessment Batches</h3>
             </div>
-            <div class="card-body">
+            <div class="card-body" style="padding:0;">
                 {% for batch in batches %}
-                <div class="flex flex-between flex-center mb-1">
-                    <span>{{ batch.name }}</span>
-                    <span class="badge badge-secondary">{{ batch.candidate_count }} candidates</span>
+                <div class="batch-row" onclick="openBatchDrawer('{{ batch.name }}')">
+                    <div class="batch-row-left">
+                        <span class="batch-name">{{ batch.name }}</span>
+                        <span class="batch-meta">
+                            {{ batch.candidate_count }} resume{{ 's' if batch.candidate_count != 1 else '' }}
+                            {% if batch.assessed_count > 0 %}
+                            &bull; {{ batch.assessed_count }} assessed
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="batch-row-right">
+                        {% if batch.assessed_count == batch.candidate_count and batch.candidate_count > 0 %}
+                        <span class="badge badge-success" style="font-size:0.72rem;">Complete</span>
+                        {% elif batch.assessed_count > 0 %}
+                        <span class="badge badge-warning" style="font-size:0.72rem;">Partial</span>
+                        {% else %}
+                        <span class="badge badge-secondary" style="font-size:0.72rem;">Pending</span>
+                        {% endif %}
+                        <svg style="width:14px;height:14px;color:#94a3b8;flex-shrink:0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    </div>
                 </div>
                 {% endfor %}
             </div>
         </div>
         {% endif %}
+
+<!-- Batch Detail Drawer -->
+<div id="batch-drawer-overlay" class="batch-drawer-overlay" onclick="closeBatchDrawer()"></div>
+<div id="batch-drawer" class="batch-drawer">
+    <div class="batch-drawer-header">
+        <div>
+            <h3 id="batch-drawer-title" style="margin:0;font-size:1rem;font-weight:600;"></h3>
+            <span id="batch-drawer-meta" style="font-size:0.8rem;color:#64748b;"></span>
+        </div>
+        <button onclick="closeBatchDrawer()" style="background:none;border:none;cursor:pointer;padding:4px;color:#64748b;">
+            <svg style="width:20px;height:20px" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+    </div>
+    <div id="batch-drawer-body" class="batch-drawer-body"></div>
+</div>
+
+<style>
+.batch-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.65rem 1rem; border-bottom: 1px solid #f1f5f9;
+    cursor: pointer; transition: background 0.15s;
+}
+.batch-row:last-child { border-bottom: none; }
+.batch-row:hover { background: #f8fafc; }
+.batch-row-left { display: flex; flex-direction: column; gap: 0.1rem; }
+.batch-name { font-size: 0.875rem; font-weight: 500; color: #1e293b; }
+.batch-meta { font-size: 0.775rem; color: #64748b; }
+.batch-row-right { display: flex; align-items: center; gap: 0.5rem; }
+
+.batch-drawer-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.35); z-index: 1000;
+}
+.batch-drawer {
+    display: none; position: fixed; top: 0; right: 0;
+    width: 480px; max-width: 95vw; height: 100vh;
+    background: #fff; z-index: 1001; box-shadow: -4px 0 24px rgba(0,0,0,0.12);
+    flex-direction: column; overflow: hidden;
+}
+.batch-drawer.open, .batch-drawer-overlay.open { display: flex; }
+.batch-drawer-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 1rem 1.25rem; border-bottom: 1px solid #e2e8f0; flex-shrink: 0;
+}
+.batch-drawer-body { flex: 1; overflow-y: auto; padding: 0; }
+.batch-cand-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.6rem 1.25rem; border-bottom: 1px solid #f1f5f9; gap: 0.5rem;
+}
+.batch-cand-row:last-child { border-bottom: none; }
+.batch-cand-name { font-size: 0.875rem; font-weight: 500; color: #1e293b; flex: 1; min-width: 0; }
+.batch-cand-score { font-size: 0.8rem; color: #475569; white-space: nowrap; }
+.rec-pill {
+    font-size: 0.7rem; font-weight: 600; padding: 2px 7px; border-radius: 99px; white-space: nowrap;
+}
+.rec-strong { background: #dcfce7; color: #166534; }
+.rec-recommend { background: #dbeafe; color: #1e40af; }
+.rec-conditional { background: #fef9c3; color: #854d0e; }
+.rec-dnr { background: #fee2e2; color: #991b1b; }
+.rec-pending { background: #f1f5f9; color: #64748b; }
+</style>
+
+<script>
+const BATCH_DATA = {
+    {% for batch in batches %}
+    "{{ batch.name }}": {
+        candidates: [
+            {% for c in batch.candidates %}
+            {
+                name: {{ c.display_name | tojson }},
+                norm: {{ c.name_normalized | tojson }},
+                assessed: {{ 'true' if c.assessed else 'false' }},
+                score: {{ c.score if c.score is not none else 'null' }},
+                pct: {{ c.percentage if c.percentage is not none else 'null' }},
+                rec: {{ c.recommendation | tojson if c.recommendation else 'null' }},
+            },
+            {% endfor %}
+        ]
+    },
+    {% endfor %}
+};
+
+function recPillClass(rec) {
+    if (!rec) return 'rec-pending';
+    if (rec === 'STRONG RECOMMEND') return 'rec-strong';
+    if (rec === 'RECOMMEND') return 'rec-recommend';
+    if (rec === 'CONDITIONAL') return 'rec-conditional';
+    return 'rec-dnr';
+}
+
+function recLabel(rec) {
+    if (!rec) return 'Pending';
+    if (rec === 'STRONG RECOMMEND') return 'Strong';
+    if (rec === 'RECOMMEND') return 'Recommend';
+    if (rec === 'CONDITIONAL') return 'Conditional';
+    return 'DNR';
+}
+
+function openBatchDrawer(batchName) {
+    const data = BATCH_DATA[batchName];
+    if (!data) return;
+
+    document.getElementById('batch-drawer-title').textContent = batchName;
+    const assessed = data.candidates.filter(c => c.assessed).length;
+    document.getElementById('batch-drawer-meta').textContent =
+        `${data.candidates.length} resume${data.candidates.length !== 1 ? 's' : ''} · ${assessed} assessed`;
+
+    const body = document.getElementById('batch-drawer-body');
+    if (data.candidates.length === 0) {
+        body.innerHTML = '<p style="padding:1.25rem;color:#64748b;font-size:0.875rem;">No resumes in this batch.</p>';
+    } else {
+        const sorted = [...data.candidates].sort((a, b) => (b.pct || -1) - (a.pct || -1));
+        body.innerHTML = sorted.map(c => `
+            <div class="batch-cand-row">
+                <span class="batch-cand-name">${c.name}</span>
+                ${c.assessed
+                    ? `<span class="batch-cand-score">${Math.round(c.pct)}%</span>
+                       <span class="rec-pill ${recPillClass(c.rec)}">${recLabel(c.rec)}</span>`
+                    : `<span class="rec-pill rec-pending">Pending</span>`
+                }
+            </div>`).join('');
+    }
+
+    document.getElementById('batch-drawer-overlay').classList.add('open');
+    document.getElementById('batch-drawer').classList.add('open');
+}
+
+function closeBatchDrawer() {
+    document.getElementById('batch-drawer-overlay').classList.remove('open');
+    document.getElementById('batch-drawer').classList.remove('open');
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeBatchDrawer(); });
+</script>
     </div>
 </div>
 
