@@ -506,6 +506,19 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
     # Sort by score (assessed first, then by score descending)
     candidates.sort(key=lambda x: (x['assessed'], x.get('score', 0)), reverse=True)
 
+    # Load lifecycle status for each candidate
+    _lc_dir = req_root / "assessments" / "individual"
+    import json as _json
+    for _cand in candidates:
+        _cand['lifecycle'] = ''
+        _lc_file = _lc_dir / f"{_cand['name_normalized']}_lifecycle.json"
+        if _lc_file.exists():
+            try:
+                with open(_lc_file) as _lf:
+                    _cand['lifecycle'] = _json.load(_lf).get('status', '')
+            except Exception:
+                pass
+
     # Get batches — include per-candidate assessment status for the drawer
     batches = []
     assessments_dir = req_root / "assessments" / "individual"

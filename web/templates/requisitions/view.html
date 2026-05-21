@@ -127,12 +127,15 @@
                     </thead>
                     <tbody>
                         {% for candidate in candidates[:10] %}
-                        <tr>
+                        <tr {% if candidate.lifecycle == 'out_of_consideration' %}style="opacity:0.5;"{% endif %}>
                             <td>
                                 <a href="/candidates/{{ client_code }}/{{ req_id }}/{{ candidate.name_normalized }}"
                                    style="font-weight: 500; color: var(--primary-color); text-decoration: none;">
                                     {{ candidate.name }}
                                 </a>
+                                {% if candidate.lifecycle == 'out_of_consideration' %}
+                                <span style="background:#fee2e2;color:#991b1b;font-size:0.65rem;padding:2px 6px;border-radius:99px;font-weight:600;margin-left:0.3rem;">Out</span>
+                                {% endif %}
                             </td>
                             <td>
                                 {% if candidate.assessed %}
@@ -143,7 +146,9 @@
                                 {% endif %}
                             </td>
                             <td>
-                                {% if candidate.assessed %}
+                                {% if candidate.lifecycle == 'out_of_consideration' %}
+                                <span class="text-muted">—</span>
+                                {% elif candidate.assessed %}
                                     {% if candidate.recommendation == 'STRONG RECOMMEND' %}
                                     <span class="badge rec-strong">{{ candidate.recommendation }}</span>
                                     {% elif candidate.recommendation == 'RECOMMEND' %}
@@ -165,8 +170,23 @@
                                 </span>
                             </td>
                             <td>
-                                <a href="/candidates/{{ client_code }}/{{ req_id }}/{{ candidate.name_normalized }}"
-                                   class="btn btn-sm btn-outline">View</a>
+                                <div style="display:flex;gap:0.3rem;flex-wrap:wrap;">
+                                    <a href="/candidates/{{ client_code }}/{{ req_id }}/{{ candidate.name_normalized }}"
+                                       class="btn btn-sm btn-outline">View</a>
+                                    {% if candidate.lifecycle == 'out_of_consideration' %}
+                                    <form action="/assessments/{{ client_code }}/{{ req_id }}/{{ candidate.name_normalized }}/lifecycle"
+                                          method="POST" style="display:inline;">
+                                        <input type="hidden" name="status" value="">
+                                        <button type="submit" class="btn btn-sm btn-outline">Restore</button>
+                                    </form>
+                                    {% else %}
+                                    <form action="/assessments/{{ client_code }}/{{ req_id }}/{{ candidate.name_normalized }}/lifecycle"
+                                          method="POST" style="display:inline;">
+                                        <input type="hidden" name="status" value="out_of_consideration">
+                                        <button type="submit" class="btn btn-sm btn-req-ooc">Remove</button>
+                                    </form>
+                                    {% endif %}
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}
@@ -449,6 +469,18 @@
 </div>
 
 <style>
+.btn-req-ooc {
+    background: transparent;
+    color: #dc2626;
+    border: 1px solid #fca5a5;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.btn-req-ooc:hover { background: #fee2e2; border-color: #dc2626; }
+
 .batch-row {
     display: flex; align-items: center; justify-content: space-between;
     padding: 0.65rem 1rem; border-bottom: 1px solid #f1f5f9;
