@@ -269,7 +269,7 @@ async def run_single_assessment(
         raise HTTPException(status_code=500, detail=stderr or "Assessment failed")
 
 
-_LIFECYCLE_STATUSES = ("interview_recommended", "offered", "accepted", "future_opportunities", "")
+_LIFECYCLE_STATUSES = ("interview_recommended", "offered", "accepted", "future_opportunities", "out_of_consideration", "")
 
 
 @router.get("/{client_code}/{req_id}/{name_normalized}/lifecycle")

@@ -110,6 +110,15 @@ async def list_candidates(request: Request, client_code: str, req_id: str):
         else:
             candidate_data['name'] = name_normalized.replace("_", " ").title()
 
+        lifecycle_file = assessments_dir / f"{name_normalized}_lifecycle.json"
+        candidate_data['lifecycle'] = ''
+        if lifecycle_file.exists():
+            try:
+                with open(lifecycle_file) as lf:
+                    candidate_data['lifecycle'] = json.load(lf).get('status', '')
+            except Exception:
+                pass
+
         candidates.append(candidate_data)
 
     # Also check legacy processed/ folder for backwards compatibility
@@ -141,6 +150,16 @@ async def list_candidates(request: Request, client_code: str, req_id: str):
                 candidate_data['assessed_at'] = raw_at[:10] if raw_at else ''
             else:
                 candidate_data['name'] = name_normalized.replace("_", " ").title()
+
+            lifecycle_file = assessments_dir / f"{name_normalized}_lifecycle.json"
+            candidate_data['lifecycle'] = ''
+            if lifecycle_file.exists():
+                try:
+                    with open(lifecycle_file) as lf:
+                        candidate_data['lifecycle'] = json.load(lf).get('status', '')
+                except Exception:
+                    pass
+
             candidates.append(candidate_data)
 
     # Sort by score (assessed first, then by percentage descending)

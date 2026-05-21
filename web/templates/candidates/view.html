@@ -167,22 +167,43 @@
                             Skills Marketing
                         </button>
                     </form>
+                    <form action="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/lifecycle" method="POST" style="display: inline;">
+                        <input type="hidden" name="status" value="out_of_consideration">
+                        <button type="submit" class="btn btn-sm {% if lifecycle == 'out_of_consideration' %}btn-ooc-active{% else %}btn-ooc{% endif %}">
+                            Out of Consideration
+                        </button>
+                    </form>
                     {% if lifecycle %}
                     <form action="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/lifecycle" method="POST" style="display: inline;">
                         <input type="hidden" name="status" value="">
-                        <button type="submit" class="btn btn-sm btn-outline" style="color: #ef4444; border-color: #ef4444;">
+                        <button type="submit" class="btn btn-sm btn-outline" style="color: #6b7280; border-color: #d1d5db;">
                             Clear
                         </button>
                     </form>
                     {% endif %}
                 </div>
                 {% if lifecycle %}
-                <p class="mt-2" style="font-size: 0.875rem; color: #6b7280;">
+                <p class="mt-2" style="font-size: 0.875rem; {% if lifecycle == 'out_of_consideration' %}color: #dc2626;{% else %}color: #6b7280;{% endif %}">
                     Current: <strong>{{ lifecycle.replace('_', ' ').title() }}</strong>
                 </p>
                 {% else %}
                 <p class="mt-2" style="font-size: 0.875rem; color: #9ca3af;">No pipeline status set.</p>
                 {% endif %}
+
+<style>
+.btn-ooc {
+    background: transparent;
+    color: #dc2626;
+    border: 1px solid #fca5a5;
+}
+.btn-ooc:hover { background: #fee2e2; border-color: #dc2626; }
+.btn-ooc-active {
+    background: #dc2626;
+    color: #fff;
+    border: 1px solid #dc2626;
+}
+.btn-ooc-active:hover { background: #b91c1c; }
+</style>
             </div>
         </div>
         {% else %}
