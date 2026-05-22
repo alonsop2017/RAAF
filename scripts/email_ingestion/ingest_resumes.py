@@ -45,6 +45,16 @@ DIGEST_RECIPIENT = "alonso.perez@archtektconsultinginc.com"
 # Known recruitment senders — emails from these domains are always scanned
 TRUSTED_SENDERS = ["peoplefindinc.com", "indeed.com", "noreply@indeed.com"]
 
+# Emails whose subjects indicate internal job-posting / ad-distribution messages
+# (not candidate applications) — skip entirely rather than trying to match.
+SKIP_SUBJECT_KEYWORDS = [
+    "all ads", "listings on pcr", "job descriptions - ads on indeed",
+    "efrat us - job descriptions", "efrat canada - job descriptions",
+    "ads and notes", "efrat world",
+    "all jobs - ", "jobs - april", "jobs - may", "jobs - june",
+    "jobs - july", "jobs - august", "jobs - september",
+]
+
 
 # ── State ────────────────────────────────────────────────────────────────────
 
@@ -338,6 +348,13 @@ def run():
             subject = headers.get("subject", "(no subject)")
             sender  = headers.get("from", "")
             date    = headers.get("date", "")
+
+            # Skip internal job-posting / ad-distribution emails
+            if any(kw in subject.lower() for kw in SKIP_SUBJECT_KEYWORDS):
+                _log(f"SKIP (ad/internal subject): {subject!r}")
+                add_label(msg_id, label_id)
+                processed_ids.append(msg_id)
+                continue
 
             body_text, attachments = extract_parts(payload)
 

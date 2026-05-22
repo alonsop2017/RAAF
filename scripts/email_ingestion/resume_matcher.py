@@ -90,11 +90,15 @@ RESUME EXCERPT (first 3000 chars):
 {resume_snippet}
 
 TASK:
-1. Identify which active requisition this resume best matches, based on the job title, skills, experience, and any clues in the email subject/body.
-2. Return a JSON object with exactly these fields:
-   - "req_id": the matching requisition ID string, or null if no confident match
-   - "confidence": a float 0.0-1.0 (0.8+ = strong match, 0.5-0.79 = possible, <0.5 = unmatched)
-   - "reasoning": one sentence explaining the match or why it's unmatched
+1. FIRST, determine whether this attachment is a CANDIDATE RESUME or a JOB DESCRIPTION / JOB POSTING.
+   - A resume describes a person's work history, education, skills, and contact info.
+   - A job description lists responsibilities, requirements, and company details for an open role.
+   - If the attachment is a job description / job posting / ad, set req_id to null and confidence to 0.0.
+2. If it IS a resume, identify which active requisition it best matches.
+3. Return a JSON object with exactly these fields:
+   - "req_id": the matching requisition ID string, or null if no confident match or if this is a JD
+   - "confidence": a float 0.0-1.0 (0.8+ = strong match, 0.5-0.79 = possible, <0.5 = unmatched, 0.0 = job description)
+   - "reasoning": one sentence explaining the match, why it's unmatched, or that this is a job description not a resume
 
 Respond with ONLY the JSON object, no other text."""
 
