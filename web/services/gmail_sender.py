@@ -6,6 +6,7 @@ Uses the stored per-user OAuth token to send emails via the Gmail API.
 import base64
 import re
 import time
+from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional
@@ -130,6 +131,57 @@ async def send_email(
         error_msg = error_data.get("error", {}).get("message", "Insufficient permissions")
         return {"ok": False, "error": error_msg, "reauth": True}
 
+    return {"ok": False, "error": f"Gmail API error {resp.status_code}: {resp.text}", "reauth": False}
+
+
+async def send_email_with_attachments(
+    user_email: str,
+    to_email: str,
+    subject: str,
+    body: str,
+    attachments: list[dict],
+    from_name: Optional[str] = None,
+) -> dict:
+    """
+    Send an email with file attachments via the Gmail API.
+
+    attachments: list of {"filename": str, "data": bytes, "mimetype": str}
+
+    Returns same structure as send_email().
+    """
+    access_token = await _get_valid_token(RAAF_SENDER_EMAIL)
+    if not access_token:
+        return {"ok": False, "error": "RAAF Gmail account not authorized.", "reauth": True}
+
+    msg = MIMEMultipart("mixed")
+    from_header = f"{from_name} via RAAF <{RAAF_SENDER_EMAIL}>" if from_name else RAAF_SENDER_EMAIL
+    msg["From"] = from_header
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    for att in attachments:
+        part = MIMEApplication(att["data"], _subtype=att["mimetype"].split("/")[-1])
+        part.add_header("Content-Disposition", "attachment", filename=att["filename"])
+        msg.attach(part)
+
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            GMAIL_SEND_URL,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            json={"raw": raw},
+            timeout=30,
+        )
+
+    if resp.status_code == 200:
+        return {"ok": True, "message_id": resp.json().get("id", "")}
+    if resp.status_code in (401, 403):
+        return {"ok": False, "error": resp.json().get("error", {}).get("message", "Insufficient permissions"), "reauth": True}
     return {"ok": False, "error": f"Gmail API error {resp.status_code}: {resp.text}", "reauth": False}
 
 
