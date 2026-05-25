@@ -234,6 +234,60 @@ def check_requisition(
                 except Exception as e:
                     print(f"  Auto-assessment error: {e}")
 
+    # Catch OLI→RR status transitions: candidates already in the manifest who were
+    # previously "On-Line Job Inquiry" (no resume) and are now "Resume Reviewed"
+    # but have an empty or missing extracted file.
+    if auto_download:
+        try:
+            from scripts.utils.client_utils import (
+                get_resumes_path, normalize_candidate_name, list_all_extracted_resumes
+            )
+            existing_keys = {
+                f.stem.replace("_resume", "")
+                for f in list_all_extracted_resumes(client_code, req_id)
+            }
+            new_ids_set = {str(c.get("CandidateId", "")) for c in new_candidates}
+            rr_candidates = [
+                c for c in all_candidates
+                if c.get("PipelineStatus") == "Resume Reviewed"
+                and str(c.get("CandidateId", "")) not in new_ids_set
+            ]
+            needs_redownload = []
+            batches_base = get_resumes_path(client_code, req_id, "batches").parent / "resumes" / "batches"
+            for c in rr_candidates:
+                first = (c.get("FirstName") or "").strip()
+                last = (c.get("LastName") or "").strip()
+                key = normalize_candidate_name(f"{first} {last}")
+                if key not in existing_keys:
+                    needs_redownload.append(c)
+                    continue
+                # Check if the extracted file is effectively empty
+                for txt in batches_base.glob(f"*/extracted/{key}_resume.txt"):
+                    body = txt.read_text(errors="replace").split("---\n", 1)[-1].strip()
+                    if len(body) < 300:
+                        needs_redownload.append(c)
+                    break
+            if needs_redownload:
+                print(f"  {client_code}/{req_id}: {len(needs_redownload)} Resume Reviewed "
+                      f"candidate(s) with missing/empty resume — re-downloading")
+                for c in needs_redownload:
+                    print(f"    - {c.get('FirstName','')} {c.get('LastName','')}")
+                from download_resumes import download_resumes
+                redownload_ids = [str(c.get("CandidateId")) for c in needs_redownload]
+                download_resumes(client_code, req_id, candidate_ids=redownload_ids,
+                                 overwrite=True)
+                if auto_assess:
+                    try:
+                        from assess_candidate import assess_all_pending
+                        result = assess_all_pending(client_code, req_id, use_ai=True, workers=4)
+                        assessed = result.get("assessed", 0)
+                        if assessed:
+                            print(f"  Auto-assessment complete: {assessed} candidates assessed")
+                    except Exception as e:
+                        print(f"  Auto-assessment error: {e}")
+        except Exception as e:
+            print(f"  OLI→RR re-download check error: {e}")
+
     # Always catch pending DB candidates with no resume on disk —
     # covers the case where sync_candidates ran before watch_applicants
     # and set last_sync, making those candidates invisible to the date filter.

@@ -71,7 +71,8 @@ def download_resumes(
 
     candidates = manifest.get("candidates", [])
     if candidate_ids:
-        candidates = [c for c in candidates if c.get("CandidateId") in candidate_ids]
+        id_set = {str(cid) for cid in candidate_ids}
+        candidates = [c for c in candidates if str(c.get("CandidateId", "")) in id_set]
 
     print(f"Downloading resumes for {req_id}...")
     print(f"  Candidates to process: {len(candidates)}")
