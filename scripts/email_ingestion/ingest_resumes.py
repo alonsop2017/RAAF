@@ -45,6 +45,15 @@ DIGEST_RECIPIENT = "alonso.perez@archtektconsultinginc.com"
 # Known recruitment senders — emails from these domains are always scanned
 TRUSTED_SENDERS = ["peoplefindinc.com", "indeed.com", "noreply@indeed.com"]
 
+# Markers that indicate a body contains a resume/candidate profile rather than
+# a plain conversational email.  Two or more must be present.
+_RESUME_BODY_MARKERS = [
+    "work history", "work experience", "employment history",
+    "professional experience", "professional summary",
+    "education", "certifications", "skills",
+    "job history", "career history",
+]
+
 # Emails whose subjects indicate internal job-posting / ad-distribution messages
 # (not candidate applications) — skip entirely rather than trying to match.
 SKIP_SUBJECT_KEYWORDS = [
@@ -101,6 +110,55 @@ def _normalize_name(filename: str) -> str:
     if len(parts) >= 2:
         return f"{parts[-1]}_{parts[0]}".lower()
     return stem.lower().replace(" ", "_") or "candidate_unknown"
+
+
+def _looks_like_resume(text: str) -> bool:
+    """Return True if the text body appears to be a resume or candidate profile."""
+    lower = text.lower()
+    hits = sum(1 for marker in _RESUME_BODY_MARKERS if marker in lower)
+    return hits >= 2 and len(text.strip()) > 300
+
+
+def _extract_name_from_body(body: str, subject: str) -> str:
+    """
+    Best-effort candidate name extraction from an email body or subject.
+
+    Tries:
+      1. ALL-CAPS name block near the top of the body (PCR/Indeed profile style)
+      2. Title-case name-looking line near the top
+      3. Last token(s) after a dash in the subject ("Reliability Engineer - Quentin")
+    """
+    name_re = re.compile(r"^[A-ZÀ-Ža-z][A-ZÀ-Ža-z'\-]+(?:\s+[A-ZÀ-Ža-z'\-]+){1,3}$")
+    skip_words = {
+        "resume", "profile", "insights", "summary", "experience", "education",
+        "skills", "certifications", "contact", "history", "recently", "active",
+    }
+    lines = body.strip().split("\n")
+    # Pass 1 — ALL-CAPS name line (e.g. "QUENTIN FOSTER")
+    for line in lines[:30]:
+        line = line.strip()
+        if not line or len(line) > 50:
+            continue
+        if line.upper() == line and len(line.split()) in (2, 3):
+            words = line.split()
+            if all(w.isalpha() and w.lower() not in skip_words for w in words):
+                return line.title()
+    # Pass 2 — title-case name-looking line
+    for line in lines[:20]:
+        line = line.strip()
+        if not line or len(line) > 50:
+            continue
+        if any(line.lower().startswith(w) for w in skip_words):
+            continue
+        if name_re.match(line):
+            return line
+    # Pass 3 — subject fallback: "Job Title - First Last" or "Job Title - First"
+    if " - " in subject:
+        after_dash = subject.rsplit(" - ", 1)[-1].strip()
+        after_dash = re.sub(r"[^A-Za-z\s]", "", after_dash).strip()
+        if after_dash and len(after_dash.split()) <= 3:
+            return after_dash.title()
+    return ""
 
 
 def _extract_text(file_bytes: bytes, filename: str) -> str:
@@ -359,9 +417,54 @@ def run():
             body_text, attachments = extract_parts(payload)
 
             if not attachments:
-                # Mark and skip — no resume attachment
-                add_label(msg_id, label_id)
-                processed_ids.append(msg_id)
+                # Check if this is a body-only resume from a trusted sender
+                # (PCR/Indeed profile emails embed the full resume in the HTML body)
+                _m = re.search(r"@([\w.\-]+)", sender)
+                sender_domain = _m.group(1).lower() if _m else ""
+                is_trusted = any(td in sender_domain for td in TRUSTED_SENDERS)
+                if is_trusted and body_text and _looks_like_resume(body_text):
+                    _log(f"Processing body-only resume from {sender!r}: {subject!r}")
+                    display_name = _extract_name_from_body(body_text, subject)
+                    name_norm = _normalize_name(display_name or subject) if display_name else "candidate_unknown"
+                    candidate_name = display_name or name_norm.replace("_", " ").title()
+                    pseudo_filename = f"{name_norm}.txt"
+
+                    req, confidence, reasoning = match_resume_to_requisition(
+                        resume_text=body_text,
+                        email_subject=subject,
+                        email_body=body_text,
+                        sender=sender,
+                        filename=pseudo_filename,
+                    )
+
+                    if req:
+                        _log(f"  Matched → {req['req_id']} ({req['title']}) — {int(confidence*100)}% — {reasoning}")
+                        orig_path, txt_path = _store_resume(
+                            body_text.encode(), pseudo_filename, body_text, req, name_norm, confidence
+                        )
+                        _add_candidate_to_db(req, name_norm, candidate_name, txt_path, sender, confidence)
+                        ingested.append({
+                            "candidate": candidate_name,
+                            "req_id": req["req_id"],
+                            "req_title": req["title"],
+                            "confidence": confidence,
+                            "reasoning": reasoning,
+                        })
+                    else:
+                        _log(f"  Unmatched ({int(confidence*100)}%) — {reasoning}")
+                        _store_resume(body_text.encode(), pseudo_filename, body_text, None, name_norm, confidence)
+                        unmatched.append({
+                            "filename": pseudo_filename,
+                            "sender": sender,
+                            "reason": reasoning,
+                        })
+
+                    add_label(msg_id, label_id)
+                    processed_ids.append(msg_id)
+                else:
+                    # Not a resume body — mark and skip
+                    add_label(msg_id, label_id)
+                    processed_ids.append(msg_id)
                 continue
 
             _log(f"Processing message from {sender!r}: {subject!r} ({len(attachments)} attachment(s))")
