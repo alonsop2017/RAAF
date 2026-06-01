@@ -86,13 +86,9 @@ def _save_state(state: dict) -> None:
 def _log(msg: str) -> None:
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     line = f"[{ts}] {msg}"
+    # Cron redirects stdout to email_ingestion.log — print is sufficient.
+    # Removed redundant direct file write that caused every line to appear twice.
     print(line, flush=True)
-    try:
-        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(line + "\n")
-    except Exception:
-        pass
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

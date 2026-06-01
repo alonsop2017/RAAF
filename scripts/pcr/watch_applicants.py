@@ -291,18 +291,28 @@ def check_requisition(
     # Always catch pending DB candidates with no resume on disk —
     # covers the case where sync_candidates ran before watch_applicants
     # and set last_sync, making those candidates invisible to the date filter.
+    # Skip candidates older than RESUME_CATCHUP_MAX_AGE_DAYS — they will never
+    # upload a resume and the repeated PCR calls waste quota and create empty batches.
+    RESUME_CATCHUP_MAX_AGE_DAYS = 14
     if auto_download:
         try:
             sys.path.insert(0, str(Path(__file__).parent.parent.parent))
             from scripts.utils.database import get_db, _use_database
             if _use_database():
                 pending = get_db().list_candidates(req_id, status="pending")
+                cutoff = datetime.now() - timedelta(days=RESUME_CATCHUP_MAX_AGE_DAYS)
                 missing = [
                     c for c in pending
                     if c.get("pcr_candidate_id")
                     and (
                         not c.get("resume_extracted_path")
                         or not Path(c["resume_extracted_path"]).exists()
+                    )
+                    and (
+                        not c.get("created_at")
+                        or datetime.fromisoformat(
+                            str(c["created_at"]).replace("Z", "")
+                        ) >= cutoff
                     )
                 ]
                 if missing:
