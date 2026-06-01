@@ -370,6 +370,10 @@ class PCRClient:
                         "DateAdded": pi.get("AppointmentDate", ""),
                         "PipelineStatus": pi.get("InterviewStatus", ""),
                         "SendoutId": pi.get("SendoutId"),
+                        # PipelineInterviewId is the ActivityId used to GET this record —
+                        # required for PUT /PipelineInterviews/{id} status updates.
+                        # SendoutId is a separate PCR concept and is NOT the PI record ID.
+                        "PipelineInterviewId": act_id,
                         "JobId": pi.get("JobId"),
                     })
             except PCRClientError:

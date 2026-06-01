@@ -185,16 +185,19 @@ def download_resumes(
                 "source": filename
             })
 
-            # Update pipeline status in PCR so manual users see it's been processed
-            sendout_id = candidate.get("SendoutId")
-            if sendout_id:
+            # Update pipeline status in PCR so manual users see it's been processed.
+            # Use PipelineInterviewId (the ActivityId used to GET the record) — this is
+            # the correct identifier for PUT /PipelineInterviews/{id}. SendoutId is a
+            # different PCR object and was causing silent 404s on every status update.
+            pi_id = candidate.get("PipelineInterviewId") or candidate.get("SendoutId")
+            if pi_id:
                 try:
                     client.update_pipeline_interview(
-                        sendout_id=str(sendout_id),
+                        sendout_id=str(pi_id),
                         status="Resume Reviewed"
                     )
-                except PCRClientError:
-                    pass  # Non-critical — don't fail the download
+                except PCRClientError as e:
+                    print(f"    WARN: pipeline status update failed for {name}: {e}")
 
         except PCRClientError as e:
             print(f"    Error: {e}")
