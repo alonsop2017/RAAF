@@ -23,6 +23,7 @@
   "homepage": "https://github.com/alonsop2017/RAAF#readme",
   "dependencies": {
     "docx": "^9.5.1",
-    "js-yaml": "^4.1.1"
+    "js-yaml": "^4.1.1",
+    "pdfmake": "^0.3.9"
   }
 }

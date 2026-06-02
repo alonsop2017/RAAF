@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 /**
  * Generate consolidated assessment report.
- * Creates DOCX reports from assessment data.
+ * Outputs PDF by default; pass --format docx for legacy DOCX output.
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import yaml from 'js-yaml';
+import { createRequire } from 'module';
+const _require = createRequire(import.meta.url);
+const _pdfmake   = _require('pdfmake');
+const _pdfFonts  = _require('pdfmake/standard-fonts/Helvetica');
 import {
   Document,
   Packer,
@@ -526,6 +530,177 @@ function generateReport(clientCode, reqId, options = {}) {
   return doc;
 }
 
+// ── PDF generation (pdfmake v0.3 — standard Helvetica fonts) ─────────────────
+
+// Configure the pdfmake singleton once
+_pdfmake.fonts = _pdfFonts;
+_pdfmake.setLocalAccessPolicy(() => true);   // allow standard font lookups
+_pdfmake.setUrlAccessPolicy(() => false);    // no remote resources
+
+function recColor(rec) {
+  if (rec === 'STRONG RECOMMEND') return '#1a5276';
+  if (rec === 'RECOMMEND')        return '#1e8449';
+  if (rec === 'CONDITIONAL')      return '#7d6608';
+  return '#922b21';
+}
+
+async function generatePdfReport(clientCode, reqId, options = {}) {
+    const settings    = loadSettings();
+    const reqConfig   = loadRequisitionConfig(clientCode, reqId);
+    const clientInfo  = loadClientInfo(clientCode);
+    const assessments = loadAssessments(clientCode, reqId, options);
+
+    if (assessments.length === 0) throw new Error('No assessments found for this requisition');
+
+    const thresholds  = reqConfig.assessment?.thresholds || settings.assessment?.default_thresholds || {};
+    const title       = reqConfig.job?.title || 'Unknown Position';
+    const companyName = clientInfo.company_name || clientCode;
+    const reportDate  = new Date().toISOString().split('T')[0];
+    const topN        = options.topCandidatesCount || 6;
+
+    const counts = { 'STRONG RECOMMEND': 0, 'RECOMMEND': 0, 'CONDITIONAL': 0, 'DO NOT RECOMMEND': 0 };
+    for (const a of assessments) {
+      const rec = a.recommendation || 'DO NOT RECOMMEND';
+      if (Object.prototype.hasOwnProperty.call(counts, rec)) counts[rec]++;
+    }
+
+    const H_COLOR   = '#1a3a5c';
+    const BODY_FONT = 9;
+    const H1_SIZE   = 15;
+    const H2_SIZE   = 11;
+
+    function cell(text, opts = {}) {
+      return { text: text ?? '', fontSize: opts.fontSize || BODY_FONT, bold: opts.bold || false,
+               color: opts.color || '#000000', alignment: opts.align || 'left',
+               margin: [3, 3, 3, 3], ...(opts.extra || {}) };
+    }
+    function hdrCell(text) {
+      return { text, bold: true, fontSize: BODY_FONT, color: '#ffffff',
+               fillColor: H_COLOR, alignment: 'center', margin: [3, 4, 3, 4] };
+    }
+    function sectionTitle(text) {
+      return { text, fontSize: H2_SIZE, bold: true, color: H_COLOR,
+               margin: [0, 14, 0, 6], decoration: 'underline' };
+    }
+
+    // Ranking table
+    const rankRows = [[hdrCell('Rank'), hdrCell('Candidate'), hdrCell('Score'),
+                       hdrCell('%'), hdrCell('Stability'), hdrCell('Recommendation')]];
+    assessments.forEach((a, i) => {
+      const name = a.candidate?.name || 'Unknown';
+      const pct  = `${Math.round(a.percentage || 0)}%`;
+      const stab = a.scores?.job_stability?.tenure_analysis?.risk_level || '—';
+      const rec  = a.recommendation || 'DO NOT RECOMMEND';
+      const bold = rec === 'STRONG RECOMMEND' || rec === 'RECOMMEND';
+      rankRows.push([
+        cell(String(i + 1),  { align: 'center', bold }),
+        cell(name,           { bold }),
+        cell(String(a.total_score ?? '—'), { align: 'center', bold }),
+        cell(pct,            { align: 'center', bold }),
+        cell(stab,           { align: 'center' }),
+        cell(rec,            { bold, color: recColor(rec) })
+      ]);
+    });
+
+    // Top candidate profiles
+    const topProfiles  = [];
+    const advanceable  = assessments.filter(a =>
+      a.recommendation === 'STRONG RECOMMEND' || a.recommendation === 'RECOMMEND'
+    ).slice(0, topN);
+
+    for (const a of advanceable) {
+      const name = a.candidate?.name || 'Unknown';
+      topProfiles.push(
+        { text: name, fontSize: 11, bold: true, color: H_COLOR, margin: [0, 8, 0, 2] },
+        { text: `Score: ${a.total_score ?? '?'}/100 (${Math.round(a.percentage || 0)}%) — ${a.recommendation}`,
+          fontSize: BODY_FONT, italics: true, margin: [0, 0, 0, 4] },
+        { text: a.summary || '', fontSize: BODY_FONT, margin: [0, 0, 0, 4] }
+      );
+      if ((a.key_strengths || []).length)
+        topProfiles.push({ text: 'Key Strengths:', bold: true, fontSize: BODY_FONT, margin: [0, 2, 0, 1] },
+                         { ul: a.key_strengths, fontSize: BODY_FONT, margin: [8, 0, 0, 4] });
+      if ((a.areas_of_concern || []).length)
+        topProfiles.push({ text: 'Areas of Concern:', bold: true, fontSize: BODY_FONT, margin: [0, 2, 0, 1] },
+                         { ul: a.areas_of_concern, fontSize: BODY_FONT, margin: [8, 0, 0, 4] });
+    }
+
+    // Recommendation lists
+    const primary     = assessments.filter(a => a.recommendation === 'STRONG RECOMMEND' || a.recommendation === 'RECOMMEND');
+    const conditional = assessments.filter(a => a.recommendation === 'CONDITIONAL');
+    const dnr         = assessments.filter(a => a.recommendation === 'DO NOT RECOMMEND');
+    const recList = list => list.length
+      ? list.map(a => ({ text: `${a.candidate?.name || 'Unknown'} — ${Math.round(a.percentage || 0)}%`, fontSize: BODY_FONT }))
+      : [{ text: 'None', fontSize: BODY_FONT, italics: true }];
+
+    const docDef = {
+      defaultStyle: { font: 'Helvetica', fontSize: BODY_FONT, lineHeight: 1.3 },
+      pageMargins:  [50, 55, 50, 50],
+      header: (page, pages) => ({
+        columns: [
+          { text: 'CONFIDENTIAL — FOR INTERNAL USE ONLY', fontSize: 7, color: '#999999', italics: true },
+          { text: `Page ${page} of ${pages}`, alignment: 'right', fontSize: 7, color: '#999999' }
+        ],
+        margin: [50, 18, 50, 0]
+      }),
+      footer: {
+        columns: [{ text: `Prepared by Archtekt Consulting Inc.  |  ${reportDate}`, fontSize: 7, color: '#999999' }],
+        margin: [50, 0, 50, 18]
+      },
+      content: [
+        { text: 'CONSOLIDATED CANDIDATE ASSESSMENT REPORT', fontSize: H1_SIZE, bold: true,
+          alignment: 'center', color: H_COLOR, margin: [0, 0, 0, 8] },
+        { text: title, fontSize: H2_SIZE + 1, alignment: 'center', margin: [0, 0, 0, 4] },
+        { text: companyName, fontSize: 10, alignment: 'center', italics: true, margin: [0, 0, 0, 4] },
+        { text: `Report Date: ${reportDate}   |   Total Candidates: ${assessments.length}`,
+          fontSize: BODY_FONT, alignment: 'center', color: '#555555', margin: [0, 0, 0, 14] },
+        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 495, y2: 0, lineWidth: 1.5, lineColor: H_COLOR }] },
+
+        { text: '', margin: [0, 10] },
+        sectionTitle('Executive Summary'),
+        { table: { widths: ['*', '*', '*', '*'], body: [
+            [hdrCell('Strong Recommend'), hdrCell('Recommend'), hdrCell('Conditional'), hdrCell('Do Not Recommend')],
+            [
+              cell(String(counts['STRONG RECOMMEND']), { align: 'center', bold: true, color: recColor('STRONG RECOMMEND'), fontSize: 14 }),
+              cell(String(counts['RECOMMEND']),        { align: 'center', bold: true, color: recColor('RECOMMEND'),        fontSize: 14 }),
+              cell(String(counts['CONDITIONAL']),       { align: 'center', bold: true, color: recColor('CONDITIONAL'),      fontSize: 14 }),
+              cell(String(counts['DO NOT RECOMMEND']), { align: 'center', bold: true, color: recColor('DO NOT RECOMMEND'), fontSize: 14 })
+            ]
+          ]},
+          layout: 'lightHorizontalLines', margin: [0, 0, 0, 12] },
+
+        { text: '', pageBreak: 'before' },
+        sectionTitle('Complete Candidate Rankings'),
+        { table: { headerRows: 1, widths: [28, '*', 38, 32, 60, 100], body: rankRows },
+          layout: { hLineColor: () => '#cccccc', vLineColor: () => '#cccccc' },
+          margin: [0, 0, 0, 16] },
+
+        ...(topProfiles.length ? [
+          { text: '', pageBreak: 'before' },
+          sectionTitle(`Top ${advanceable.length} Candidate Profile${advanceable.length !== 1 ? 's' : ''}`),
+          ...topProfiles
+        ] : []),
+
+        { text: '', pageBreak: 'before' },
+        sectionTitle('Hiring Recommendations'),
+        { text: 'Primary Recommendations — Advance to Interview', bold: true, fontSize: 10, margin: [0, 4, 0, 4] },
+        { ul: recList(primary), margin: [8, 0, 0, 10] },
+        { text: 'Conditional Candidates', bold: true, fontSize: 10, margin: [0, 4, 0, 4] },
+        { ul: recList(conditional), margin: [8, 0, 0, 10] },
+        { text: 'Do Not Recommend', bold: true, fontSize: 10, margin: [0, 4, 0, 4] },
+        { ul: recList(dnr), margin: [8, 0, 0, 10] },
+
+        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 495, y2: 0, lineWidth: 0.5, lineColor: '#cccccc' }], margin: [0, 20, 0, 14] },
+        { text: 'Evaluator Signature: _______________________________   Date: ___________', fontSize: BODY_FONT, margin: [0, 0, 0, 8] },
+        { text: `Framework Reference: ${reqId}  |  Generated: ${reportDate}`, fontSize: 7, color: '#888888' }
+      ]
+    };
+
+    const pdfDoc = _pdfmake.createPdf(docDef);
+    return await pdfDoc.getBuffer();
+}
+
+// ── CLI ───────────────────────────────────────────────────────────────────────
+
 // Main function
 async function main() {
   const args = process.argv.slice(2);
@@ -537,6 +712,7 @@ async function main() {
   let batch = null;
   let minScore = undefined;
   let topCandidatesCount = 6;
+  let format = 'pdf';  // default — use --format docx for legacy DOCX output
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -560,6 +736,9 @@ async function main() {
         break;
       case '--top-candidates':
         topCandidatesCount = parseInt(args[++i], 10);
+        break;
+      case '--format':
+        format = args[++i];   // 'pdf' or 'docx'
         break;
       case '--test':
         console.log('Test mode - would generate report');
@@ -588,25 +767,29 @@ Options:
   try {
     console.log(`Generating report for ${reqId}...`);
 
-    const doc = generateReport(clientCode, reqId, { batch, minScore, topCandidatesCount });
-
-    // Determine output path
+    const usePdf = format !== 'docx';
     const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '').slice(2);
-    const filename = `${reqId}_assessment_report_${dateStr}.docx`;
+    const ext = usePdf ? 'pdf' : 'docx';
+    const filename = `${reqId}_assessment_report_${dateStr}.${ext}`;
     const outputDir = join(
       PROJECT_ROOT, 'clients', clientCode, 'requisitions', reqId,
       'reports', outputType === 'final' ? 'final' : 'drafts'
     );
 
-    // Ensure output directory exists
     if (!existsSync(outputDir)) {
       mkdirSync(outputDir, { recursive: true });
     }
 
     const outputPath = join(outputDir, filename);
+    const opts = { batch, minScore, topCandidatesCount };
 
-    // Generate document
-    const buffer = await Packer.toBuffer(doc);
+    let buffer;
+    if (usePdf) {
+      buffer = await generatePdfReport(clientCode, reqId, opts);
+    } else {
+      const doc = generateReport(clientCode, reqId, opts);
+      buffer = await Packer.toBuffer(doc);
+    }
     writeFileSync(outputPath, buffer);
 
     console.log(`✓ Report generated: ${outputPath}`);
