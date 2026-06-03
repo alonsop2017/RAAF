@@ -298,9 +298,24 @@ def check_requisition(
         try:
             sys.path.insert(0, str(Path(__file__).parent.parent.parent))
             from scripts.utils.database import get_db, _use_database
+            from scripts.utils.client_utils import (
+                list_all_extracted_resumes, normalize_candidate_name
+            )
             if _use_database():
                 pending = get_db().list_candidates(req_id, status="pending")
                 cutoff = datetime.now() - timedelta(days=RESUME_CATCHUP_MAX_AGE_DAYS)
+
+                # Build a set of candidate name keys that already have a file on disk.
+                # This prevents re-downloading resumes whose DB path is NULL but whose
+                # file was written before path-tracking was added (the cataldi runaway bug).
+                try:
+                    on_disk = {
+                        f.stem.replace("_resume", "")
+                        for f in list_all_extracted_resumes(client_code, req_id)
+                    }
+                except Exception:
+                    on_disk = set()
+
                 missing = [
                     c for c in pending
                     if c.get("pcr_candidate_id")
@@ -308,6 +323,9 @@ def check_requisition(
                         not c.get("resume_extracted_path")
                         or not Path(c["resume_extracted_path"]).exists()
                     )
+                    and normalize_candidate_name(
+                        f"{c.get('name', '')}"
+                    ) not in on_disk
                     and (
                         not c.get("created_at")
                         or datetime.fromisoformat(
