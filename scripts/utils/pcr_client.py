@@ -73,8 +73,14 @@ class PCRClient:
         self.session_token = None
         self.session_expires = None
 
-        # Load existing session if available
-        self._load_session()
+        # Persistent HTTP session: PCR's load balancer does not share session state
+        # across backend nodes — keep-alive pins all requests to the same server.
+        # The auth call MUST go through _http so subsequent API calls reuse the
+        # same TCP connection and reach the same backend that issued the token.
+        # We intentionally skip loading the YAML-cached token here: a cached token
+        # from a prior process was issued by whichever backend handled that process's
+        # auth, and the new _http session has no affinity to that server.
+        self._http = requests.Session()
 
     def _load_credentials(self) -> dict:
         """Load credentials from YAML file."""
@@ -159,7 +165,7 @@ class PCRClient:
         headers = self._get_headers(include_auth)
 
         try:
-            response = requests.request(
+            response = self._http.request(
                 method=method,
                 url=url,
                 headers=headers,
