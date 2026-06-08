@@ -10,7 +10,7 @@ Checks performed:
   2. Critical configuration files are present
   3. SQLite database integrity (PRAGMA integrity_check)
   4. Database schema — all expected tables are present
-  5. Record counts (informational)
+  5. Record counts + watermark regression check (fails if clients/reqs drop >20%)
   6. Client data presence (warning if empty)
 
 Exit codes:
@@ -19,6 +19,7 @@ Exit codes:
 ─────────────────────────────────────────────────────────────────────────────
 """
 
+import json
 import os
 import sys
 import sqlite3
@@ -32,7 +33,8 @@ CLIENTS_DIR = APP_ROOT / "clients"
 ARCHIVE_DIR = APP_ROOT / "archive"
 LOGS_DIR   = APP_ROOT / "logs"
 CONFIG_DIR  = APP_ROOT / "config"
-DB_PATH    = DATA_DIR / "raaf.db"
+DB_PATH       = DATA_DIR / "raaf.db"
+WATERMARK_PATH = DATA_DIR / ".db_watermark.json"
 
 # ── Critical files (app cannot function without these) ────────────────────────
 CRITICAL_CONFIG_FILES = [
@@ -177,19 +179,50 @@ def run_checks() -> bool:
         except Exception as exc:
             check("schema", False, f"ERROR reading schema: {exc}", critical=False)
 
-        # Record counts (informational, no pass/fail)
+        # Record counts + watermark regression check
         try:
             conn = sqlite3.connect(str(DB_PATH))
             tables_to_count = ["clients", "requisitions", "candidates", "assessments"]
-            counts = {}
+            counts: dict[str, int] = {}
             for tbl in tables_to_count:
                 try:
                     counts[tbl] = conn.execute(f"SELECT COUNT(*) FROM {tbl};").fetchone()[0]
                 except Exception:
-                    counts[tbl] = "?"
+                    counts[tbl] = 0
             conn.close()
+
             summary = "  |  ".join(f"{k}: {v}" for k, v in counts.items())
             print(f"  {INFO}  record counts — {summary}")
+
+            # Watermark: compare against last known-good counts and fail if
+            # any key table has lost more than 20% of its records since the
+            # previous successful startup.
+            if WATERMARK_PATH.exists():
+                try:
+                    watermark = json.loads(WATERMARK_PATH.read_text())
+                    for tbl in ["clients", "requisitions"]:
+                        prev = watermark.get(tbl, 0)
+                        curr = counts.get(tbl, 0)
+                        if prev > 0 and curr < prev * 0.80:
+                            msg = (
+                                f"{tbl} dropped from {prev} → {curr} "
+                                f"({int((prev-curr)/prev*100)}% loss) — "
+                                "possible data-root mismatch or corrupt restore"
+                            )
+                            if not check(f"watermark:{tbl}", False, msg, critical=True):
+                                all_critical_passed = False
+                        else:
+                            check(f"watermark:{tbl}", True, f"{curr} (prev {prev})")
+                except Exception as exc:
+                    print(f"  {WARN}  watermark read error: {exc}")
+
+            # Write updated watermark on every run (even if counts are lower —
+            # the check above already surfaced the regression as a failure).
+            try:
+                WATERMARK_PATH.write_text(json.dumps(counts, indent=2))
+            except Exception:
+                pass
+
         except Exception:
             pass
 
