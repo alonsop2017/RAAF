@@ -66,14 +66,16 @@ TMP_ARCHIVE="$TMP_DIR/$ARCHIVE_NAME"
 
 log "Starting RAAF backup (target: $TARGET)"
 
-# Back up DB snapshot + config + assessment data (no resume PDFs — recoverable from PCR)
+# Back up DB + config + client data (resumes, assessments, frameworks)
 log "Creating archive: $ARCHIVE_NAME"
 tar -czf "$TMP_ARCHIVE" \
     -C /app \
     data/ \
     config/ \
+    clients/ \
     --exclude="config/.token_store.json" \
     --exclude="config/users.db" \
+    --exclude="clients/*/requisitions/*/resumes/batches/*/originals" \
     2>/dev/null || true
 
 ARCHIVE_SIZE=$(du -h "$TMP_ARCHIVE" | cut -f1)
