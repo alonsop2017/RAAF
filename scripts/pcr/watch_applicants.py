@@ -239,8 +239,8 @@ def check_requisition(
     # but have an empty or missing extracted file.
     if auto_download:
         try:
-            from scripts.utils.client_utils import (
-                get_resumes_path, normalize_candidate_name, list_all_extracted_resumes
+            from utils.client_utils import (
+                normalize_candidate_name, list_all_extracted_resumes
             )
             existing_keys = {
                 f.stem.replace("_resume", "")
@@ -296,9 +296,8 @@ def check_requisition(
     RESUME_CATCHUP_MAX_AGE_DAYS = 14
     if auto_download:
         try:
-            sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-            from scripts.utils.database import get_db, _use_database
-            from scripts.utils.client_utils import (
+            from utils.database import get_db, _use_database
+            from utils.client_utils import (
                 list_all_extracted_resumes, normalize_candidate_name
             )
             if _use_database():
