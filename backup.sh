@@ -75,7 +75,7 @@ tar -czf "$TMP_ARCHIVE" \
     clients/ \
     --exclude="config/.token_store.json" \
     --exclude="config/users.db" \
-    --exclude="clients/*/requisitions/*/resumes/batches/*/originals" \
+    --exclude="originals" \
     2>/dev/null || true
 
 ARCHIVE_SIZE=$(du -h "$TMP_ARCHIVE" | cut -f1)
@@ -133,7 +133,7 @@ else
     rclone $RCLONE_ARGS sync /app/clients/ "$ORIGINALS_REMOTE" \
         --include "**/originals/**" \
         --transfers=4 \
-        --checksum \
+        --onedrive-chunk-size=10M \
         2>&1 | while read -r line; do if [ "$QUIET" = false ]; then echo "$line"; fi; done
     log "Resume originals sync complete"
 fi
