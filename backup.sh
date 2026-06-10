@@ -126,6 +126,16 @@ else
             log "Retention: deleted $file"
         done
     fi
+
+    # Sync resume originals (PDFs/DOCXs) incrementally — too large for tar, rclone only uploads new files
+    ORIGINALS_REMOTE="$REMOTE/resume-originals"
+    log "Syncing resume originals to ${TARGET}: $ORIGINALS_REMOTE"
+    rclone $RCLONE_ARGS sync /app/clients/ "$ORIGINALS_REMOTE" \
+        --include "**/originals/**" \
+        --transfers=4 \
+        --checksum \
+        2>&1 | while read -r line; do if [ "$QUIET" = false ]; then echo "$line"; fi; done
+    log "Resume originals sync complete"
 fi
 
 rm -rf "$TMP_DIR"
