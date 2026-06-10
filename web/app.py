@@ -19,6 +19,7 @@ from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 
 from web.routers import clients, requisitions, candidates, assessments, reports, pcr, search, correspondence
+from web.routers import sourcing as sourcing_router
 from web.routers import admin as admin_router
 from web.routers import auth as auth_router
 from web.auth.oauth import setup_oauth
@@ -113,6 +114,7 @@ app.include_router(reports.router, prefix="/reports", tags=["reports"])
 app.include_router(correspondence.router, prefix="/correspondence", tags=["correspondence"])
 app.include_router(pcr.router, prefix="/pcr", tags=["pcr"])
 app.include_router(search.router, prefix="/search", tags=["search"])
+app.include_router(sourcing_router.router, prefix="", tags=["sourcing"])
 
 
 @app.get("/", response_class=HTMLResponse)

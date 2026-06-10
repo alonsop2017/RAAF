@@ -1029,3 +1029,63 @@ class DatabaseManager:
                 "SELECT data_json FROM pcr_positions_cache"
             ).fetchall()
             return [json.loads(r[0]) for r in rows]
+
+    # -----------------------------------------------------------------------
+    # Smart Sourcing sessions
+    # -----------------------------------------------------------------------
+
+    def create_sourcing_session(
+        self,
+        client_code: str,
+        requisition_id: str,
+        query: str,
+        search_url: str = "",
+        location: str = "",
+        rationale: str = "",
+        query_name: str = "",
+    ) -> int:
+        """Insert a sourcing session record and return its id."""
+        with self._conn() as conn:
+            # Ensure the table exists (graceful if migration 002 hasn't run)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS sourcing_sessions (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_code     TEXT NOT NULL,
+                    requisition_id  TEXT NOT NULL,
+                    query           TEXT NOT NULL,
+                    search_url      TEXT,
+                    location        TEXT,
+                    rationale       TEXT,
+                    query_name      TEXT,
+                    created_at      TEXT DEFAULT (datetime('now'))
+                )
+            """)
+            cursor = conn.execute(
+                """INSERT INTO sourcing_sessions
+                       (client_code, requisition_id, query, search_url,
+                        location, rationale, query_name)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (client_code, requisition_id, query, search_url,
+                 location, rationale, query_name),
+            )
+            return cursor.lastrowid
+
+    def list_sourcing_sessions(
+        self,
+        client_code: str,
+        requisition_id: str,
+        limit: int = 50,
+    ) -> list:
+        """Return recent sourcing sessions for a requisition, newest first."""
+        with self._conn() as conn:
+            # Ensure table exists before querying
+            try:
+                rows = conn.execute(
+                    """SELECT * FROM sourcing_sessions
+                       WHERE client_code = ? AND requisition_id = ?
+                       ORDER BY created_at DESC LIMIT ?""",
+                    (client_code, requisition_id, limit),
+                ).fetchall()
+                return [dict(r) for r in rows]
+            except Exception:
+                return []

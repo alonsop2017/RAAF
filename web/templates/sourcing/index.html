@@ -1,0 +1,429 @@
+{% extends "base.html" %}
+
+{% block title %}Smart Sourcing - {{ req_title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ---- Page layout ---- */
+.sourcing-header-card { margin-bottom: 1.5rem; }
+.sourcing-intro { color: var(--text-muted); font-size: 0.9rem; margin-top: 0.4rem; max-width: 680px; }
+
+/* ---- Query grid ---- */
+.queries-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+.query-card {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem 1.1rem;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.query-card-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-color);
+}
+.query-string {
+    font-family: monospace;
+    font-size: 0.82rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    padding: 0.45rem 0.6rem;
+    word-break: break-all;
+    user-select: all;
+    cursor: text;
+    color: #1e293b;
+    line-height: 1.5;
+}
+.query-location {
+    font-size: 0.8rem;
+    color: #64748b;
+}
+.query-rationale {
+    font-size: 0.82rem;
+    color: #64748b;
+    font-style: italic;
+    line-height: 1.5;
+}
+.query-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.25rem;
+}
+.btn-copy { font-size: 0.8rem; padding: 0.25rem 0.65rem; }
+.btn-open { font-size: 0.8rem; padding: 0.25rem 0.65rem; }
+.copy-ok {
+    font-size: 0.78rem;
+    color: #16a34a;
+    font-weight: 600;
+    display: none;
+    margin-left: 0.25rem;
+    align-self: center;
+}
+
+/* ---- Spinner ---- */
+.spinner {
+    display: inline-block;
+    width: 18px; height: 18px;
+    border: 3px solid #e2e8f0;
+    border-top-color: var(--primary-color, #2563eb);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+    margin-right: 0.4rem;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- Sessions history ---- */
+.sessions-list { margin-top: 0.75rem; }
+.session-row {
+    font-size: 0.82rem;
+    color: #64748b;
+    padding: 0.3rem 0;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+}
+.session-row:last-child { border-bottom: none; }
+.session-date { white-space: nowrap; flex-shrink: 0; color: #94a3b8; }
+.session-query { font-family: monospace; word-break: break-all; }
+.session-name { font-weight: 500; color: #475569; margin-right: 0.4rem; }
+
+/* ---- Add candidate form ---- */
+.add-candidate-form .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+@media (max-width: 600px) {
+    .add-candidate-form .form-row { grid-template-columns: 1fr; }
+    .queries-grid { grid-template-columns: 1fr; }
+}
+
+/* ---- Sourced candidates table ---- */
+.badge-yes {
+    background: #dcfce7; color: #166534;
+    font-size: 0.72rem; font-weight: 600;
+    padding: 2px 8px; border-radius: 99px;
+}
+.badge-no {
+    background: #f1f5f9; color: #64748b;
+    font-size: 0.72rem; font-weight: 600;
+    padding: 2px 8px; border-radius: 99px;
+}
+
+/* ---- Alert ---- */
+.alert-added {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    color: #166534;
+    border-radius: 6px;
+    padding: 0.65rem 1rem;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="/">Dashboard</a> /
+    <a href="/clients/{{ client_code }}">{{ client_name }}</a> /
+    <a href="/requisitions/{{ client_code }}/{{ req_id }}">{{ req_id }}</a> /
+    <span>Smart Sourcing</span>
+</div>
+
+{% if added %}
+<div class="alert-added">Candidate added successfully and is now visible in the table below.</div>
+{% endif %}
+
+<!-- ============================================================
+     Section 1: Header
+     ============================================================ -->
+<div class="card sourcing-header-card">
+    <div class="card-body">
+        <div class="flex flex-between flex-center" style="flex-wrap:wrap; gap:0.75rem;">
+            <div>
+                <h1 style="margin:0; font-size:1.4rem;">Indeed Smart Sourcing</h1>
+                <p style="margin:0.25rem 0 0; color:#64748b; font-size:0.9rem;">
+                    {{ req_title }} &nbsp;&bull;&nbsp; {{ client_name }}
+                    {% if req_location %}&nbsp;&bull;&nbsp; {{ req_location }}{% endif %}
+                </p>
+                <p class="sourcing-intro">
+                    Generate AI-powered boolean search queries tailored to this job description.
+                    Use them in Indeed Smart Sourcing to proactively find candidates who haven't applied yet.
+                    Queries open in your browser — no Indeed API connection is required.
+                </p>
+            </div>
+            <a href="/requisitions/{{ client_code }}/{{ req_id }}" class="btn btn-outline">Back to Requisition</a>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================
+     Section 2: Generate Queries
+     ============================================================ -->
+<div class="card" id="generate-section">
+    <div class="card-header">
+        <h3>AI-Generated Search Queries</h3>
+    </div>
+    <div class="card-body">
+        <p style="font-size:0.875rem; color:#64748b; margin-bottom:1rem;">
+            Claude will analyse the job description and generate 5 optimized boolean queries using
+            Indeed Smart Sourcing syntax. Click a query string to select all text for copying,
+            or use the Copy button.
+        </p>
+        <button id="generateBtn" class="btn btn-primary" onclick="generateQueries()">
+            Generate Search Queries
+        </button>
+        <span id="generateSpinner" style="display:none;">
+            <span class="spinner"></span>
+            <span style="font-size:0.875rem; color:#64748b;">Generating with Claude AI...</span>
+        </span>
+        <div id="generateError" style="display:none; color:var(--danger-color,#dc2626); font-size:0.875rem; margin-top:0.75rem;"></div>
+
+        <div id="queriesContainer" class="queries-grid" style="display:none;"></div>
+
+        <!-- Previous sessions -->
+        {% if sessions %}
+        <div style="margin-top:1.5rem;">
+            <h4 style="font-size:0.875rem; font-weight:600; color:#475569; margin:0 0 0.5rem;">Previous Sessions</h4>
+            <div class="sessions-list">
+                {% for session in sessions[:20] %}
+                <div class="session-row">
+                    <span class="session-date">{{ session.created_at[:16] if session.created_at else '' }}</span>
+                    <span>
+                        {% if session.query_name %}<span class="session-name">{{ session.query_name }}:</span>{% endif %}
+                        <span class="session-query">{{ session.query }}</span>
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- ============================================================
+     Section 3: Add Sourced Candidate
+     ============================================================ -->
+<div class="card" id="add-candidate-section">
+    <div class="card-header">
+        <h3>Add Sourced Candidate</h3>
+    </div>
+    <div class="card-body">
+        <p style="font-size:0.875rem; color:#64748b; margin-bottom:1rem;">
+            Found a promising candidate in Indeed Smart Sourcing? Add them to RAAF for assessment.
+        </p>
+        <form method="POST" action="/sourcing/{{ client_code }}/{{ req_id }}/add-candidate"
+              class="add-candidate-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="candidateName">Full Name <span style="color:#dc2626;">*</span></label>
+                    <input type="text" id="candidateName" name="name" class="form-input"
+                           placeholder="Jane Smith" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="candidateEmail">Email</label>
+                    <input type="email" id="candidateEmail" name="email" class="form-input"
+                           placeholder="jane@example.com">
+                </div>
+            </div>
+            <div class="form-row" style="margin-top:0.75rem;">
+                <div class="form-group">
+                    <label class="form-label" for="candidatePhone">Phone</label>
+                    <input type="text" id="candidatePhone" name="phone" class="form-input"
+                           placeholder="+1 416-555-0100">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="queryUsed">Query Used</label>
+                    <input type="text" id="queryUsed" name="query_used" class="form-input"
+                           placeholder="Optional — paste the search query you used">
+                </div>
+            </div>
+            <div class="form-group" style="margin-top:0.75rem;">
+                <label class="form-label" for="candidateNotes">Notes</label>
+                <textarea id="candidateNotes" name="notes" class="form-textarea" rows="2"
+                          placeholder="e.g., Strong CSM background at Shopify, 7 years experience, open to hybrid"></textarea>
+            </div>
+            <div style="margin-top:1rem;">
+                <button type="submit" class="btn btn-primary">Add to RAAF</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Sourced candidates table -->
+{% if sourced_candidates %}
+<div class="card">
+    <div class="card-header">
+        <h3>Sourced Candidates ({{ sourced_candidates|length }})</h3>
+        <a href="/candidates/{{ client_code }}/{{ req_id }}" class="btn btn-sm btn-outline">View All Candidates</a>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Added</th>
+                    <th>Assessed</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in sourced_candidates %}
+                <tr>
+                    <td style="font-weight:500;">{{ c.name }}</td>
+                    <td style="font-size:0.875rem; color:#64748b;">{{ c.email or '—' }}</td>
+                    <td style="font-size:0.875rem; color:#64748b;">{{ c.added_date or '—' }}</td>
+                    <td>
+                        {% if c.assessed %}
+                        <span class="badge-yes">Yes</span>
+                        {% else %}
+                        <span class="badge-no">No</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="/candidates/{{ client_code }}/{{ req_id }}/{{ c.name_normalized }}"
+                           class="btn btn-sm btn-outline">View</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var PAGE_CLIENT_CODE = {{ client_code | tojson }};
+var PAGE_REQ_ID = {{ req_id | tojson }};
+
+function escapeHtml(str) {
+    var d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+function renderQueryCard(q) {
+    var cardId = 'qcard_' + Math.random().toString(36).slice(2, 8);
+    var copyId = 'copy_' + cardId;
+    var okId = 'ok_' + cardId;
+    return [
+        '<div class="query-card" id="' + cardId + '">',
+        '  <div class="query-card-name">' + escapeHtml(q.name || 'Query') + '</div>',
+        '  <div class="query-string" id="qs_' + cardId + '" title="Click to select all">' + escapeHtml(q.query) + '</div>',
+        '  <div class="query-location">Location: ' + escapeHtml(q.location || '') + '</div>',
+        q.rationale ? '  <div class="query-rationale">' + escapeHtml(q.rationale) + '</div>' : '',
+        '  <div class="query-actions">',
+        '    <a href="' + escapeHtml(q.search_url || '#') + '" target="_blank" rel="noopener" class="btn btn-sm btn-primary btn-open">Open in Indeed</a>',
+        '    <button class="btn btn-sm btn-outline btn-copy" id="' + copyId + '"',
+        '            onclick="copyQuery(' + JSON.stringify(q.query) + ', \'' + okId + '\')">Copy Query</button>',
+        '    <span class="copy-ok" id="' + okId + '">Copied!</span>',
+        '  </div>',
+        '</div>',
+    ].join('\n');
+}
+
+function copyQuery(text, okId) {
+    navigator.clipboard.writeText(text).then(function() {
+        var el = document.getElementById(okId);
+        if (el) {
+            el.style.display = 'inline';
+            setTimeout(function() { el.style.display = 'none'; }, 2000);
+        }
+    }).catch(function() {
+        // Fallback for older browsers
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        var el = document.getElementById(okId);
+        if (el) {
+            el.style.display = 'inline';
+            setTimeout(function() { el.style.display = 'none'; }, 2000);
+        }
+    });
+}
+
+// Pre-fill the "Query Used" field from the last clicked "Open in Indeed" button
+document.addEventListener('click', function(e) {
+    var a = e.target.closest('a.btn-open');
+    if (!a) return;
+    // Find the query string inside the same card
+    var card = a.closest('.query-card');
+    if (!card) return;
+    var qs = card.querySelector('.query-string');
+    if (!qs) return;
+    var queryUsedField = document.getElementById('queryUsed');
+    if (queryUsedField) queryUsedField.value = qs.textContent;
+});
+
+function generateQueries() {
+    var btn = document.getElementById('generateBtn');
+    var spinner = document.getElementById('generateSpinner');
+    var errorDiv = document.getElementById('generateError');
+    var container = document.getElementById('queriesContainer');
+
+    btn.style.display = 'none';
+    spinner.style.display = 'inline';
+    errorDiv.style.display = 'none';
+    container.style.display = 'none';
+
+    fetch('/sourcing/' + PAGE_CLIENT_CODE + '/' + PAGE_REQ_ID + '/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(function(r) {
+        if (!r.ok) {
+            return r.json().then(function(d) { throw new Error(d.error || ('HTTP ' + r.status)); });
+        }
+        return r.json();
+    })
+    .then(function(data) {
+        spinner.style.display = 'none';
+        btn.style.display = 'inline-block';
+
+        if (data.error) {
+            errorDiv.textContent = data.error;
+            errorDiv.style.display = 'block';
+            return;
+        }
+
+        var queries = data.queries || [];
+        if (queries.length === 0) {
+            errorDiv.textContent = 'No queries were returned. Check that a job description is uploaded.';
+            errorDiv.style.display = 'block';
+            return;
+        }
+
+        container.innerHTML = queries.map(renderQueryCard).join('');
+        container.style.display = 'grid';
+        container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    })
+    .catch(function(err) {
+        spinner.style.display = 'none';
+        btn.style.display = 'inline-block';
+        errorDiv.textContent = 'Error: ' + err.message;
+        errorDiv.style.display = 'block';
+    });
+}
+</script>
+{% endblock %}
