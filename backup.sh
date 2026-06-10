@@ -70,12 +70,12 @@ log "Starting RAAF backup (target: $TARGET)"
 log "Creating archive: $ARCHIVE_NAME"
 tar -czf "$TMP_ARCHIVE" \
     -C /app \
-    data/ \
-    config/ \
-    clients/ \
     --exclude="config/.token_store.json" \
     --exclude="config/users.db" \
     --exclude="originals" \
+    data/ \
+    config/ \
+    clients/ \
     2>/dev/null || true
 
 ARCHIVE_SIZE=$(du -h "$TMP_ARCHIVE" | cut -f1)
