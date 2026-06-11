@@ -108,11 +108,8 @@ def sync_candidates(
 
     # Dual-write to DB when enabled
     try:
-        import sys as _sys
-        from pathlib import Path as _Path
-        _sys.path.insert(0, str(_Path(__file__).parent.parent.parent))
-        from scripts.utils.database import get_db, _use_database
-        from scripts.utils.client_utils import normalize_candidate_name
+        from utils.database import get_db, _use_database
+        from utils.client_utils import normalize_candidate_name
         if _use_database():
             db = get_db()
             for c in all_candidates:
