@@ -215,6 +215,119 @@ Return ONLY a valid JSON array. No prose, no markdown, no code blocks — just t
 
         return _default_queries(job_title, location or "Canada")
 
+    # ------------------------------------------------------------------
+    # Pre-screen prompt
+    # ------------------------------------------------------------------
+
+    _PRESCREEN_PROMPT = """You are a senior recruitment specialist evaluating whether a candidate profile
+snippet is worth unlocking on Indeed Smart Sourcing (each unlock costs money).
+
+## Role Being Filled
+{job_title}
+
+## Key Requirements (from job description / framework)
+{requirements_summary}
+
+## Candidate Snippet (free visible info from Indeed — no unlock yet)
+{snippet}
+
+## Your Task
+Score this candidate's apparent fit based ONLY on the visible snippet.
+Be conservative — if the snippet doesn't clearly support a criterion, don't assume it.
+
+Return ONLY a valid JSON object (no prose, no markdown):
+
+{{
+  "score": <integer 1-10>,
+  "unlock": <true or false>,
+  "verdict": "<STRONG YES | LIKELY YES | MAYBE | LIKELY NO | STRONG NO>",
+  "reasons": [
+    "<reason 1 — specific, references visible info>",
+    "<reason 2>",
+    "<reason 3 — if applicable, else omit>"
+  ]
+}}
+
+Scoring guide:
+  9-10 = Clear match on title, experience, skills, and seniority → unlock immediately
+  7-8  = Good signals, minor gaps → likely worth unlocking
+  5-6  = Mixed signals, unclear fit → judgement call / maybe
+  3-4  = Weak signals or misaligned role → probably skip
+  1-2  = Clear mismatch → do not unlock"""
+
+    async def prescreen_snippet(
+        self,
+        snippet: str,
+        job_title: str,
+        jd_text: str = "",
+        framework_text: str = "",
+    ) -> dict:
+        """
+        Pre-screen a candidate's visible profile snippet before unlocking on Indeed.
+
+        Args:
+            snippet: Free visible text from Indeed (title, company, headline, skills).
+            job_title: The job title for the role.
+            jd_text: Job description text for context.
+            framework_text: Assessment framework text for key criteria.
+
+        Returns:
+            Dict with keys: score (int), unlock (bool), verdict (str), reasons (list[str]).
+        """
+        try:
+            from anthropic import AsyncAnthropic
+        except ImportError:
+            raise ImportError("anthropic library is required.")
+
+        # Build a compact requirements summary from JD + framework
+        requirements_parts = []
+        if jd_text:
+            requirements_parts.append(jd_text.strip()[:1500])
+        if framework_text:
+            requirements_parts.append(framework_text.strip()[:800])
+        requirements_summary = "\n\n".join(requirements_parts) or "(no additional context provided)"
+
+        prompt = self._PRESCREEN_PROMPT.format(
+            job_title=job_title,
+            requirements_summary=requirements_summary,
+            snippet=snippet.strip()[:1000],
+        )
+
+        try:
+            client = AsyncAnthropic(api_key=_get_api_key())
+            message = await client.messages.create(
+                model=self.MODEL,
+                max_tokens=512,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = message.content[0].text.strip()
+
+            # Strip code fences if present
+            if raw.startswith("```"):
+                lines = [l for l in raw.splitlines() if not l.startswith("```")]
+                raw = "\n".join(lines).strip()
+
+            result = json.loads(raw)
+
+            return {
+                "score": int(result.get("score", 5)),
+                "unlock": bool(result.get("unlock", False)),
+                "verdict": str(result.get("verdict", "MAYBE")),
+                "reasons": [str(r) for r in result.get("reasons", [])],
+            }
+
+        except Exception as exc:
+            return {
+                "score": 5,
+                "unlock": False,
+                "verdict": "MAYBE",
+                "reasons": [f"Could not evaluate snippet: {exc}"],
+            }
+
+    # ------------------------------------------------------------------
+    # URL builders
+    # ------------------------------------------------------------------
+
     def build_search_url(
         self,
         query: str,
@@ -243,3 +356,25 @@ Return ONLY a valid JSON array. No prose, no markdown, no code blocks — just t
             base = "https://ca.indeed.com/employers/smart-sourcing/search"
 
         return f"{base}?{params}"
+
+    def build_linkedin_url(self, query: str, location: str = "") -> str:
+        """
+        Build a LinkedIn People Search URL using the same boolean query.
+
+        LinkedIn doesn't have a programmatic geoUrn API, so location is
+        appended to the keywords string. The recruiter can refine by
+        location in the LinkedIn UI after opening.
+
+        Args:
+            query: The boolean search query string.
+            location: Optional location to append to keywords.
+
+        Returns:
+            Fully-encoded LinkedIn people search URL.
+        """
+        combined = f"{query} {location}".strip() if location else query
+        params = urllib.parse.urlencode({
+            "keywords": combined,
+            "origin": "GLOBAL_SEARCH_HEADER",
+        })
+        return f"https://www.linkedin.com/search/results/people/?{params}"

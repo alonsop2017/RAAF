@@ -253,7 +253,11 @@ async def generate_queries(request: Request, client_code: str, req_id: str):
             search_url = service.build_search_url(q["query"], q.get("location", location))
         except Exception:
             search_url = ""
-        enriched = {**q, "search_url": search_url}
+        try:
+            linkedin_url = service.build_linkedin_url(q["query"], q.get("location", location))
+        except Exception:
+            linkedin_url = ""
+        enriched = {**q, "search_url": search_url, "linkedin_url": linkedin_url}
         enriched_queries.append(enriched)
 
         # Persist to DB
@@ -344,3 +348,44 @@ async def add_sourced_candidate(
         url=f"/sourcing/{client_code}/{req_id}?added=1",
         status_code=303,
     )
+
+
+@router.post("/sourcing/{client_code}/{req_id}/prescreen")
+async def prescreen_candidate(request: Request, client_code: str, req_id: str):
+    """
+    Pre-screen a candidate profile snippet before paying for an Indeed unlock.
+
+    Accepts JSON body: {"snippet": "<visible profile text from Indeed>"}
+    Returns JSON:  {"score": int, "unlock": bool, "verdict": str, "reasons": [...]}
+    """
+    try:
+        req_config = get_requisition_config(client_code, req_id)
+    except Exception as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
+
+    try:
+        body = await request.json()
+        snippet = (body.get("snippet") or "").strip()
+    except Exception:
+        return JSONResponse(status_code=400, content={"error": "Request body must be JSON with a 'snippet' field."})
+
+    if not snippet:
+        return JSONResponse(status_code=400, content={"error": "snippet is required."})
+
+    job_title = req_config.get("job", {}).get("title", req_id)
+    jd_text = _load_jd_text(client_code, req_id)
+    framework_text = _load_framework_text(client_code, req_id)
+
+    try:
+        from web.services.smart_sourcing import SmartSourcingService
+        service = SmartSourcingService()
+        result = await service.prescreen_snippet(
+            snippet=snippet,
+            job_title=job_title,
+            jd_text=jd_text,
+            framework_text=framework_text,
+        )
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Pre-screen failed: {e}"})
+
+    return JSONResponse(content=result)

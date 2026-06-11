@@ -69,6 +69,53 @@
     align-self: center;
 }
 
+/* ---- LinkedIn button ---- */
+.btn-linkedin {
+    background: #0a66c2;
+    color: #fff;
+    border: 1px solid #0a66c2;
+}
+.btn-linkedin:hover { background: #004182; color: #fff; }
+
+/* ---- Pre-screen panel ---- */
+.prescreen-textarea {
+    width: 100%;
+    min-height: 90px;
+    font-size: 0.875rem;
+    resize: vertical;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+.prescreen-result {
+    display: none;
+    margin-top: 1rem;
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    border-left: 5px solid #94a3b8;
+    background: #f8fafc;
+}
+.prescreen-result.verdict-yes   { border-left-color: #16a34a; background: #f0fdf4; }
+.prescreen-result.verdict-maybe { border-left-color: #d97706; background: #fffbeb; }
+.prescreen-result.verdict-no    { border-left-color: #dc2626; background: #fef2f2; }
+.prescreen-header { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+.prescreen-score { font-size: 2rem; font-weight: 700; line-height: 1; }
+.prescreen-score.yes   { color: #16a34a; }
+.prescreen-score.maybe { color: #d97706; }
+.prescreen-score.no    { color: #dc2626; }
+.prescreen-verdict { font-size: 0.95rem; font-weight: 700; }
+.prescreen-reasons { margin: 0.6rem 0 0; padding-left: 1.25rem; }
+.prescreen-reasons li { font-size: 0.875rem; color: #374151; margin-bottom: 0.2rem; line-height: 1.5; }
+.unlock-badge {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 2px 10px;
+    border-radius: 99px;
+}
+.unlock-yes   { background: #dcfce7; color: #166534; }
+.unlock-maybe { background: #fef9c3; color: #854d0e; }
+.unlock-no    { background: #fee2e2; color: #991b1b; }
+
 /* ---- Spinner ---- */
 .spinner {
     display: inline-block;
@@ -214,7 +261,48 @@
 </div>
 
 <!-- ============================================================
-     Section 3: Add Sourced Candidate
+     Section 3: Pre-Screen Before Unlocking
+     ============================================================ -->
+<div class="card" id="prescreen-section">
+    <div class="card-header">
+        <h3>Pre-Screen Before Unlocking</h3>
+    </div>
+    <div class="card-body">
+        <p style="font-size:0.875rem; color:#64748b; margin-bottom:1rem;">
+            Paste the <strong>free visible info</strong> Indeed shows before you unlock a candidate
+            (job title, company, headline, skills, years of experience).
+            Claude will assess fit against this role and recommend whether to spend an unlock credit.
+        </p>
+        <div class="form-group">
+            <label class="form-label" for="prescreenSnippet">Candidate Snippet (no unlock needed)</label>
+            <textarea id="prescreenSnippet" class="form-input prescreen-textarea"
+                placeholder="e.g.&#10;Senior Customer Success Manager @ Salesforce · Toronto, ON&#10;8 years experience · Skills: Gainsight, Salesforce, Enterprise accounts, QBR&#10;MBA, University of Toronto"></textarea>
+        </div>
+        <div style="margin-top:0.75rem; display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+            <button class="btn btn-primary" onclick="runPrescreen()" id="prescreenBtn">
+                Pre-Screen with AI
+            </button>
+            <span id="prescreenSpinner" style="display:none;">
+                <span class="spinner"></span>
+                <span style="font-size:0.875rem; color:#64748b;">Evaluating...</span>
+            </span>
+            <span id="prescreenError" style="display:none; color:var(--danger-color,#dc2626); font-size:0.875rem;"></span>
+        </div>
+
+        <!-- Result block -->
+        <div id="prescreenResult" class="prescreen-result">
+            <div class="prescreen-header">
+                <span id="prescreenScore" class="prescreen-score"></span>
+                <span id="prescreenVerdict" class="prescreen-verdict"></span>
+                <span id="prescreenBadge" class="unlock-badge"></span>
+            </div>
+            <ul id="prescreenReasons" class="prescreen-reasons"></ul>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================
+     Section 4: Add Sourced Candidate
      ============================================================ -->
 <div class="card" id="add-candidate-section">
     <div class="card-header">
@@ -329,9 +417,10 @@ function renderQueryCard(q) {
         '  <div class="query-location">Location: ' + escapeHtml(q.location || '') + '</div>',
         q.rationale ? '  <div class="query-rationale">' + escapeHtml(q.rationale) + '</div>' : '',
         '  <div class="query-actions">',
-        '    <a href="' + escapeHtml(q.search_url || '#') + '" target="_blank" rel="noopener" class="btn btn-sm btn-primary btn-open">Open in Indeed</a>',
+        '    <a href="' + escapeHtml(q.search_url || '#') + '" target="_blank" rel="noopener" class="btn btn-sm btn-primary btn-open">Open in Indeed ↗</a>',
+        q.linkedin_url ? '    <a href="' + escapeHtml(q.linkedin_url) + '" target="_blank" rel="noopener" class="btn btn-sm btn-linkedin btn-open">LinkedIn ↗</a>' : '',
         '    <button class="btn btn-sm btn-outline btn-copy" id="' + copyId + '"',
-        '            onclick="copyQuery(' + JSON.stringify(q.query) + ', \'' + okId + '\')">Copy Query</button>',
+        '            onclick="copyQuery(' + JSON.stringify(q.query) + ', \'' + okId + '\')">Copy</button>',
         '    <span class="copy-ok" id="' + okId + '">Copied!</span>',
         '  </div>',
         '</div>',
@@ -363,7 +452,85 @@ function copyQuery(text, okId) {
     });
 }
 
-// Pre-fill the "Query Used" field from the last clicked "Open in Indeed" button
+// ── Pre-screen ────────────────────────────────────────────────────
+function runPrescreen() {
+    var snippet = (document.getElementById('prescreenSnippet').value || '').trim();
+    if (!snippet) {
+        document.getElementById('prescreenError').textContent = 'Please paste a candidate snippet first.';
+        document.getElementById('prescreenError').style.display = 'inline';
+        return;
+    }
+    var btn     = document.getElementById('prescreenBtn');
+    var spinner = document.getElementById('prescreenSpinner');
+    var errEl   = document.getElementById('prescreenError');
+    var result  = document.getElementById('prescreenResult');
+
+    btn.style.display = 'none';
+    spinner.style.display = 'inline';
+    errEl.style.display = 'none';
+    result.style.display = 'none';
+
+    fetch('/sourcing/' + PAGE_CLIENT_CODE + '/' + PAGE_REQ_ID + '/prescreen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ snippet: snippet })
+    })
+    .then(function(r) {
+        if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || ('HTTP ' + r.status)); });
+        return r.json();
+    })
+    .then(function(data) {
+        spinner.style.display = 'none';
+        btn.style.display = 'inline-block';
+
+        var score   = data.score || 5;
+        var unlock  = data.unlock;
+        var verdict = data.verdict || 'MAYBE';
+        var reasons = data.reasons || [];
+
+        // Classify for colour-coding
+        var cls = 'maybe';
+        if (score >= 7 || unlock === true)  cls = 'yes';
+        if (score <= 4 || unlock === false && score < 5) cls = 'no';
+
+        result.className = 'prescreen-result verdict-' + cls;
+
+        document.getElementById('prescreenScore').textContent  = score + '/10';
+        document.getElementById('prescreenScore').className    = 'prescreen-score ' + cls;
+        document.getElementById('prescreenVerdict').textContent = verdict.replace(/_/g, ' ');
+
+        var badge = document.getElementById('prescreenBadge');
+        if (unlock) {
+            badge.textContent  = 'UNLOCK RECOMMENDED';
+            badge.className    = 'unlock-badge unlock-yes';
+        } else if (score >= 5) {
+            badge.textContent  = 'JUDGEMENT CALL';
+            badge.className    = 'unlock-badge unlock-maybe';
+        } else {
+            badge.textContent  = 'SKIP UNLOCK';
+            badge.className    = 'unlock-badge unlock-no';
+        }
+
+        var ul = document.getElementById('prescreenReasons');
+        ul.innerHTML = '';
+        reasons.forEach(function(r) {
+            var li = document.createElement('li');
+            li.textContent = r;
+            ul.appendChild(li);
+        });
+
+        result.style.display = 'block';
+        result.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    })
+    .catch(function(err) {
+        spinner.style.display = 'none';
+        btn.style.display = 'inline-block';
+        errEl.textContent = 'Error: ' + err.message;
+        errEl.style.display = 'inline';
+    });
+}
+
+// ── Pre-fill the "Query Used" field from the last clicked "Open in Indeed" button
 document.addEventListener('click', function(e) {
     var a = e.target.closest('a.btn-open');
     if (!a) return;
