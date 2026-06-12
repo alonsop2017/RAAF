@@ -1081,3 +1081,76 @@ async def admin_bulk_archive(request: Request, _admin=Depends(require_admin)):
     if failed:
         qs += f"&failed={len(failed)}"
     return RedirectResponse(url=f"/admin/archive?{qs}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Weekly Stats
+# ---------------------------------------------------------------------------
+
+@router.get("/weekly-stats", response_class=HTMLResponse)
+async def admin_weekly_stats(request: Request, weeks: int = 8, _admin=Depends(require_admin)):
+    """Weekly pipeline stats: processed and qualified candidates by requisition."""
+    import sqlite3
+    from collections import defaultdict
+
+    rows = []
+    weeks = max(1, min(weeks, 52))
+
+    if _DB_PATH.exists():
+        try:
+            conn = sqlite3.connect(f"file:{_DB_PATH}?mode=ro", uri=True)
+            conn.row_factory = sqlite3.Row
+            raw = conn.execute("""
+                SELECT
+                    DATE(a.assessed_at, 'weekday 1', '-6 days') AS week_start,
+                    cl.client_code,
+                    r.req_id,
+                    r.job_title,
+                    COUNT(a.id)                                                       AS processed,
+                    SUM(CASE WHEN a.recommendation IN ('STRONG RECOMMEND', 'RECOMMEND')
+                             THEN 1 ELSE 0 END)                                       AS qualified
+                FROM assessments a
+                JOIN candidates   c  ON a.candidate_id    = c.id
+                JOIN requisitions r  ON c.requisition_id  = r.id
+                JOIN clients      cl ON r.client_id       = cl.id
+                WHERE a.assessed_at IS NOT NULL
+                  AND a.assessment_mode != 'pending'
+                  AND a.assessed_at >= DATE('now', ?)
+                GROUP BY week_start, r.id
+                ORDER BY week_start DESC, cl.client_code, r.req_id
+            """, (f"-{weeks} weeks",)).fetchall()
+            conn.close()
+            rows = [dict(r) for r in raw]
+        except Exception:
+            rows = []
+
+    # Group rows by week for template rendering
+    weeks_map = defaultdict(list)
+    for row in rows:
+        weeks_map[row["week_start"]].append(row)
+
+    weeks_ordered = sorted(weeks_map.keys(), reverse=True)
+
+    # Per-week totals
+    week_totals = {}
+    for w in weeks_ordered:
+        wrows = weeks_map[w]
+        week_totals[w] = {
+            "processed": sum(r["processed"] for r in wrows),
+            "qualified": sum(r["qualified"] for r in wrows),
+        }
+
+    # Summary: current week and previous week
+    current_week = weeks_ordered[0] if weeks_ordered else None
+    prev_week    = weeks_ordered[1] if len(weeks_ordered) > 1 else None
+
+    return templates.TemplateResponse("admin/weekly_stats.html", {
+        "request":       request,
+        "user":          getattr(request.state, "user", None),
+        "weeks_ordered": weeks_ordered,
+        "weeks_map":     weeks_map,
+        "week_totals":   week_totals,
+        "current_week":  current_week,
+        "prev_week":     prev_week,
+        "weeks_param":   weeks,
+    })

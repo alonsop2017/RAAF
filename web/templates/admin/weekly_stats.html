@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Admin — Weekly Stats{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
+    <h1>Weekly Pipeline Stats</h1>
+    <form method="get" style="display:flex; align-items:center; gap:0.5rem;">
+        <label for="weeks-select" style="font-size:0.875rem; color:var(--text-secondary);">Show last</label>
+        <select id="weeks-select" name="weeks" class="form-select" style="width:auto; padding:0.35rem 0.75rem;" onchange="this.form.submit()">
+            {% for n in [4, 8, 12, 26] %}
+            <option value="{{ n }}" {% if n == weeks_param %}selected{% endif %}>{{ n }} weeks</option>
+            {% endfor %}
+        </select>
+    </form>
+</div>
+
+<!-- ── Summary Cards ─────────────────────────────────────────────────────── -->
+{% if current_week %}
+<div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); margin-bottom:2rem;">
+
+    <div class="stat-card info">
+        <div class="stat-value">{{ week_totals[current_week].processed }}</div>
+        <div class="stat-label">Processed — this week<br><small style="opacity:.7;">w/o {{ current_week }}</small></div>
+    </div>
+
+    <div class="stat-card success">
+        <div class="stat-value">{{ week_totals[current_week].qualified }}</div>
+        <div class="stat-label">Qualified — this week<br><small style="opacity:.7;">RECOMMEND or above</small></div>
+    </div>
+
+    {% if week_totals[current_week].processed > 0 %}
+    <div class="stat-card">
+        <div class="stat-value">{{ ((week_totals[current_week].qualified / week_totals[current_week].processed) * 100) | round(0) | int }}%</div>
+        <div class="stat-label">Qual rate — this week</div>
+    </div>
+    {% endif %}
+
+    {% if prev_week %}
+    <div class="stat-card">
+        <div class="stat-value">{{ week_totals[prev_week].processed }}</div>
+        <div class="stat-label">Processed — prev week<br><small style="opacity:.7;">w/o {{ prev_week }}</small></div>
+    </div>
+
+    <div class="stat-card success">
+        <div class="stat-value">{{ week_totals[prev_week].qualified }}</div>
+        <div class="stat-label">Qualified — prev week</div>
+    </div>
+    {% endif %}
+
+</div>
+{% endif %}
+
+<!-- ── Weekly Breakdown ──────────────────────────────────────────────────── -->
+{% if weeks_ordered %}
+{% for week in weeks_ordered %}
+<div class="card" style="margin-bottom:1.5rem;">
+    <div class="card-header" style="display:flex; align-items:center; justify-content:space-between;">
+        <h3 style="margin:0;">Week of {{ week }}</h3>
+        <span style="font-size:0.875rem; color:var(--text-secondary);">
+            {{ week_totals[week].processed }} processed &nbsp;|&nbsp;
+            <span style="color:var(--success-color); font-weight:600;">{{ week_totals[week].qualified }} qualified</span>
+            {% if week_totals[week].processed > 0 %}
+            &nbsp;({{ ((week_totals[week].qualified / week_totals[week].processed) * 100) | round(1) }}%)
+            {% endif %}
+        </span>
+    </div>
+    <div class="table-container" style="margin-top:0;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Requisition</th>
+                    <th>Role</th>
+                    <th style="text-align:center;">Processed</th>
+                    <th style="text-align:center;">Qualified</th>
+                    <th style="text-align:center;">Qual %</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in weeks_map[week] %}
+            {% set qual_pct = ((row.qualified / row.processed) * 100) | round(1) if row.processed > 0 else 0 %}
+            <tr>
+                <td>
+                    <a href="/assessments/{{ row.client_code }}/{{ row.req_id }}" style="font-family:monospace; font-size:0.85rem;">
+                        {{ row.req_id }}
+                    </a>
+                    <div style="font-size:0.75rem; color:var(--text-secondary);">{{ row.client_code }}</div>
+                </td>
+                <td>{{ row.job_title }}</td>
+                <td style="text-align:center; font-weight:600;">{{ row.processed }}</td>
+                <td style="text-align:center;">
+                    {% if row.qualified > 0 %}
+                    <span class="badge badge-success">{{ row.qualified }}</span>
+                    {% else %}
+                    <span style="color:var(--text-secondary);">0</span>
+                    {% endif %}
+                </td>
+                <td style="text-align:center;">
+                    {% if qual_pct >= 20 %}
+                    <span class="badge badge-success">{{ qual_pct }}%</span>
+                    {% elif qual_pct > 0 %}
+                    <span class="badge badge-warning">{{ qual_pct }}%</span>
+                    {% else %}
+                    <span style="color:var(--text-secondary);">—</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+            {% if weeks_map[week] | length > 1 %}
+            <tfoot>
+                <tr style="font-weight:700; background:var(--surface-raised, #f8fafc);">
+                    <td colspan="2" style="text-align:right; padding-right:1rem;">Week Total</td>
+                    <td style="text-align:center;">{{ week_totals[week].processed }}</td>
+                    <td style="text-align:center;">
+                        <span class="badge badge-success">{{ week_totals[week].qualified }}</span>
+                    </td>
+                    <td style="text-align:center;">
+                        {% if week_totals[week].processed > 0 %}
+                        {{ ((week_totals[week].qualified / week_totals[week].processed) * 100) | round(1) }}%
+                        {% else %}—{% endif %}
+                    </td>
+                </tr>
+            </tfoot>
+            {% endif %}
+        </table>
+    </div>
+</div>
+{% endfor %}
+
+{% else %}
+<div class="card">
+    <p style="text-align:center; color:var(--text-secondary); padding:2rem 0;">
+        No assessment data found for the selected period.
+    </p>
+</div>
+{% endif %}
+{% endblock %}
