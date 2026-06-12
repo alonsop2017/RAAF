@@ -348,14 +348,12 @@ Scoring guide:
         if country is None:
             country = "us" if _is_us_location(location) else "ca"
 
-        params = urllib.parse.urlencode({"q": query, "l": location})
-
-        if country == "us":
-            base = "https://www.indeed.com/employers/smart-sourcing/search"
-        else:
-            base = "https://ca.indeed.com/employers/smart-sourcing/search"
-
-        return f"{base}?{params}"
+        # The Smart Sourcing search UI lives at resumes.indeed.com/search.
+        # The /employers/smart-sourcing path is marketing-only and returns 404.
+        # Use co=CA for Canadian accounts, co=US for US accounts.
+        co = "US" if country == "us" else "CA"
+        params = urllib.parse.urlencode({"q": query, "l": location, "co": co, "hl": "en"})
+        return f"https://resumes.indeed.com/search?{params}"
 
     def build_linkedin_url(self, query: str, location: str = "") -> str:
         """
