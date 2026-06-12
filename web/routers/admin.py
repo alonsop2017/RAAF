@@ -1118,7 +1118,7 @@ async def admin_weekly_stats(request: Request, weeks: int = 8, _admin=Depends(re
                   AND a.assessed_at >= DATE('now', ?)
                 GROUP BY week_start, r.id
                 ORDER BY week_start DESC, cl.client_code, r.req_id
-            """, (f"-{weeks} weeks",)).fetchall()
+            """, (f"-{weeks * 7} days",)).fetchall()
             conn.close()
             rows = [dict(r) for r in raw]
         except Exception:
