@@ -436,6 +436,7 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
                     'recommendation': row.get('recommendation', 'PENDING'),
                     'name': row.get('name', row['name_normalized']),
                     'assessed_at': assessed_at[:10] if assessed_at else '',
+                    'source_platform': row.get('source_platform', ''),
                 })
             for cand in db.list_candidates(req_id, status='pending'):
                 if cand['name_normalized'] not in seen_norms:
@@ -444,6 +445,7 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
                         'resume_file': f"{cand['name_normalized']}_resume.txt",
                         'assessed': False,
                         'name': cand.get('name', cand['name_normalized'].replace('_', ' ').title()),
+                        'source_platform': cand.get('source_platform', ''),
                     })
             db_candidates_loaded = True
     except Exception as _e:
@@ -475,8 +477,10 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
                 candidate_data['name'] = assessment.get('candidate', {}).get('name', name_normalized)
                 raw_at = assessment.get('metadata', {}).get('assessed_at', '')
                 candidate_data['assessed_at'] = raw_at[:10] if raw_at else ''
+                candidate_data['source_platform'] = assessment.get('candidate', {}).get('source_platform', '')
             else:
                 candidate_data['name'] = name_normalized.replace("_", " ").title()
+                candidate_data['source_platform'] = ''
             candidates.append(candidate_data)
 
         legacy_dir = req_root / "resumes" / "processed"
@@ -499,8 +503,10 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
                     candidate_data['percentage'] = assessment.get('percentage', 0)
                     candidate_data['recommendation'] = assessment.get('recommendation', 'PENDING')
                     candidate_data['name'] = assessment.get('candidate', {}).get('name', name_normalized)
+                    candidate_data['source_platform'] = assessment.get('candidate', {}).get('source_platform', '')
                 else:
                     candidate_data['name'] = name_normalized.replace("_", " ").title()
+                    candidate_data['source_platform'] = ''
                 candidates.append(candidate_data)
 
     # Sort by score (assessed first, then by score descending)
