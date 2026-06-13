@@ -733,6 +733,21 @@ class DatabaseManager:
                 return None
             return self._deserialise_assessment(dict(row))
 
+    def get_assessment_by_name(self, req_id: str, name_normalized: str) -> Optional[dict]:
+        """Look up a single assessment by req_id + name_normalized."""
+        with self._conn() as conn:
+            row = conn.execute("""
+                SELECT a.*, cand.name, cand.name_normalized, cand.batch,
+                       cand.source_platform, cand.pipeline_status
+                FROM assessments a
+                JOIN candidates cand ON cand.id = a.candidate_id
+                JOIN requisitions r  ON r.id = a.requisition_id
+                WHERE r.req_id = ? AND cand.name_normalized = ?
+            """, (req_id, name_normalized)).fetchone()
+            if not row:
+                return None
+            return self._deserialise_assessment(dict(row))
+
     def list_assessments(self, req_id: str) -> list:
         """Return all assessments for a requisition, ranked by score descending."""
         with self._conn() as conn:

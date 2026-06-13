@@ -371,6 +371,33 @@ async def view_assessment(request: Request, client_code: str, req_id: str, name_
     with open(assessment_file, 'r') as f:
         assessment = json.load(f)
 
+    # Reconcile DB with JSON when scores diverge (JSON is authoritative)
+    if _use_database():
+        try:
+            db_rec = get_db().get_assessment_by_name(req_id, name_normalized)
+            json_pct = assessment.get("percentage")
+            if json_pct is not None:
+                db_pct = db_rec.get("percentage") if db_rec else None
+                if db_pct is None or abs(float(db_pct) - float(json_pct)) > 0.5:
+                    get_db().save_assessment({
+                        "req_id": req_id,
+                        "name_normalized": name_normalized,
+                        "name": assessment.get("candidate", {}).get("name", name_normalized),
+                        "batch": assessment.get("candidate", {}).get("batch"),
+                        "source_platform": assessment.get("candidate", {}).get("source_platform", "PCR"),
+                        "total_score": assessment.get("total_score"),
+                        "percentage": assessment.get("percentage"),
+                        "recommendation": assessment.get("recommendation"),
+                        "scores": assessment.get("scores"),
+                        "summary": assessment.get("summary"),
+                        "key_strengths": assessment.get("key_strengths"),
+                        "areas_of_concern": assessment.get("areas_of_concern"),
+                        "interview_focus_areas": assessment.get("interview_focus_areas"),
+                        "assessed_at": assessment.get("metadata", {}).get("assessed_at"),
+                    })
+        except Exception:
+            pass  # never let reconciliation break the view
+
     req_config = get_requisition_config(client_code, req_id)
     client_config = get_client_config(client_code)
 
