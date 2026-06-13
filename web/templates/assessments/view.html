@@ -11,7 +11,17 @@
     <div class="flex flex-between flex-center">
         <div>
             <h1>{{ assessment.candidate.name }}</h1>
-            <p class="subtitle">Assessment Details | {{ req_title }}</p>
+            <p class="subtitle" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                Assessment Details | {{ req_title }}
+                {% set src = assessment.candidate.source_platform | default('') %}
+                {% if src in ('PCR', 'PCR Sync') %}<span class="src-badge src-pcr">PCR Sync</span>
+                {% elif src == 'Indeed' %}<span class="src-badge src-indeed">Indeed</span>
+                {% elif src == 'Upload' %}<span class="src-badge src-upload">Upload</span>
+                {% elif src == 'Google Drive' %}<span class="src-badge src-drive">Drive</span>
+                {% elif src in ('Email Direct', 'Email Ing.', 'Email') %}<span class="src-badge src-email">Email Ing.</span>
+                {% elif src and src != 'Unknown' %}<span class="src-badge src-other">{{ src }}</span>
+                {% endif %}
+            </p>
         </div>
         <div class="action-buttons">
             <a href="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/edit" class="btn btn-primary">Edit Assessment</a>
@@ -45,6 +55,16 @@
                 <p><strong>Stability:</strong> {{ assessment.scores.job_stability.tenure_analysis.risk_level if assessment.scores.job_stability else 'N/A' }}</p>
                 <p class="mt-1"><strong>Assessed:</strong> {{ assessment.metadata.assessed_at[:16] if assessment.metadata.assessed_at else 'N/A' }}</p>
                 <p class="mt-1"><strong>Assessor:</strong> {{ assessment.metadata.assessor or 'Automated' }}</p>
+                <p class="mt-1"><strong>Source:</strong>
+                    {% set src = assessment.candidate.source_platform | default('') %}
+                    {% if src in ('PCR', 'PCR Sync') %}<span class="src-badge src-pcr">PCR Sync</span>
+                    {% elif src == 'Indeed' %}<span class="src-badge src-indeed">Indeed</span>
+                    {% elif src == 'Upload' %}<span class="src-badge src-upload">Upload</span>
+                    {% elif src == 'Google Drive' %}<span class="src-badge src-drive">Drive</span>
+                    {% elif src in ('Email Direct', 'Email Ing.', 'Email') %}<span class="src-badge src-email">Email Ing.</span>
+                    {% elif src and src != 'Unknown' %}<span class="src-badge src-other">{{ src }}</span>
+                    {% else %}<span class="text-muted">—</span>{% endif %}
+                </p>
             </div>
         </div>
     </div>
@@ -221,10 +241,32 @@
                 {% if assessment.candidate.phone %}
                 <p class="mt-1"><strong>Phone:</strong> {{ assessment.candidate.phone }}</p>
                 {% endif %}
-                <p class="mt-1"><strong>Source:</strong> {{ assessment.candidate.source_platform or 'Manual' }}</p>
+                <p class="mt-1"><strong>Source:</strong>
+                    {% set src = assessment.candidate.source_platform | default('') %}
+                    {% if src in ('PCR', 'PCR Sync') %}<span class="src-badge src-pcr">PCR Sync</span>
+                    {% elif src == 'Indeed' %}<span class="src-badge src-indeed">Indeed</span>
+                    {% elif src == 'Upload' %}<span class="src-badge src-upload">Upload</span>
+                    {% elif src == 'Google Drive' %}<span class="src-badge src-drive">Drive</span>
+                    {% elif src in ('Email Direct', 'Email Ing.', 'Email') %}<span class="src-badge src-email">Email Ing.</span>
+                    {% elif src and src != 'Unknown' %}<span class="src-badge src-other">{{ src }}</span>
+                    {% else %}<span class="text-muted">—</span>{% endif %}
+                </p>
                 <p class="mt-1"><strong>Batch:</strong> {{ assessment.candidate.batch or 'N/A' }}</p>
             </div>
         </div>
     </div>
 </div>
+
+<style>
+.src-badge {
+    display: inline-block; font-size: 0.68rem; font-weight: 600;
+    padding: 2px 7px; border-radius: 99px; white-space: nowrap; letter-spacing: 0.01em;
+}
+.src-pcr    { background: #dbeafe; color: #1e40af; }
+.src-indeed { background: #fef3c7; color: #92400e; }
+.src-upload { background: #f1f5f9; color: #475569; }
+.src-drive  { background: #d1fae5; color: #065f46; }
+.src-email  { background: #ede9fe; color: #5b21b6; }
+.src-other  { background: #f1f5f9; color: #475569; }
+</style>
 {% endblock %}
