@@ -690,6 +690,19 @@ async def view_candidate(request: Request, client_code: str, req_id: str, name_n
     req_config = get_requisition_config(client_code, req_id)
     client_config = get_client_config(client_code)
 
+    # Resolve source_platform: JSON first, then DB
+    source_platform = ""
+    if assessment:
+        source_platform = assessment.get("candidate", {}).get("source_platform", "") or ""
+    if not source_platform or source_platform == "Unknown":
+        try:
+            if _use_database():
+                db_rows = get_db().list_candidates(req_id)
+                db_map = {r["name_normalized"]: r.get("source_platform", "") for r in db_rows}
+                source_platform = db_map.get(name_normalized, "") or source_platform
+        except Exception:
+            pass
+
     return templates.TemplateResponse("candidates/view.html", {
         "request": request,
         "user": getattr(request.state, 'user', None),
@@ -702,6 +715,7 @@ async def view_candidate(request: Request, client_code: str, req_id: str, name_n
         "resume_text": resume_text,
         "assessment": assessment,
         "lifecycle": lifecycle,
+        "source_platform": source_platform,
     })
 
 
