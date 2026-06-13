@@ -79,6 +79,23 @@ async def list_candidates(request: Request, client_code: str, req_id: str):
     candidates = []
     seen = set()
 
+    # Build a name_normalized → source_platform lookup from DB (single query)
+    db_source_map: dict = {}
+    if _use_database():
+        try:
+            rows = get_db().list_candidates(req_id)
+            db_source_map = {r["name_normalized"]: r.get("source_platform", "") for r in rows}
+        except Exception:
+            pass
+
+    def _resolve_source(name_norm: str, assessment_json: dict | None) -> str:
+        """Return source_platform: JSON candidate block > DB > empty."""
+        if assessment_json:
+            src = assessment_json.get("candidate", {}).get("source_platform", "")
+            if src and src not in ("Unknown", ""):
+                return src
+        return db_source_map.get(name_norm, "")
+
     # Scan all batch extracted folders
     for resume_file in list_all_extracted_resumes(client_code, req_id):
         name_normalized = resume_file.stem.replace("_resume", "")
@@ -107,8 +124,10 @@ async def list_candidates(request: Request, client_code: str, req_id: str):
             candidate_data['stability'] = assessment.get('scores', {}).get('job_stability', {}).get('tenure_analysis', {}).get('risk_level', 'N/A')
             raw_at = assessment.get('metadata', {}).get('assessed_at', '')
             candidate_data['assessed_at'] = raw_at[:10] if raw_at else ''
+            candidate_data['source_platform'] = _resolve_source(name_normalized, assessment)
         else:
             candidate_data['name'] = name_normalized.replace("_", " ").title()
+            candidate_data['source_platform'] = _resolve_source(name_normalized, None)
 
         lifecycle_file = assessments_dir / f"{name_normalized}_lifecycle.json"
         candidate_data['lifecycle'] = ''
@@ -148,8 +167,10 @@ async def list_candidates(request: Request, client_code: str, req_id: str):
                 candidate_data['stability'] = assessment.get('scores', {}).get('job_stability', {}).get('tenure_analysis', {}).get('risk_level', 'N/A')
                 raw_at = assessment.get('metadata', {}).get('assessed_at', '')
                 candidate_data['assessed_at'] = raw_at[:10] if raw_at else ''
+                candidate_data['source_platform'] = _resolve_source(name_normalized, assessment)
             else:
                 candidate_data['name'] = name_normalized.replace("_", " ").title()
+                candidate_data['source_platform'] = _resolve_source(name_normalized, None)
 
             lifecycle_file = assessments_dir / f"{name_normalized}_lifecycle.json"
             candidate_data['lifecycle'] = ''

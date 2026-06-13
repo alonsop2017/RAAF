@@ -40,6 +40,7 @@
                 <tr>
                     <th>Rank</th>
                     <th>Candidate</th>
+                    <th>Source</th>
                     <th>Batch</th>
                     <th>Score</th>
                     <th>%</th>
@@ -66,6 +67,24 @@
                         </a>
                         {% if candidate.lifecycle == 'out_of_consideration' %}
                         <span class="badge ooc-badge" style="margin-left:0.4rem;">Out of Consideration</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% set src = candidate.source_platform | default('') %}
+                        {% if src in ('PCR', 'PCR Sync') %}
+                        <span class="src-badge src-pcr">PCR Sync</span>
+                        {% elif src in ('Indeed',) %}
+                        <span class="src-badge src-indeed">Indeed</span>
+                        {% elif src in ('Upload',) %}
+                        <span class="src-badge src-upload">Upload</span>
+                        {% elif src in ('Google Drive',) %}
+                        <span class="src-badge src-drive">Drive</span>
+                        {% elif src in ('Email Direct', 'Email Ing.', 'Email') %}
+                        <span class="src-badge src-email">Email Ing.</span>
+                        {% elif src and src != 'Unknown' %}
+                        <span class="src-badge src-other">{{ src }}</span>
+                        {% else %}
+                        <span class="text-muted" style="font-size:0.8rem;">—</span>
                         {% endif %}
                     </td>
                     <td>
@@ -168,6 +187,16 @@
 tr.row-ooc { opacity: 0.55; }
 tr.row-ooc:hover { opacity: 0.75; }
 .ooc-badge { background: #fee2e2; color: #991b1b; font-size: 0.65rem; padding: 2px 6px; border-radius: 99px; font-weight: 600; }
+.src-badge {
+    display: inline-block; font-size: 0.68rem; font-weight: 600;
+    padding: 2px 7px; border-radius: 99px; white-space: nowrap; letter-spacing: 0.01em;
+}
+.src-pcr    { background: #dbeafe; color: #1e40af; }
+.src-indeed { background: #fef3c7; color: #92400e; }
+.src-upload { background: #f1f5f9; color: #475569; }
+.src-drive  { background: #d1fae5; color: #065f46; }
+.src-email  { background: #ede9fe; color: #5b21b6; }
+.src-other  { background: #f1f5f9; color: #475569; }
 .btn-ooc {
     background: transparent;
     color: #dc2626;
