@@ -135,11 +135,13 @@ async def assessment_dashboard(request: Request, client_code: str, req_id: str):
                 "assessed_at": row.get("assessed_at", "N/A"),
                 "stability": stability_risk,
                 "lifecycle": row.get("pipeline_status", "") or "",
+                "source_platform": row.get("source_platform", ""),
             })
         for cand in db.list_candidates(req_id, status="pending"):
             pending.append({
                 "name_normalized": cand["name_normalized"],
                 "name": cand["name"],
+                "source_platform": cand.get("source_platform", ""),
             })
     else:
         seen = set()
@@ -174,11 +176,13 @@ async def assessment_dashboard(request: Request, client_code: str, req_id: str):
                     "stability": assessment.get("scores", {}).get("job_stability", {}).get(
                         "tenure_analysis", {}).get("risk_level", "N/A"),
                     "lifecycle": lifecycle,
+                    "source_platform": assessment.get("candidate", {}).get("source_platform", ""),
                 })
             else:
                 pending.append({
                     "name_normalized": name_normalized,
                     "name": name_normalized.replace("_", " ").title(),
+                    "source_platform": "",
                 })
 
     # Sort assessments by percentage descending

@@ -123,6 +123,7 @@
                         <tr>
                             <th>Rank</th>
                             <th>Candidate</th>
+                            <th>Source</th>
                             <th>Score</th>
                             <th>%</th>
                             <th>Stability</th>
@@ -141,6 +142,16 @@
                                    style="font-weight: 500; color: var(--primary-color); text-decoration: none;">
                                     {{ a.name }}
                                 </a>
+                            </td>
+                            <td>
+                                {% set src = a.source_platform | default('') %}
+                                {% if src in ('PCR', 'PCR Sync') %}<span class="src-badge src-pcr">PCR Sync</span>
+                                {% elif src == 'Indeed' %}<span class="src-badge src-indeed">Indeed</span>
+                                {% elif src == 'Upload' %}<span class="src-badge src-upload">Upload</span>
+                                {% elif src == 'Google Drive' %}<span class="src-badge src-drive">Drive</span>
+                                {% elif src in ('Email Direct', 'Email Ing.', 'Email') %}<span class="src-badge src-email">Email Ing.</span>
+                                {% elif src and src != 'Unknown' %}<span class="src-badge src-other">{{ src }}</span>
+                                {% else %}<span style="color:var(--text-secondary);font-size:0.8rem;">—</span>{% endif %}
                             </td>
                             <td style="font-weight: 600;">{{ a.score }}/{{ a.max_score }}</td>
                             <td>{{ a.percentage }}%</td>
@@ -190,6 +201,16 @@
                                     {{ a.name }}
                                 </a>
                             </td>
+                            <td>
+                                {% set src = a.source_platform | default('') %}
+                                {% if src in ('PCR', 'PCR Sync') %}<span class="src-badge src-pcr">PCR Sync</span>
+                                {% elif src == 'Indeed' %}<span class="src-badge src-indeed">Indeed</span>
+                                {% elif src == 'Upload' %}<span class="src-badge src-upload">Upload</span>
+                                {% elif src == 'Google Drive' %}<span class="src-badge src-drive">Drive</span>
+                                {% elif src in ('Email Direct', 'Email Ing.', 'Email') %}<span class="src-badge src-email">Email Ing.</span>
+                                {% elif src and src != 'Unknown' %}<span class="src-badge src-other">{{ src }}</span>
+                                {% else %}<span style="color:var(--text-secondary);font-size:0.8rem;">—</span>{% endif %}
+                            </td>
                             <td style="font-weight: 600; color: #6b7280;">{{ a.score }}/{{ a.max_score }}</td>
                             <td style="color: #6b7280;">{{ a.percentage }}%</td>
                             <td style="color: #6b7280;">{{ a.stability }}</td>
@@ -223,7 +244,7 @@
                     </tbody>
                     <tfoot>
                         <tr>
-                            <td colspan="9" style="padding: 0.6rem 1rem; border-top: 1px solid #e5e7eb; background: #f9fafb; text-align: center;">
+                            <td colspan="10" style="padding: 0.6rem 1rem; border-top: 1px solid #e5e7eb; background: #f9fafb; text-align: center;">
                                 {% if dnr_assessments %}
                                 <span class="badge rec-dnr" style="margin-right: 0.75rem;">{{ dnr_assessments|length }} Do Not Recommend</span>
                                 <a href="#" id="toggle-dnr-link" onclick="toggleDNR(event)"
@@ -287,6 +308,19 @@
         </div>
     </div>
 </div>
+
+<style>
+.src-badge {
+    display: inline-block; font-size: 0.68rem; font-weight: 600;
+    padding: 2px 7px; border-radius: 99px; white-space: nowrap; letter-spacing: 0.01em;
+}
+.src-pcr    { background: #dbeafe; color: #1e40af; }
+.src-indeed { background: #fef3c7; color: #92400e; }
+.src-upload { background: #f1f5f9; color: #475569; }
+.src-drive  { background: #d1fae5; color: #065f46; }
+.src-email  { background: #ede9fe; color: #5b21b6; }
+.src-other  { background: #f1f5f9; color: #475569; }
+</style>
 
 <script>
 function setLifecycle(clientCode, reqId, nameNorm, status, el) {
