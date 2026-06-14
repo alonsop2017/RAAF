@@ -82,10 +82,12 @@ SKIP_SUBJECT_KEYWORDS = [
 def _load_state() -> dict:
     if STATE_FILE.exists():
         try:
-            return json.loads(STATE_FILE.read_text())
+            data = json.loads(STATE_FILE.read_text())
+            data.setdefault("seen_hashes", {})
+            return data
         except Exception:
             pass
-    return {"processed_ids": [], "last_run": None}
+    return {"processed_ids": [], "seen_hashes": {}, "last_run": None}
 
 
 def _save_state(state: dict) -> None:
@@ -252,8 +254,11 @@ def _store_resume(
     orig_path = folder / f"{name_normalized}_resume{ext}"
     txt_path  = folder / f"{name_normalized}_resume.txt"
 
-    # Avoid overwriting — append hash suffix if collision
     if orig_path.exists():
+        if orig_path.read_bytes() == file_bytes:
+            # Identical content already on disk — skip write, return existing paths
+            return orig_path, txt_path
+        # Different content (updated resume) — store with hash suffix so both are kept
         h = _file_hash(file_bytes)
         orig_path = folder / f"{name_normalized}_{h}_resume{ext}"
         txt_path  = folder / f"{name_normalized}_{h}_resume.txt"
@@ -292,12 +297,33 @@ def _store_in_batch(
         (batch_dir / "originals").mkdir(parents=True, exist_ok=True)
         (batch_dir / "extracted").mkdir(parents=True, exist_ok=True)
 
-        (batch_dir / "originals" / f"{name_normalized}{ext}").write_bytes(file_bytes)
-        (batch_dir / "extracted" / f"{name_normalized}_resume.txt").write_text(
-            extracted_text, encoding="utf-8"
-        )
+        orig_dest = batch_dir / "originals" / f"{name_normalized}{ext}"
+        txt_dest  = batch_dir / "extracted"  / f"{name_normalized}_resume.txt"
+        if not orig_dest.exists():
+            orig_dest.write_bytes(file_bytes)
+        if not txt_dest.exists():
+            txt_dest.write_text(extracted_text, encoding="utf-8")
     except Exception as e:
         _log(f"  WARN: could not copy to batch folder: {e}")
+
+
+def _candidate_exists_in_db(req_id: str, name_normalized: str) -> bool:
+    """Return True if this candidate is already recorded for this requisition."""
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if not _use_database():
+            return False
+        db = get_db()
+        with db._conn() as conn:
+            row = conn.execute(
+                """SELECT c.id FROM candidates c
+                   JOIN requisitions r ON r.id=c.requisition_id
+                   WHERE r.req_id=? AND c.name_normalized=?""",
+                (req_id, name_normalized),
+            ).fetchone()
+            return row is not None
+    except Exception:
+        return False
 
 
 def _add_candidate_to_db(
@@ -404,6 +430,7 @@ def run():
 
     state = _load_state()
     processed_ids: list[str] = state.get("processed_ids", [])
+    seen_hashes: dict = state.get("seen_hashes", {})
 
     ingested: list[dict] = []
     unmatched: list[dict] = []
@@ -521,6 +548,20 @@ def run():
                     errors.append(err)
                     continue
 
+                # ── Dedup layer 1: file-content hash ─────────────────────────
+                # Same PDF arriving in a different email (e.g. resend) is caught
+                # here before we spend an API call on matching.
+                fhash = _file_hash(file_bytes)
+                if fhash in seen_hashes:
+                    prior = seen_hashes[fhash]
+                    _log(
+                        f"  SKIP (duplicate file): {filename} — already ingested as "
+                        f"{prior['name']} for {prior.get('req_id','unmatched')} "
+                        f"on {prior.get('at','?')}"
+                    )
+                    continue
+                # ─────────────────────────────────────────────────────────────
+
                 extracted = _extract_text(file_bytes, filename)
                 name_norm = _normalize_name(filename)
 
@@ -547,11 +588,33 @@ def run():
                 )
 
                 if req:
+                    # ── Dedup layer 2: DB existence check ────────────────────
+                    # Same candidate name already in this requisition means we've
+                    # seen this person before (possibly via a different filename).
+                    # Still update the DB (upsert is safe) but skip redundant
+                    # file storage and API re-work.
+                    already_exists = _candidate_exists_in_db(req["req_id"], name_norm)
+                    if already_exists:
+                        _log(
+                            f"  SKIP (already in DB): {candidate_name} already "
+                            f"in {req['req_id']} — updating hash record only"
+                        )
+                        seen_hashes[fhash] = {
+                            "name": name_norm, "req_id": req["req_id"],
+                            "at": datetime.now(timezone.utc).isoformat(),
+                        }
+                        continue
+                    # ─────────────────────────────────────────────────────────
+
                     _log(f"  Matched → {req['req_id']} ({req['title']}) — {int(confidence*100)}% — {reasoning}")
                     orig_path, txt_path = _store_resume(
                         file_bytes, filename, extracted, req, name_norm, confidence
                     )
                     _add_candidate_to_db(req, name_norm, candidate_name, txt_path, sender, confidence)
+                    seen_hashes[fhash] = {
+                        "name": name_norm, "req_id": req["req_id"],
+                        "at": datetime.now(timezone.utc).isoformat(),
+                    }
                     ingested.append({
                         "candidate": candidate_name,
                         "req_id": req["req_id"],
@@ -562,6 +625,10 @@ def run():
                 else:
                     _log(f"  Unmatched ({int(confidence*100)}%) — {reasoning}")
                     _store_resume(file_bytes, filename, extracted, None, name_norm, confidence)
+                    seen_hashes[fhash] = {
+                        "name": name_norm, "req_id": None,
+                        "at": datetime.now(timezone.utc).isoformat(),
+                    }
                     unmatched.append({
                         "filename": filename,
                         "sender": sender,
@@ -578,8 +645,13 @@ def run():
             _log(traceback.format_exc())
             errors.append(err)
 
-    # Persist state (keep last 2000 processed IDs to bound file size)
+    # Persist state (cap both lists to bound file size)
     state["processed_ids"] = processed_ids[-2000:]
+    # Keep the last 5000 hashes — at ~80 bytes each that's ~400 KB max
+    if len(seen_hashes) > 5000:
+        keys = list(seen_hashes)[-5000:]
+        seen_hashes = {k: seen_hashes[k] for k in keys}
+    state["seen_hashes"] = seen_hashes
     state["last_run"] = datetime.now(timezone.utc).isoformat()
     _save_state(state)
 
