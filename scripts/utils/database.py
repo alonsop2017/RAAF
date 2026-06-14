@@ -851,6 +851,12 @@ class DatabaseManager:
                 data.get("assessed_at",
                           datetime.utcnow().isoformat()),
             ))
+            # Always mark the candidate as assessed — covers both the new-insert
+            # and the ON CONFLICT update path, and heals any prior silent failure.
+            conn.execute(
+                "UPDATE candidates SET status='assessed', updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (cand_id,)
+            )
             return cursor.lastrowid
 
     @staticmethod
