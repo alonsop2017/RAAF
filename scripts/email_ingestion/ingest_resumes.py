@@ -392,6 +392,11 @@ def run():
     for msg_ref in messages:
         msg_id = msg_ref["id"]
         if msg_id in processed_ids:
+            # Heal missing label: message was processed but label never applied
+            try:
+                add_label(msg_id, label_id)
+            except Exception:
+                pass
             continue
 
         try:
