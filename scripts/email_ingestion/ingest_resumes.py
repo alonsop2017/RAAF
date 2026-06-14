@@ -121,8 +121,13 @@ def _normalize_name(filename: str) -> str:
     - Trailing digits: "Smith John 2" → "smith_john"
     """
     stem = Path(filename).stem
-    # Strip content after separator — usually a job title or version note
-    stem = re.split(r"\s*[-–—|]\s*", stem)[0]
+    # Strip Indeed's "-all" resume-variant suffix before any other processing
+    # ("Jason-Salazar-all" → "Jason-Salazar", "SHRAVAN KUMAR-YALALA-all (2)" → "SHRAVAN KUMAR-YALALA")
+    stem = re.sub(r"(?i)-all(\s*\(\d+\))?\s*$", "", stem)
+    # Strip title-separator dashes that have whitespace on both sides
+    # (" - Reliability Engineer" → gone) but leave name-internal dashes alone
+    # ("Jason-Salazar" stays intact, "Reddy-Jampareddy" stays intact)
+    stem = re.split(r"\s+[-–—|]\s+", stem)[0]
     # Strip content in parentheses
     stem = re.sub(r"\([^)]*\)", "", stem)
     # Strip revision/version/copy suffixes: "REV 9", "v2", "Final", "Copy", "Updated"
@@ -169,8 +174,12 @@ def _extract_name_from_body(body: str, subject: str) -> str:
     """
     name_re = re.compile(r"^[A-ZÀ-Ža-z][A-ZÀ-Ža-z'\-]+(?:\s+[A-ZÀ-Ža-z'\-]+){1,3}$")
     skip_words = {
+        # Resume section headers that can look like a 2-word name in ALL-CAPS or title case
         "resume", "profile", "insights", "summary", "experience", "education",
         "skills", "certifications", "contact", "history", "recently", "active",
+        "work", "authorization", "objective", "career", "professional",
+        "technical", "employment", "references", "achievement", "accomplishment",
+        "qualification", "volunteer", "project", "language", "award", "publication",
     }
     lines = body.strip().split("\n")
     # Pass 1 — ALL-CAPS name line (e.g. "QUENTIN FOSTER")
