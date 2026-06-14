@@ -54,6 +54,18 @@ _RESUME_BODY_MARKERS = [
     "job history", "career history",
 ]
 
+# Words that appear as "last names" in filenames like "Adam Engineer.docx" but
+# are actually job titles.  Filtered out before treating a token as a surname.
+_FILENAME_JOB_TITLE_TOKENS: frozenset[str] = frozenset({
+    "engineer", "engineering", "manager", "management", "director", "specialist",
+    "coordinator", "analyst", "consultant", "technician", "supervisor", "operator",
+    "inspector", "lead", "principal", "staff", "associate", "executive",
+    "developer", "designer", "architect", "administrator", "officer",
+    "reliability", "maintenance", "quality", "process", "project", "plant",
+    "mechanical", "electrical", "chemical", "industrial", "manufacturing",
+    "senior", "junior", "sr", "jr",
+})
+
 # Emails whose subjects indicate internal job-posting / ad-distribution messages
 # (not candidate applications) — skip entirely rather than trying to match.
 SKIP_SUBJECT_KEYWORDS = [
@@ -98,14 +110,43 @@ def _file_hash(data: bytes) -> str:
 
 
 def _normalize_name(filename: str) -> str:
-    """Turn 'John Smith Resume.pdf' → 'smith_john' best-effort."""
+    """Turn 'John Smith Resume.pdf' → 'smith_john' best-effort.
+
+    Handles common filename noise:
+    - Job title suffixes: "Adam Engineer.docx" → "adam" (not "engineer_adam")
+    - Dash-separated titles: "Hal Minderman - Reliability Engineer" → "minderman_hal"
+    - Version/revision suffixes: "Wdowski Resume REV 9" → "wdowski"
+    - Trailing digits: "Smith John 2" → "smith_john"
+    """
     stem = Path(filename).stem
-    stem = re.sub(r"[-_\.\s]+", " ", stem)
-    stem = re.sub(r"(?i)\b(resume|cv|curriculum.?vitae|application)\b", "", stem).strip()
-    parts = stem.split()
+    # Strip content after separator — usually a job title or version note
+    stem = re.split(r"\s*[-–—|]\s*", stem)[0]
+    # Strip content in parentheses
+    stem = re.sub(r"\([^)]*\)", "", stem)
+    # Strip revision/version/copy suffixes: "REV 9", "v2", "Final", "Copy", "Updated"
+    stem = re.sub(r"(?i)\s+(rev\.?\s*\d+|v\.?\s*\d+|\bfinal\b|\bcopy\b|\bupdated?\b)\s*$", "", stem)
+    # Strip trailing lone digits ("Wdowski 9" → "Wdowski")
+    stem = re.sub(r"\s+\d+$", "", stem)
+    # Normalize separators to spaces
+    stem = re.sub(r"[-_.\s]+", " ", stem).strip()
+    # Remove resume/CV keywords
+    stem = re.sub(r"(?i)\b(resume|cv|curriculum\s*vitae|application)\b", "", stem).strip()
+    stem = re.sub(r"\s+", " ", stem).strip()
+
+    parts = [p for p in stem.split() if p]
+    # Keep only tokens that look like name parts (not digits, not job-title words)
+    name_parts = [p for p in parts if not p.isdigit() and p.lower() not in _FILENAME_JOB_TITLE_TOKENS]
+
+    if len(name_parts) >= 2:
+        return f"{name_parts[-1]}_{name_parts[0]}".lower()
+    if len(name_parts) == 1:
+        return name_parts[0].lower()
+    # All tokens were job titles / digits — fall back to first two raw tokens
     if len(parts) >= 2:
-        return f"{parts[-1]}_{parts[0]}".lower()
-    return stem.lower().replace(" ", "_") or "candidate_unknown"
+        return f"{parts[1]}_{parts[0]}".lower()
+    if parts:
+        return parts[0].lower()
+    return "candidate_unknown"
 
 
 def _looks_like_resume(text: str) -> bool:
@@ -482,6 +523,14 @@ def run():
 
                 extracted = _extract_text(file_bytes, filename)
                 name_norm = _normalize_name(filename)
+
+                # Filename gave us only a first name (no underscore) — the file
+                # was named with just a first name or a job title swallowed the
+                # surname.  Try to extract the real name from resume text instead.
+                if "_" not in name_norm and extracted:
+                    name_from_text = _extract_name_from_body(extracted, subject)
+                    if name_from_text and len(name_from_text.split()) >= 2:
+                        name_norm = _normalize_name(name_from_text)
 
                 # Derive candidate display name from normalized key
                 parts = name_norm.split("_")
