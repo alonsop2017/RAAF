@@ -9,8 +9,8 @@ import json
 import shutil
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from fastapi import APIRouter, Request, Form, UploadFile, File, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi import APIRouter, Request, Form, UploadFile, File, HTTPException, Query
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from scripts.utils.client_utils import (
@@ -747,6 +747,68 @@ async def download_resume(client_code: str, req_id: str, name_normalized: str):
         return FileResponse(processed_file, filename=f"{name_normalized}_resume.txt")
 
     raise HTTPException(status_code=404, detail="Resume file not found")
+
+
+@router.get("/{client_code}/{req_id}/{name_normalized}/resume/inline")
+async def view_resume_inline(client_code: str, req_id: str, name_normalized: str):
+    """Serve resume PDF inline (for iframe embedding in browser)."""
+    original = find_resume_in_batches(client_code, req_id, name_normalized, "originals")
+    if original and original.suffix.lower() == ".pdf":
+        content = original.read_bytes()
+        return Response(
+            content=content,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"inline; filename=\"{original.name}\""}
+        )
+    # Fall back to extracted text displayed as plain text
+    extracted = find_resume_in_batches(client_code, req_id, name_normalized, "extracted")
+    if extracted:
+        content = extracted.read_text(encoding="utf-8", errors="replace")
+        return Response(content=content, media_type="text/plain")
+    raise HTTPException(status_code=404, detail="Resume file not found")
+
+
+@router.get("/api/search")
+async def search_candidates_api(q: str = Query("", min_length=1)):
+    """
+    Search candidates by name across all requisitions.
+    Returns JSON list of matching candidates with assessment details.
+    """
+    if not q or len(q.strip()) < 2:
+        return JSONResponse({"results": [], "total": 0})
+
+    results = []
+    try:
+        if _use_database():
+            db = get_db()
+            # Try FTS first, fall back to SQL LIKE
+            try:
+                rows = db.search_candidates_fts(q.strip(), limit=30)
+            except Exception:
+                rows = []
+            if not rows:
+                rows = db.search_candidates_sql(q.strip(), limit=30)
+
+            for r in rows:
+                rec = r.get("recommendation", "") or ""
+                results.append({
+                    "name": r.get("name", ""),
+                    "name_normalized": r.get("name_normalized", ""),
+                    "client_code": r.get("client_code", ""),
+                    "client_name": r.get("company_name", ""),
+                    "req_id": r.get("req_id", ""),
+                    "job_title": r.get("job_title", ""),
+                    "percentage": r.get("percentage"),
+                    "total_score": r.get("total_score"),
+                    "recommendation": rec,
+                    "summary": (r.get("summary") or "")[:300],
+                    "assessed_at": (r.get("assessed_at") or "")[:10],
+                    "has_pdf": False,  # resolved client-side via resume URL
+                })
+    except Exception as exc:
+        return JSONResponse({"results": [], "total": 0, "error": str(exc)})
+
+    return JSONResponse({"results": results, "total": len(results)})
 
 
 @router.post("/{client_code}/{req_id}/{name_normalized}/delete")
