@@ -781,13 +781,8 @@ async def search_candidates_api(q: str = Query("", min_length=1)):
     try:
         if _use_database():
             db = get_db()
-            # Try FTS first, fall back to SQL LIKE
-            try:
-                rows = db.search_candidates_fts(q.strip(), limit=30)
-            except Exception:
-                rows = []
-            if not rows:
-                rows = db.search_candidates_sql(q.strip(), limit=30)
+            # Use SQL LIKE for partial name matching (FTS requires exact tokens)
+            rows = db.search_candidates_sql(q.strip(), limit=30)
 
             for r in rows:
                 rec = r.get("recommendation", "") or ""

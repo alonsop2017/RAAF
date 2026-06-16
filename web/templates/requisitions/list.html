@@ -262,7 +262,8 @@
             }
 
             results.innerHTML = data.results.map((c, i) => {
-                const pct    = c.percentage != null ? c.percentage.toFixed(0) + '%' : '—';
+                const pct    = c.percentage != null ? c.percentage.toFixed(0) + '%' : null;
+                const score  = c.total_score != null ? c.total_score + '/100' : null;
                 const recCls = recClass(c.recommendation);
                 const recLbl = recLabel(c.recommendation);
                 const viewUrl = '/candidates/' + encodeURIComponent(c.client_code) + '/' + encodeURIComponent(c.req_id) + '/' + encodeURIComponent(c.name_normalized);
@@ -281,7 +282,8 @@
                             </div>
                         </div>
                         <div class="search-result-actions">
-                            ${c.percentage != null ? '<span class="badge ' + recCls + '">' + escHtml(recLbl) + ' &middot; ' + pct + '</span>' : ''}
+                            ${score ? '<span style="font-size:0.875rem;font-weight:700;color:#111;white-space:nowrap;">' + score + ' <span style="color:#6b7280;font-weight:400;">(' + pct + ')</span></span>' : ''}
+                            ${c.recommendation ? '<span class="badge ' + recCls + '" style="white-space:nowrap;">' + escHtml(recLbl) + '</span>' : ''}
                             <a href="${viewUrl}" class="btn btn-sm btn-outline" target="_blank">View</a>
                             <button class="btn btn-sm btn-outline" onclick="togglePdf('${uid}', '${escHtml(pdfUrl)}', this)">Resume</button>
                         </div>
