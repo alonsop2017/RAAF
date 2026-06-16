@@ -64,6 +64,44 @@ def normalize_filename(name: str) -> str:
     return name
 
 
+@router.get("/api/search")
+async def search_candidates_api(q: str = Query("", min_length=1)):
+    """
+    Search candidates by name across all requisitions.
+    Returns JSON list of matching candidates with assessment details.
+    """
+    if not q or len(q.strip()) < 2:
+        return JSONResponse({"results": [], "total": 0})
+
+    results = []
+    try:
+        if _use_database():
+            db = get_db()
+            # Use SQL LIKE for partial name matching (FTS requires exact tokens)
+            rows = db.search_candidates_sql(q.strip(), limit=30)
+
+            for r in rows:
+                rec = r.get("recommendation", "") or ""
+                results.append({
+                    "name": r.get("name", ""),
+                    "name_normalized": r.get("name_normalized", ""),
+                    "client_code": r.get("client_code", ""),
+                    "client_name": r.get("company_name", ""),
+                    "req_id": r.get("req_id", ""),
+                    "job_title": r.get("job_title", ""),
+                    "percentage": r.get("percentage"),
+                    "total_score": r.get("total_score"),
+                    "recommendation": rec,
+                    "summary": (r.get("summary") or "")[:300],
+                    "assessed_at": (r.get("assessed_at") or "")[:10],
+                    "has_pdf": False,
+                })
+    except Exception as exc:
+        return JSONResponse({"results": [], "total": 0, "error": str(exc)})
+
+    return JSONResponse({"results": results, "total": len(results)})
+
+
 @router.get("/{client_code}/{req_id}", response_class=HTMLResponse)
 async def list_candidates(request: Request, client_code: str, req_id: str):
     """List all candidates for a requisition, scanning all batch folders."""
@@ -766,44 +804,6 @@ async def view_resume_inline(client_code: str, req_id: str, name_normalized: str
         content = extracted.read_text(encoding="utf-8", errors="replace")
         return Response(content=content, media_type="text/plain")
     raise HTTPException(status_code=404, detail="Resume file not found")
-
-
-@router.get("/api/search")
-async def search_candidates_api(q: str = Query("", min_length=1)):
-    """
-    Search candidates by name across all requisitions.
-    Returns JSON list of matching candidates with assessment details.
-    """
-    if not q or len(q.strip()) < 2:
-        return JSONResponse({"results": [], "total": 0})
-
-    results = []
-    try:
-        if _use_database():
-            db = get_db()
-            # Use SQL LIKE for partial name matching (FTS requires exact tokens)
-            rows = db.search_candidates_sql(q.strip(), limit=30)
-
-            for r in rows:
-                rec = r.get("recommendation", "") or ""
-                results.append({
-                    "name": r.get("name", ""),
-                    "name_normalized": r.get("name_normalized", ""),
-                    "client_code": r.get("client_code", ""),
-                    "client_name": r.get("company_name", ""),
-                    "req_id": r.get("req_id", ""),
-                    "job_title": r.get("job_title", ""),
-                    "percentage": r.get("percentage"),
-                    "total_score": r.get("total_score"),
-                    "recommendation": rec,
-                    "summary": (r.get("summary") or "")[:300],
-                    "assessed_at": (r.get("assessed_at") or "")[:10],
-                    "has_pdf": False,  # resolved client-side via resume URL
-                })
-    except Exception as exc:
-        return JSONResponse({"results": [], "total": 0, "error": str(exc)})
-
-    return JSONResponse({"results": results, "total": len(results)})
 
 
 @router.post("/{client_code}/{req_id}/{name_normalized}/delete")
