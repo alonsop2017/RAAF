@@ -221,8 +221,15 @@ async def list_candidates(request: Request, client_code: str, req_id: str):
 
             candidates.append(candidate_data)
 
-    # Sort by score (assessed first, then by percentage descending)
-    candidates.sort(key=lambda x: (x['assessed'], x.get('percentage', 0)), reverse=True)
+    # Sort: active assessed (by score desc) → active pending → OOC last
+    candidates.sort(
+        key=lambda x: (
+            x.get('lifecycle') != 'out_of_consideration',
+            x['assessed'],
+            x.get('percentage', 0),
+        ),
+        reverse=True,
+    )
 
     return templates.TemplateResponse("candidates/list.html", {
         "request": request,
