@@ -791,6 +791,38 @@ def _save_to_db(assessment: dict, name_norm: str, resume_file: Path, use_ai: boo
             })
     except Exception:
         pass
+    # Auto-flag as out_of_consideration when a hard disqualifier was triggered
+    _auto_ooc_if_disqualified(assessment, name_norm)
+
+
+def _auto_ooc_if_disqualified(assessment: dict, name_norm: str) -> None:
+    """Write a lifecycle file marking the candidate OOC when a hard disqualifier fired."""
+    if not assessment.get("metadata", {}).get("contract_disqualified"):
+        return
+    try:
+        meta = assessment.get("metadata", {})
+        client_code = meta.get("client_code", "")
+        req_id = meta.get("requisition_id", "")
+        if not client_code or not req_id:
+            return
+        assessments_dir = get_assessments_path(client_code, req_id, "individual")
+        lifecycle_file = assessments_dir / f"{name_norm}_lifecycle.json"
+        # Don't overwrite a non-OOC status set intentionally by a human
+        if lifecycle_file.exists():
+            existing = json.loads(lifecycle_file.read_text())
+            if existing.get("status") not in ("", "out_of_consideration", None):
+                return
+        payload = {
+            "name_normalized": name_norm,
+            "status": "out_of_consideration",
+            "updated_at": datetime.utcnow().isoformat(),
+            "updated_by": "system:contract_disqualifier",
+        }
+        lifecycle_file.parent.mkdir(parents=True, exist_ok=True)
+        lifecycle_file.write_text(json.dumps(payload, indent=2))
+        print(f"  [D1] Auto-flagged OOC: {name_norm}")
+    except Exception:
+        pass
 
 
 def assess_batch(
