@@ -57,13 +57,24 @@ _RESUME_BODY_MARKERS = [
 # Words that appear as "last names" in filenames like "Adam Engineer.docx" but
 # are actually job titles.  Filtered out before treating a token as a surname.
 _FILENAME_JOB_TITLE_TOKENS: frozenset[str] = frozenset({
+    # Seniority
+    "senior", "junior", "sr", "jr", "lead", "principal", "staff", "associate",
+    # Role families
     "engineer", "engineering", "manager", "management", "director", "specialist",
     "coordinator", "analyst", "consultant", "technician", "supervisor", "operator",
-    "inspector", "lead", "principal", "staff", "associate", "executive",
-    "developer", "designer", "architect", "administrator", "officer",
+    "inspector", "executive", "developer", "designer", "architect", "administrator",
+    "officer", "advisor", "strategist", "recruiter", "scrum", "agile",
+    # IT/PM abbreviations that appear in filenames
+    "pmo", "pm", "itpm", "it",
+    # Industry/domain words
     "reliability", "maintenance", "quality", "process", "project", "plant",
     "mechanical", "electrical", "chemical", "industrial", "manufacturing",
-    "senior", "junior", "sr", "jr",
+    "technology", "tech", "techleader", "digital", "data", "cloud", "cyber",
+    "infrastructure", "network", "security", "software", "hardware",
+    # Company / institution words that leak into names
+    "litcom", "canada", "linkedin", "open", "summary",
+    # Document artifact tokens
+    "resume", "cv", "application", "profile", "bio",
 })
 
 # Emails whose subjects indicate internal job-posting / ad-distribution messages
@@ -128,8 +139,9 @@ def _normalize_name(filename: str) -> str:
     # (" - Reliability Engineer" → gone) but leave name-internal dashes alone
     # ("Jason-Salazar" stays intact, "Reddy-Jampareddy" stays intact)
     stem = re.split(r"\s+[-–—|]\s+", stem)[0]
-    # Strip content in parentheses
+    # Strip content in parentheses (matched and unmatched stray brackets)
     stem = re.sub(r"\([^)]*\)", "", stem)
+    stem = re.sub(r"[()[\]{}]", "", stem)
     # Strip revision/version/copy suffixes: "REV 9", "v2", "Final", "Copy", "Updated"
     stem = re.sub(r"(?i)\s+(rev\.?\s*\d+|v\.?\s*\d+|\bfinal\b|\bcopy\b|\bupdated?\b)\s*$", "", stem)
     # Strip trailing lone digits ("Wdowski 9" → "Wdowski")

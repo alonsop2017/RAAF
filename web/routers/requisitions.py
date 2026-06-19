@@ -509,10 +509,7 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
                     candidate_data['source_platform'] = ''
                 candidates.append(candidate_data)
 
-    # Sort by score (assessed first, then by score descending)
-    candidates.sort(key=lambda x: (x['assessed'], x.get('score', 0)), reverse=True)
-
-    # Load lifecycle status for each candidate
+    # Load lifecycle status for each candidate before sorting so OOC can be ranked lower
     _lc_dir = req_root / "assessments" / "individual"
     import json as _json
     for _cand in candidates:
@@ -524,6 +521,12 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
                     _cand['lifecycle'] = _json.load(_lf).get('status', '')
             except Exception:
                 pass
+
+    # Sort: active assessed (by score desc) → active pending → OOC last
+    def _sort_key(x: dict):
+        is_ooc = x.get('lifecycle') == 'out_of_consideration'
+        return (not is_ooc, x['assessed'], x.get('score', 0))
+    candidates.sort(key=_sort_key, reverse=True)
 
     # Get batches — include per-candidate assessment status for the drawer
     batches = []
