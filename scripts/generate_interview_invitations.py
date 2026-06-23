@@ -39,7 +39,7 @@ TIER_BY_NAME = {v: k for k, v in TIER_NAMES.items()}
 
 
 def load_assessments(client_code: str, req_id: str) -> list[dict]:
-    """Load all individual assessment JSON files for a requisition."""
+    """Load all individual assessment JSON files for a requisition, excluding OOC candidates."""
     assessments_dir = get_assessments_path(client_code, req_id, "individual")
     if not assessments_dir.exists():
         return []
@@ -51,9 +51,22 @@ def load_assessments(client_code: str, req_id: str) -> list[dict]:
         try:
             with open(json_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            assessments.append(data)
         except (json.JSONDecodeError, OSError) as e:
             print(f"  Warning: Could not load {json_file.name}: {e}", file=sys.stderr)
+            continue
+
+        # Skip candidates marked out of consideration
+        name_norm = data.get("candidate", {}).get("name_normalized") or json_file.stem.replace("_assessment", "")
+        lifecycle_file = assessments_dir / f"{name_norm}_lifecycle.json"
+        if lifecycle_file.exists():
+            try:
+                with open(lifecycle_file, "r", encoding="utf-8") as lf:
+                    if json.load(lf).get("status") == "out_of_consideration":
+                        continue
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        assessments.append(data)
 
     return assessments
 
