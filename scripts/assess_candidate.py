@@ -603,14 +603,21 @@ def two_pass_assess_all(
     assessments_path = get_assessments_path(client_code, req_id, "individual")
     existing = {f.stem.replace("_assessment", "") for f in assessments_path.glob("*_assessment.json")}
 
-    resume_files = [
-        f for f in list_all_extracted_resumes(client_code, req_id)
-        if f.stem.replace("_resume", "") not in existing
-    ]
+    # Deduplicate by name_normalized — keep only the first file seen per candidate
+    seen_norms: set[str] = set(existing)
+    resume_files: list[Path] = []
+    for f in list_all_extracted_resumes(client_code, req_id):
+        norm = f.stem.replace("_resume", "")
+        if norm not in seen_norms:
+            seen_norms.add(norm)
+            resume_files.append(f)
+
     legacy_path = get_resumes_path(client_code, req_id, "processed")
     if legacy_path.exists():
         for f in legacy_path.glob("*.txt"):
-            if f.stem.replace("_resume", "") not in existing:
+            norm = f.stem.replace("_resume", "")
+            if norm not in seen_norms:
+                seen_norms.add(norm)
                 resume_files.append(f)
 
     total = len(resume_files)
@@ -921,17 +928,22 @@ def assess_all_pending(
     # Find already assessed
     existing = {f.stem.replace("_assessment", "") for f in assessments_path.glob("*_assessment.json")}
 
-    # Collect pending resumes from batch extracted/ folders
-    resume_files = [
-        f for f in list_all_extracted_resumes(client_code, req_id)
-        if f.stem.replace("_resume", "") not in existing
-    ]
+    # Collect pending resumes — deduplicate by name_normalized across batches
+    seen_norms: set[str] = set(existing)
+    resume_files: list[Path] = []
+    for f in list_all_extracted_resumes(client_code, req_id):
+        norm = f.stem.replace("_resume", "")
+        if norm not in seen_norms:
+            seen_norms.add(norm)
+            resume_files.append(f)
 
     # Also check legacy processed/ folder
     legacy_path = get_resumes_path(client_code, req_id, "processed")
     if legacy_path.exists():
         for f in legacy_path.glob("*.txt"):
-            if f.stem.replace("_resume", "") not in existing:
+            norm = f.stem.replace("_resume", "")
+            if norm not in seen_norms:
+                seen_norms.add(norm)
                 resume_files.append(f)
 
     print(f"Pending assessments: {len(resume_files)}")
