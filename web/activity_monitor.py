@@ -24,9 +24,15 @@ _PRICING: dict[str, dict[str, float]] = {
 _DEFAULT_PRICE = {"input": 3.00, "output": 15.00}
 
 
-def _price(model: str, inp: int, out: int) -> float:
+def _price(model: str, inp: int, out: int, cache_read: int = 0, cache_write: int = 0) -> float:
     p = _PRICING.get(model, _DEFAULT_PRICE)
-    return (inp * p["input"] + out * p["output"]) / 1_000_000
+    # Cache reads are billed at 10% of input price; cache writes at 25% extra
+    return (
+        inp * p["input"]
+        + out * p["output"]
+        + cache_read * p["input"] * 0.10
+        + cache_write * p["input"] * 0.25
+    ) / 1_000_000
 
 
 def get_snapshot(active_window_s: int = 600, session_window_s: int = 86400) -> dict:
@@ -56,7 +62,7 @@ def get_snapshot(active_window_s: int = 600, session_window_s: int = 86400) -> d
         lines = []
 
     workers: dict[str, dict] = {}
-    session_tokens = {"input": 0, "output": 0, "calls": 0, "cost_usd": 0.0}
+    session_tokens = {"input": 0, "output": 0, "calls": 0, "cost_usd": 0.0, "cache_read": 0, "cache_write": 0}
     recent: list[dict] = []
     completion_times: list[float] = []
 
@@ -71,13 +77,17 @@ def get_snapshot(active_window_s: int = 600, session_window_s: int = 86400) -> d
 
         # ── Token accounting (session window) ─────────────────────────────
         if etype == "token_use" and ts > session_cutoff:
-            inp   = int(e.get("input", 0))
-            out   = int(e.get("output", 0))
+            inp         = int(e.get("input", 0))
+            out         = int(e.get("output", 0))
+            cache_read  = int(e.get("cache_read", 0))
+            cache_write = int(e.get("cache_write", 0))
             model = e.get("model", "")
-            session_tokens["input"]    += inp
-            session_tokens["output"]   += out
-            session_tokens["calls"]    += 1
-            session_tokens["cost_usd"] += _price(model, inp, out)
+            session_tokens["input"]        += inp
+            session_tokens["output"]       += out
+            session_tokens["calls"]        += 1
+            session_tokens["cache_read"]   += cache_read
+            session_tokens["cache_write"]  += cache_write
+            session_tokens["cost_usd"]     += _price(model, inp, out, cache_read, cache_write)
             wid = e.get("worker_id", "")
             if wid and wid in workers:
                 workers[wid]["tokens_in"]  += inp

@@ -92,6 +92,33 @@
         </div>
       </div>
 
+      <!-- Prompt Cache Stats -->
+      <div class="cache-panel">
+        <div class="cache-title">Prompt Cache — Session</div>
+        <div class="cache-grid">
+          <div class="cache-stat">
+            <div class="cache-stat-val" id="cacheHitTok">0</div>
+            <div class="cache-stat-lbl">Cache Read Tokens</div>
+          </div>
+          <div class="cache-stat">
+            <div class="cache-stat-val" id="cacheWriteTok">0</div>
+            <div class="cache-stat-lbl">Cache Write Tokens</div>
+          </div>
+          <div class="cache-stat">
+            <div class="cache-stat-val" id="cacheHitRate">—</div>
+            <div class="cache-stat-lbl">Hit Rate</div>
+          </div>
+          <div class="cache-stat">
+            <div class="cache-stat-val" id="cacheSavings">$0.0000</div>
+            <div class="cache-stat-lbl">Estimated Savings</div>
+          </div>
+        </div>
+        <div class="cache-bar-wrap" title="Proportion of input tokens served from cache">
+          <div class="cache-bar" id="cacheBar" style="width:0%"></div>
+        </div>
+        <div class="cache-bar-label">Cache hit ratio vs total input</div>
+      </div>
+
       <!-- Throughput chart -->
       <div class="throughput-panel">
         <div class="tp-title">Throughput — last 60 s</div>
@@ -357,6 +384,16 @@
 .api-stat-val    { font-size: 1.1rem; font-weight: 700; color: #e2e8f0; font-variant-numeric: tabular-nums; }
 .api-stat-lbl    { font-size: 0.6rem; color: #64748b; margin-top: 0.1rem; }
 
+/* ── Prompt cache panel ──────────────────────────────────────────── */
+.cache-panel { background: #1e293b; border-radius: 8px; padding: 0.75rem; border: 1px solid #065f4633; }
+.cache-title { font-size: 0.65rem; color: #34d399; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.5rem; font-weight: 600; }
+.cache-grid  { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; text-align: center; margin-bottom: 0.6rem; }
+.cache-stat-val { font-size: 0.95rem; font-weight: 700; color: #6ee7b7; font-variant-numeric: tabular-nums; }
+.cache-stat-lbl { font-size: 0.58rem; color: #64748b; margin-top: 0.1rem; }
+.cache-bar-wrap  { height: 6px; background: #334155; border-radius: 3px; overflow: hidden; margin-bottom: 0.25rem; }
+.cache-bar       { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #059669, #34d399); transition: width 0.6s ease; min-width: 0; }
+.cache-bar-label { font-size: 0.58rem; color: #475569; text-align: center; }
+
 /* ── Throughput chart ────────────────────────────────────────────── */
 .throughput-panel { background: #1e293b; border-radius: 8px; padding: 0.75rem; }
 .tp-title { font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.5rem; }
@@ -581,6 +618,26 @@
     el('apiAvgOut').textContent = calls ? fmtK(Math.round(out / calls)) : '—';
   }
 
+  // ── Cache efficiency ──────────────────────────────────────────────
+  function renderCache(tok) {
+    const cacheRead  = tok.cache_read  || 0;
+    const cacheWrite = tok.cache_write || 0;
+    const totalInput = (tok.input || 0) + cacheRead;
+
+    // Hit rate: cache_read / (total input including cache reads)
+    const hitRate = totalInput > 0 ? (cacheRead / totalInput * 100) : 0;
+
+    // Savings: what cache reads would have cost at full input price vs 10% price
+    // We don't know the model mix here so use blended Sonnet rate ($3/M)
+    const savedUsd = cacheRead * 3.00 * 0.90 / 1_000_000;
+
+    el('cacheHitTok').textContent   = fmtK(cacheRead);
+    el('cacheWriteTok').textContent = fmtK(cacheWrite);
+    el('cacheHitRate').textContent  = cacheRead > 0 ? hitRate.toFixed(1) + '%' : '—';
+    el('cacheSavings').textContent  = fmtCost(savedUsd);
+    el('cacheBar').style.width      = Math.min(100, hitRate).toFixed(1) + '%';
+  }
+
   // ── Throughput chart ──────────────────────────────────────────────
   function renderThroughput(buckets) {
     const maxB = Math.max(...buckets, 1);
@@ -644,6 +701,7 @@
 
       renderWorkers(d.workers || []);
       renderTokens(d.session_tokens || {});
+      renderCache(d.session_tokens || {});
       renderThroughput(d.throughput_buckets || [0,0,0,0,0,0]);
       renderRecent(d.recent || []);
     };

@@ -74,13 +74,22 @@ def worker_complete(
     })
 
 
-def token_use(model: str, input_tokens: int, output_tokens: int, worker_id: str = "") -> None:
-    """Record token consumption from a Claude API call."""
+def token_use(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    worker_id: str = "",
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
+) -> None:
+    """Record token consumption from a Claude API call, including prompt-cache stats."""
     _write({
         "type": "token_use",
         "model": model,
         "input": input_tokens,
         "output": output_tokens,
+        "cache_read": cache_read_tokens,
+        "cache_write": cache_write_tokens,
         "worker_id": worker_id,
     })
 

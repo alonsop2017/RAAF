@@ -271,26 +271,53 @@ class ClaudeClient:
         client = self._get_client()
         model = model or self.model
 
-        # Build the prompt
-        prompt = ASSESSMENT_PROMPT.format(
-            framework_text=framework_text,
-            resume_text=resume_text
+        # Split prompt into cacheable prefix (system instructions + framework) and
+        # per-candidate suffix (resume). The framework is identical for every candidate
+        # in a requisition, making it the ideal cache breakpoint.
+        system_and_framework = (
+            "You are an expert recruitment assessment specialist. Your task is to evaluate "
+            "a candidate's resume against a specific job assessment framework and provide a "
+            "detailed, evidence-based scoring.\n\n"
+            "## Assessment Framework\n"
+            f"{framework_text}\n\n"
+            "## Instructions\n"
+            "1. Carefully read the assessment framework to understand the scoring criteria\n"
+            "2. Analyze the resume thoroughly for evidence supporting each criterion\n"
+            "3. Provide specific evidence from the resume for each score\n"
+            "4. Calculate accurate totals and percentages\n"
+            "5. Be objective and evidence-based in your assessments\n\n"
+            "## Required Output Format\n"
+            + ASSESSMENT_PROMPT.split("## Required Output Format\n", 1)[1].split("## Candidate Resume", 1)[0]
         )
 
         last_error = None
         for attempt in range(max_retries + 1):
             try:
-                # Make API call
+                # Make API call with prompt caching on the static system+framework prefix
                 message = client.messages.create(
                     model=model,
                     max_tokens=self.max_tokens,
                     temperature=self.temperature,
                     messages=[
-                        {"role": "user", "content": prompt}
-                    ]
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": system_and_framework,
+                                    "cache_control": {"type": "ephemeral"},
+                                },
+                                {
+                                    "type": "text",
+                                    "text": f"## Candidate Resume\n{resume_text}"
+                                    + ("\n\nYour previous response was not valid JSON. Please return ONLY a valid JSON object." if attempt > 0 else ""),
+                                },
+                            ],
+                        }
+                    ],
                 )
 
-                # Record token usage for activity monitor
+                # Record token usage including cache stats
                 try:
                     from utils.activity_writer import token_use, _thread_local  # noqa: F401
                     wid = getattr(_thread_local, "worker_id", "")
@@ -298,7 +325,15 @@ class ClaudeClient:
                     wid = ""
                 try:
                     from utils.activity_writer import token_use
-                    token_use(model, message.usage.input_tokens, message.usage.output_tokens, wid)
+                    usage = message.usage
+                    token_use(
+                        model,
+                        usage.input_tokens,
+                        usage.output_tokens,
+                        wid,
+                        cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
+                        cache_write_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
+                    )
                 except Exception:
                     pass
 
@@ -315,9 +350,6 @@ class ClaudeClient:
 
             except json.JSONDecodeError as e:
                 last_error = ClaudeResponseError(f"Failed to parse JSON response: {e}")
-                if attempt < max_retries:
-                    # Add retry prompt
-                    prompt += "\n\nYour previous response was not valid JSON. Please return ONLY a valid JSON object."
             except Exception as e:
                 if "anthropic" in str(type(e).__module__):
                     # Anthropic library exception
@@ -340,19 +372,36 @@ class ClaudeClient:
         before running the expensive full Sonnet assessment on the remainder.
         """
         client = self._get_client()
-        prompt = SCREENING_PROMPT.format(
-            framework_text=framework_text,
-            resume_text=resume_text,
+
+        # Cache the static framework portion; only the resume changes per candidate
+        screening_prefix = SCREENING_PROMPT.split("{resume_text}")[0].format(
+            framework_text=framework_text
+        )
+        resume_suffix = SCREENING_PROMPT.split("{resume_text}")[1].format(
+            framework_text=framework_text
         )
 
         message = client.messages.create(
             model=screening_model,
             max_tokens=512,
             temperature=0.1,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": screening_prefix,
+                        "cache_control": {"type": "ephemeral"},
+                    },
+                    {
+                        "type": "text",
+                        "text": resume_text + resume_suffix,
+                    },
+                ],
+            }],
         )
 
-        # Record token usage for activity monitor
+        # Record token usage including cache stats
         try:
             from utils.activity_writer import token_use, _thread_local  # noqa: F401
             wid = getattr(_thread_local, "worker_id", "")
@@ -360,7 +409,15 @@ class ClaudeClient:
             wid = ""
         try:
             from utils.activity_writer import token_use
-            token_use(screening_model, message.usage.input_tokens, message.usage.output_tokens, wid)
+            usage = message.usage
+            token_use(
+                screening_model,
+                usage.input_tokens,
+                usage.output_tokens,
+                wid,
+                cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
+                cache_write_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
+            )
         except Exception:
             pass
 
