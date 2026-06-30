@@ -165,7 +165,7 @@ def _normalize_name(filename: str) -> str:
         return f"{parts[1]}_{parts[0]}".lower()
     if parts:
         return parts[0].lower()
-    return "candidate_unknown"
+    return ""  # caller should try resume-text extraction before using a generic fallback
 
 
 def _looks_like_resume(text: str) -> bool:
@@ -515,7 +515,10 @@ def run():
                 if is_trusted and body_text and _looks_like_resume(body_text):
                     _log(f"Processing body-only resume from {sender!r}: {subject!r}")
                     display_name = _extract_name_from_body(body_text, subject)
-                    name_norm = _normalize_name(display_name or subject) if display_name else "candidate_unknown"
+                    name_norm = _normalize_name(display_name or subject) if display_name else ""
+                    if not name_norm:
+                        import hashlib as _hl
+                        name_norm = "candidate_" + _hl.sha256(body_text.encode()).hexdigest()[:8]
                     candidate_name = display_name or name_norm.replace("_", " ").title()
                     pseudo_filename = f"{name_norm}.txt"
 
@@ -586,13 +589,17 @@ def run():
                 extracted = _extract_text(file_bytes, filename)
                 name_norm = _normalize_name(filename)
 
-                # Filename gave us only a first name (no underscore) — the file
-                # was named with just a first name or a job title swallowed the
-                # surname.  Try to extract the real name from resume text instead.
-                if "_" not in name_norm and extracted:
+                # Filename yielded no usable name (empty, single token, or all job-title
+                # tokens) — try extracting the name from the resume text itself.
+                if (not name_norm or "_" not in name_norm) and extracted:
                     name_from_text = _extract_name_from_body(extracted, subject)
                     if name_from_text and len(name_from_text.split()) >= 2:
                         name_norm = _normalize_name(name_from_text)
+
+                # Last resort: use a hash of the file so we never produce a
+                # generic "candidate_unknown" key that collides across candidates.
+                if not name_norm:
+                    name_norm = f"candidate_{_file_hash(file_bytes)[:8]}"
 
                 # Derive candidate display name from normalized key
                 parts = name_norm.split("_")
