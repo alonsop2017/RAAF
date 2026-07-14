@@ -247,14 +247,17 @@ def check_requisition(
                 for f in list_all_extracted_resumes(client_code, req_id)
             }
             new_ids_set = {str(c.get("CandidateId", "")) for c in new_candidates}
-            rr_candidates = [
+            # Check ALL known candidates (any pipeline status) who are not in the
+            # current new_candidates batch — catches OLI candidates whose resume
+            # was available in PCR but was never downloaded because they were already
+            # "old" by the DateAdded filter at that point.
+            catchup_candidates = [
                 c for c in all_candidates
-                if c.get("PipelineStatus") == "Resume Reviewed"
-                and str(c.get("CandidateId", "")) not in new_ids_set
+                if str(c.get("CandidateId", "")) not in new_ids_set
             ]
             needs_redownload = []
             batches_base = get_resumes_path(client_code, req_id, "batches").parent / "resumes" / "batches"
-            for c in rr_candidates:
+            for c in catchup_candidates:
                 first = (c.get("FirstName") or "").strip()
                 last = (c.get("LastName") or "").strip()
                 key = normalize_candidate_name(f"{first} {last}")
@@ -268,8 +271,8 @@ def check_requisition(
                         needs_redownload.append(c)
                     break
             if needs_redownload:
-                print(f"  {client_code}/{req_id}: {len(needs_redownload)} Resume Reviewed "
-                      f"candidate(s) with missing/empty resume — re-downloading")
+                print(f"  {client_code}/{req_id}: {len(needs_redownload)} candidate(s) "
+                      f"with missing/empty resume — re-downloading")
                 for c in needs_redownload:
                     print(f"    - {c.get('FirstName','')} {c.get('LastName','')}")
                 from download_resumes import download_resumes
