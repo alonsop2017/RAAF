@@ -26,6 +26,35 @@ from utils.client_utils import (
     create_batch_folder,
 )
 
+# Job-title tokens that should never appear as name components
+_JOB_TITLE_TOKENS: frozenset = frozenset({
+    "peoplefind", "peoplefindinc", "indeed", "linkedin", "techleader",
+    "litcom", "summary", "director", "manager", "management", "pmo", "pm",
+    "engineer", "engineering", "specialist", "coordinator", "analyst",
+    "consultant", "executive", "developer", "administrator", "officer",
+    "lead", "senior", "junior", "sr", "jr", "cv", "resume",
+})
+
+
+def _extract_name_from_text(text: str) -> str | None:
+    """Try to extract candidate name from first lines of resume text."""
+    name_re = re.compile(r"^[A-Za-z][A-Za-z'\-\.]+(?:\s+[A-Za-z'\-\.]+){1,3}$")
+    skip = {"resume", "cv", "profile", "summary", "experience", "skills",
+            "education", "contact", "objective", "professional", "source:",
+            "candidate id:", "pmo", "director", "executive"}
+    for line in text.strip().splitlines()[:15]:
+        line = line.strip()
+        if not line or line.startswith("#"): continue
+        if any(s in line.lower() for s in skip): continue
+        if name_re.match(line) and len(line.split()) >= 2:
+            return line
+    return None
+
+
+def _pcr_name_looks_bad(norm: str) -> bool:
+    """Return True if the PCR-derived norm contains job-title tokens."""
+    return any(part in _JOB_TITLE_TOKENS for part in norm.split("_"))
+
 
 def download_resumes(
     client_code: str,
@@ -160,6 +189,23 @@ def download_resumes(
                     text = extract_docx_text(str(output_path))
                 else:
                     text = content.decode('utf-8', errors='ignore')
+
+                # If PCR name contains job-title tokens, try to get real name from resume
+                if _pcr_name_looks_bad(normalized_name) and text:
+                    real_name = _extract_name_from_text(text)
+                    if real_name and len(real_name.split()) >= 2:
+                        better_norm = normalize_candidate_name(real_name)
+                        if not _pcr_name_looks_bad(better_norm):
+                            print(f"    Name override: {name!r} -> {real_name!r} ({normalized_name} -> {better_norm})")
+                            # Rename files to use the correct norm
+                            better_pdf  = originals_dir / f"{better_norm}{ext}"
+                            better_txt  = extracted_dir / f"{better_norm}_resume.txt"
+                            output_path.rename(better_pdf)
+                            output_path  = better_pdf
+                            output_filename = better_pdf.name
+                            extracted_path  = better_txt
+                            normalized_name = better_norm
+                            name = real_name
 
                 header = f"""# Extracted Resume
 # Source: {filename} (PCR download)
