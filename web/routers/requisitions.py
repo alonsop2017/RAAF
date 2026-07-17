@@ -55,41 +55,19 @@ async def list_all_requisitions(request: Request, status: str = None):
 
     try:
         from scripts.utils.database import get_db, _use_database
-        from scripts.utils.client_utils import get_requisition_root, list_all_extracted_resumes
         if _use_database():
             for row in get_db().get_dashboard_data():
                 if status and row.get("req_status") != status:
                     continue
-                client_code = row['client_code']
-                req_id      = row['req_id']
-
-                # Use disk as the authoritative source so counts match the requisition view.
-                # DB candidate/assessment rows can drift (duplicates, stale rows, re-imports).
-                try:
-                    req_root     = get_requisition_root(client_code, req_id)
-                    assess_dir   = req_root / "assessments" / "individual"
-                    all_resumes  = list(list_all_extracted_resumes(client_code, req_id))
-                    disk_cands   = len({f.stem.replace("_resume", "") for f in all_resumes})
-                    disk_assessed = len([
-                        f for f in assess_dir.glob("*_assessment.json")
-                        if not f.stem.endswith("_lifecycle")
-                    ]) if assess_dir.exists() else 0
-                    # Fall back to DB counts when no files exist (archived / legacy reqs)
-                    candidate_count = disk_cands if disk_cands > 0 else row.get('candidate_count', 0)
-                    assessed_count  = disk_assessed if disk_cands > 0 else row.get('assessed_count', 0)
-                except Exception:
-                    candidate_count = row.get('candidate_count', 0)
-                    assessed_count  = row.get('assessed_count', 0)
-
                 reqs_data.append({
-                    'client_code': client_code,
+                    'client_code': row['client_code'],
                     'client_name': row['company_name'],
-                    'req_id': req_id,
+                    'req_id': row['req_id'],
                     'title': row['job_title'],
                     'status': row['req_status'],
                     'location': row.get('location', 'N/A') or 'N/A',
-                    'candidate_count': candidate_count,
-                    'assessed_count': assessed_count,
+                    'candidate_count': row.get('candidate_count', 0),
+                    'assessed_count': row.get('assessed_count', 0),
                     'created_date': row.get('created_date', 'N/A') or 'N/A',
                 })
     except Exception as _e:
