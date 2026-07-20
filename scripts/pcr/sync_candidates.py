@@ -109,20 +109,21 @@ def sync_candidates(
     # Dual-write to DB when enabled
     try:
         from utils.database import get_db, _use_database
-        from utils.client_utils import normalize_candidate_name
+        from utils.client_utils import clean_pcr_name, normalize_candidate_name
         if _use_database():
             db = get_db()
             for c in all_candidates:
-                first = c.get("FirstName", "") or ""
-                last = c.get("LastName", "") or ""
-                name = f"{first} {last}".strip() or "Unknown"
-                name_norm = (
-                    normalize_candidate_name(f"{name}")
-                    if name != "Unknown" else "unknown"
-                )
+                first = (c.get("FirstName") or "").strip()
+                last  = (c.get("LastName")  or "").strip()
+                display, name_norm = clean_pcr_name(first, last)
+                if not display:
+                    # Fallback: use raw name with basic title case, skip junk
+                    raw = f"{first} {last}".strip()
+                    display   = raw.title() if raw else "Unknown"
+                    name_norm = normalize_candidate_name(display) if raw else "unknown"
                 db.upsert_candidate({
                     "req_id": req_id,
-                    "name": name,
+                    "name": display,
                     "name_normalized": name_norm,
                     "email": c.get("Email"),
                     "phone": c.get("Phone"),

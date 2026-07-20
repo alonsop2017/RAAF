@@ -677,7 +677,13 @@ class DatabaseManager:
                      pipeline_status, status, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(requisition_id, name_normalized) DO UPDATE SET
-                    name                  = excluded.name,
+                    name                  = CASE
+                        WHEN excluded.name IS NULL OR excluded.name = '' THEN name
+                        WHEN name IS NULL OR name = '' THEN excluded.name
+                        WHEN upper(excluded.name) = excluded.name
+                             AND upper(name) != name THEN name
+                        ELSE excluded.name
+                    END,
                     email                 = COALESCE(excluded.email, email),
                     phone                 = COALESCE(excluded.phone, phone),
                     source_platform       = COALESCE(excluded.source_platform,

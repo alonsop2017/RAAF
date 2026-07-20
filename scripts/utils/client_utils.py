@@ -248,20 +248,61 @@ def get_batch_for_resume(client_code: str, req_id: str, name_normalized: str) ->
     return None
 
 
+_PCR_NAME_JUNK_TOKENS: frozenset = frozenset({
+    "peoplefind", "peoplefindinc", "indeed", "linkedin", "techleader",
+    "litcom", "summary", "director", "management", "accounting",
+    "controller", "pmo", "pm", "engineer", "engineering", "specialist",
+    "coordinator", "analyst", "consultant", "executive", "developer",
+    "administrator", "officer", "lead", "senior", "junior", "sr", "jr",
+    "cv", "resume", "hiring", "recruiting",
+})
+
+
+def clean_pcr_name(first: str, last: str) -> tuple:
+    """Return (display_name, name_normalized) cleaned from raw PCR FirstName/LastName.
+
+    Applies title case, strips junk tokens, and returns a normalised key.
+    If both parts are junk, returns ("", "") so the caller can skip/fallback.
+    """
+    import re as _re
+
+    def _clean_part(s: str) -> str:
+        s = s.strip()
+        # Title-case ALL-CAPS words; leave already-mixed-case words alone
+        if s == s.upper():
+            s = s.title()
+        return s
+
+    first_c = _clean_part(first)
+    last_c  = _clean_part(last)
+
+    # Drop tokens that are job titles / company names
+    first_parts = [p for p in first_c.split() if p.lower() not in _PCR_NAME_JUNK_TOKENS]
+    last_parts  = [p for p in last_c.split()  if p.lower() not in _PCR_NAME_JUNK_TOKENS]
+
+    display = " ".join(first_parts + last_parts).strip()
+    if not display:
+        return ("", "")
+
+    norm = normalize_candidate_name(display)
+    # Reject if norm itself still contains junk
+    if any(part in _PCR_NAME_JUNK_TOKENS for part in norm.split("_")):
+        return ("", "")
+
+    return (display, norm)
+
+
 def normalize_candidate_name(name: str) -> str:
     """Normalize a candidate name to lastname_firstname format."""
-    # Remove extra whitespace and split
+    import re
     parts = name.strip().split()
     if len(parts) < 2:
         return name.lower().replace(" ", "_")
 
-    # Assume last part is last name, rest is first name
-    last_name = parts[-1].lower()
+    last_name  = parts[-1].lower()
     first_name = "_".join(parts[:-1]).lower()
 
-    # Remove special characters
-    import re
-    last_name = re.sub(r'[^a-z]', '', last_name)
+    last_name  = re.sub(r'[^a-z]', '', last_name)
     first_name = re.sub(r'[^a-z_]', '', first_name)
 
     return f"{last_name}_{first_name}"
