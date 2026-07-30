@@ -2,7 +2,7 @@
 """
 PDF text extraction utility.
 Uses pdfplumber for reliable text extraction from PDF resumes.
-Falls back to OCR (easyocr) for image-based PDFs.
+Falls back to OCR (Tesseract via pytesseract) for image-based PDFs.
 """
 
 import sys
@@ -19,20 +19,24 @@ try:
 except ImportError:
     fitz = None
 
-# Lazy loading for OCR to avoid slow startup
-_easyocr_reader = None
 
-
-def _get_ocr_reader():
-    """Get or create the easyocr reader (lazy loading)."""
-    global _easyocr_reader
-    if _easyocr_reader is None:
-        try:
-            import easyocr
-            _easyocr_reader = easyocr.Reader(['en'], gpu=False, verbose=False)
-        except ImportError:
-            raise ImportError("easyocr is not installed. Run: pip install easyocr")
-    return _easyocr_reader
+def _check_tesseract() -> "module":
+    """Return the pytesseract module, verifying the tesseract binary is present."""
+    try:
+        import pytesseract
+    except ImportError:
+        raise ImportError(
+            "pytesseract is not installed. Run: pip install pytesseract "
+            "(and ensure the tesseract-ocr system package is installed)"
+        )
+    try:
+        pytesseract.get_tesseract_version()
+    except Exception:
+        raise ImportError(
+            "tesseract binary not found. Install the tesseract-ocr system package "
+            "(apt-get install tesseract-ocr)."
+        )
+    return pytesseract
 
 
 def extract_text_pdfplumber(pdf_path: Path) -> str:
@@ -66,31 +70,27 @@ def extract_text_pymupdf(pdf_path: Path) -> str:
 
 def extract_text_ocr(pdf_path: Path) -> str:
     """
-    Extract text from image-based PDF using OCR (easyocr).
+    Extract text from image-based PDF using OCR (Tesseract via pytesseract).
     Converts each PDF page to an image and runs OCR.
     """
     if fitz is None:
         raise ImportError("PyMuPDF is required for OCR. Run: pip install pymupdf")
 
-    reader = _get_ocr_reader()
+    pytesseract = _check_tesseract()
+
+    import io
+    from PIL import Image
 
     text_parts = []
     doc = fitz.open(pdf_path)
 
-    for page_num, page in enumerate(doc):
+    for page in doc:
         # Convert page to image (higher DPI for better OCR)
-        mat = fitz.Matrix(2.0, 2.0)  # 2x zoom for ~144 DPI
+        mat = fitz.Matrix(3.0, 3.0)  # 3x zoom (~216 DPI) — Tesseract likes higher res
         pix = page.get_pixmap(matrix=mat)
+        img = Image.open(io.BytesIO(pix.tobytes("png")))
 
-        # Convert to PIL Image for easyocr
-        img_data = pix.tobytes("png")
-
-        # Run OCR
-        import io
-        results = reader.readtext(img_data)
-
-        # Extract text from results
-        page_text = "\n".join([text for _, text, _ in results])
+        page_text = pytesseract.image_to_string(img, lang="eng")
         if page_text.strip():
             text_parts.append(page_text)
 

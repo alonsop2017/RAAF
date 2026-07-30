@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libjpeg-dev \
         libpng-dev \
         fonts-dejavu-core \
+        # OCR fallback for image-based PDF resumes
+        tesseract-ocr \
+        tesseract-ocr-eng \
         # Utilities
         rsync \
         sqlite3 \
