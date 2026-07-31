@@ -25,6 +25,7 @@ from utils.client_utils import (
     normalize_candidate_name,
     clean_pcr_name,
     create_batch_folder,
+    list_all_extracted_resumes,
 )
 
 def _extract_name_from_text(text: str) -> str | None:
@@ -91,27 +92,71 @@ def download_resumes(
         candidates = [c for c in candidates if str(c.get("CandidateId", "")) in id_set]
 
     print(f"Downloading resumes for {req_id}...")
-    print(f"  Candidates to process: {len(candidates)}")
 
-    # Create a new batch folder for this PCR download
-    batch_dir = create_batch_folder(client_code, req_id)
-    originals_dir = batch_dir / "originals"
-    extracted_dir = batch_dir / "extracted"
+    # ── Cross-batch dedup ─────────────────────────────────────────────────────
+    # A resume is downloaded ONCE and lives in one batch folder. Without this,
+    # every run created a fresh batch and re-copied everyone (runaway growth:
+    # 1,700+ folders for ~40 candidates). Skip any candidate already on disk —
+    # by PCR CandidateId (from prior batch download logs) or by name key.
+    already_ids: set[str] = set()
+    already_keys: set[str] = set()
+    if not overwrite:
+        batches_root = get_resumes_path(client_code, req_id, "batches")
+        if batches_root.exists():
+            for log in batches_root.glob("*/download_log.json"):
+                try:
+                    data = json.loads(log.read_text(encoding="utf-8"))
+                    for f in data.get("stats", {}).get("files", []):
+                        if f.get("candidate_id"):
+                            already_ids.add(str(f["candidate_id"]))
+                except Exception:
+                    pass
+        already_keys = {
+            f.stem.replace("_resume", "")
+            for f in list_all_extracted_resumes(client_code, req_id)
+        }
 
-    print(f"  Batch: {batch_dir.name}")
+    pending = []
+    for c in candidates:
+        cid = str(c.get("CandidateId", ""))
+        first = (c.get("FirstName") or "").strip()
+        last = (c.get("LastName") or "").strip()
+        _, key = clean_pcr_name(first, last)
+        if not key:
+            key = normalize_candidate_name(f"{first} {last}".strip() or "unknown")
+        if not overwrite and (cid in already_ids or key in already_keys):
+            continue
+        pending.append(c)
 
-    # Connect to PCR
-    client = PCRClient()
-    client.ensure_authenticated()
+    print(f"  Candidates in manifest: {len(candidates)} | "
+          f"already downloaded: {len(candidates) - len(pending)} | "
+          f"to download: {len(pending)}")
 
     stats = {
-        "total": len(candidates),
+        "total": len(pending),
         "downloaded": 0,
         "skipped": 0,
         "no_resume": 0,
         "errors": 0,
         "files": []
     }
+
+    # Nothing new — do not create an empty batch folder
+    if not pending:
+        print("  No new resumes to download.")
+        return stats
+
+    candidates = pending
+
+    # Create a batch folder only now that we have real work to do
+    batch_dir = create_batch_folder(client_code, req_id)
+    originals_dir = batch_dir / "originals"
+    extracted_dir = batch_dir / "extracted"
+    print(f"  Batch: {batch_dir.name}")
+
+    # Connect to PCR
+    client = PCRClient()
+    client.ensure_authenticated()
 
     for candidate in candidates:
         cid = candidate.get("CandidateId")
