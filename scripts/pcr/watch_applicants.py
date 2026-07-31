@@ -239,37 +239,66 @@ def check_requisition(
     # but have an empty or missing extracted file.
     if auto_download:
         try:
+            import json as _json
+            from pathlib import Path as _Path
             from utils.client_utils import (
-                normalize_candidate_name, list_all_extracted_resumes
+                normalize_candidate_name, clean_pcr_name, list_all_extracted_resumes
             )
-            existing_keys = {
-                f.stem.replace("_resume", "")
+
+            batches_root = get_resumes_path(client_code, req_id, "batches")
+
+            # Map the stable PCR CandidateId → its downloaded extracted-resume path,
+            # read from prior batch download logs. Keying on CandidateId avoids the
+            # name-normalization mismatch that previously made ALL-CAPS / junk-token
+            # candidates look "missing" forever and re-download every cycle.
+            downloaded_by_cid = {}
+            if batches_root.exists():
+                for log in batches_root.glob("*/download_log.json"):
+                    try:
+                        data = _json.loads(log.read_text(encoding="utf-8"))
+                    except Exception:
+                        continue
+                    bd = log.parent
+                    for f in data.get("stats", {}).get("files", []):
+                        cid = str(f.get("candidate_id", ""))
+                        fn = f.get("filename", "")
+                        if cid and fn:
+                            downloaded_by_cid[cid] = bd / "extracted" / f"{_Path(fn).stem}_resume.txt"
+
+            # Fallback name-key index — MUST use the same key derivation that
+            # download_resumes uses to name files (clean_pcr_name, not raw normalize).
+            existing_by_key = {
+                f.stem.replace("_resume", ""): f
                 for f in list_all_extracted_resumes(client_code, req_id)
             }
+
+            def _resume_ok(cand) -> bool:
+                """True if this candidate already has a non-empty extracted resume."""
+                cid = str(cand.get("CandidateId", ""))
+                ext_file = downloaded_by_cid.get(cid)
+                if ext_file is None:
+                    first = (cand.get("FirstName") or "").strip()
+                    last = (cand.get("LastName") or "").strip()
+                    _, key = clean_pcr_name(first, last)
+                    if not key:
+                        key = normalize_candidate_name(f"{first} {last}".strip() or "unknown")
+                    ext_file = existing_by_key.get(key)
+                if ext_file is None or not ext_file.exists():
+                    return False
+                try:
+                    body = ext_file.read_text(errors="replace").split("---\n", 1)[-1].strip()
+                except Exception:
+                    return False
+                return len(body) >= 300
+
             new_ids_set = {str(c.get("CandidateId", "")) for c in new_candidates}
-            # Check ALL known candidates (any pipeline status) who are not in the
-            # current new_candidates batch — catches OLI candidates whose resume
-            # was available in PCR but was never downloaded because they were already
-            # "old" by the DateAdded filter at that point.
-            catchup_candidates = [
+            # Check ALL known candidates (any pipeline status) not in the current
+            # new_candidates batch — catches OLI candidates whose resume was available
+            # in PCR but never downloaded (old by the DateAdded filter at the time).
+            needs_redownload = [
                 c for c in all_candidates
-                if str(c.get("CandidateId", "")) not in new_ids_set
+                if str(c.get("CandidateId", "")) not in new_ids_set and not _resume_ok(c)
             ]
-            needs_redownload = []
-            batches_base = get_resumes_path(client_code, req_id, "batches").parent / "resumes" / "batches"
-            for c in catchup_candidates:
-                first = (c.get("FirstName") or "").strip()
-                last = (c.get("LastName") or "").strip()
-                key = normalize_candidate_name(f"{first} {last}")
-                if key not in existing_keys:
-                    needs_redownload.append(c)
-                    continue
-                # Check if the extracted file is effectively empty
-                for txt in batches_base.glob(f"*/extracted/{key}_resume.txt"):
-                    body = txt.read_text(errors="replace").split("---\n", 1)[-1].strip()
-                    if len(body) < 300:
-                        needs_redownload.append(c)
-                    break
             if needs_redownload:
                 print(f"  {client_code}/{req_id}: {len(needs_redownload)} candidate(s) "
                       f"with missing/empty resume — re-downloading")
