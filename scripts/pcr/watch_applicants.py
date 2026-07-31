@@ -239,57 +239,46 @@ def check_requisition(
     # but have an empty or missing extracted file.
     if auto_download:
         try:
-            import json as _json
-            from pathlib import Path as _Path
+            import re as _re
             from utils.client_utils import (
                 normalize_candidate_name, clean_pcr_name, list_all_extracted_resumes
             )
 
-            batches_root = get_resumes_path(client_code, req_id, "batches")
-
-            # Map the stable PCR CandidateId → its downloaded extracted-resume path,
-            # read from prior batch download logs. Keying on CandidateId avoids the
-            # name-normalization mismatch that previously made ALL-CAPS / junk-token
-            # candidates look "missing" forever and re-download every cycle.
-            downloaded_by_cid = {}
-            if batches_root.exists():
-                for log in batches_root.glob("*/download_log.json"):
-                    try:
-                        data = _json.loads(log.read_text(encoding="utf-8"))
-                    except Exception:
-                        continue
-                    bd = log.parent
-                    for f in data.get("stats", {}).get("files", []):
-                        cid = str(f.get("candidate_id", ""))
-                        fn = f.get("filename", "")
-                        if cid and fn:
-                            downloaded_by_cid[cid] = bd / "extracted" / f"{_Path(fn).stem}_resume.txt"
-
-            # Fallback name-key index — MUST use the same key derivation that
-            # download_resumes uses to name files (clean_pcr_name, not raw normalize).
-            existing_by_key = {
-                f.stem.replace("_resume", ""): f
-                for f in list_all_extracted_resumes(client_code, req_id)
-            }
+            # Index every extracted resume by the PCR CandidateId embedded in its
+            # header ("# Candidate ID: <cid>"). This is the only reliable key:
+            # files are named by clean_pcr_name OR a resume-text-derived norm, so any
+            # name-based lookup mismatches. The CandidateId header is written by both
+            # download_resumes and the direct PCR pull, regardless of filename.
+            # (body length is measured here too so we detect empty/failed extractions.)
+            resume_by_cid = {}     # cid -> True if a non-empty resume exists on disk
+            existing_by_key = {}   # name-key -> body-length (fallback for pre-header files)
+            _cid_re = _re.compile(r"# Candidate ID:\s*(\S+)")
+            for f in list_all_extracted_resumes(client_code, req_id):
+                try:
+                    text = f.read_text(errors="replace")
+                except Exception:
+                    continue
+                header, _, body = text.partition("---\n")
+                body_len = len(body.strip())
+                m = _cid_re.search(header)
+                if m:
+                    cid = m.group(1).strip()
+                    resume_by_cid[cid] = resume_by_cid.get(cid, False) or (body_len >= 300)
+                existing_by_key[f.stem.replace("_resume", "")] = body_len
 
             def _resume_ok(cand) -> bool:
                 """True if this candidate already has a non-empty extracted resume."""
                 cid = str(cand.get("CandidateId", ""))
-                ext_file = downloaded_by_cid.get(cid)
-                if ext_file is None:
-                    first = (cand.get("FirstName") or "").strip()
-                    last = (cand.get("LastName") or "").strip()
-                    _, key = clean_pcr_name(first, last)
-                    if not key:
-                        key = normalize_candidate_name(f"{first} {last}".strip() or "unknown")
-                    ext_file = existing_by_key.get(key)
-                if ext_file is None or not ext_file.exists():
-                    return False
-                try:
-                    body = ext_file.read_text(errors="replace").split("---\n", 1)[-1].strip()
-                except Exception:
-                    return False
-                return len(body) >= 300
+                if cid in resume_by_cid:
+                    return resume_by_cid[cid]
+                # Fallback for legacy files without a CandidateId header: match by the
+                # same key derivation download_resumes uses to name files.
+                first = (cand.get("FirstName") or "").strip()
+                last = (cand.get("LastName") or "").strip()
+                _, key = clean_pcr_name(first, last)
+                if not key:
+                    key = normalize_candidate_name(f"{first} {last}".strip() or "unknown")
+                return existing_by_key.get(key, 0) >= 300
 
             new_ids_set = {str(c.get("CandidateId", "")) for c in new_candidates}
             # Check ALL known candidates (any pipeline status) not in the current
