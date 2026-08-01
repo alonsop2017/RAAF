@@ -664,15 +664,12 @@ class DatabaseManager:
 
     @staticmethod
     def _prefer_name(current: str, incoming: str) -> str:
-        """Choose the better display name: keep a mixed-case current name over an
-        incoming ALL-CAPS one; prefer a non-empty incoming over an empty current."""
-        if not incoming:
+        """Preserve an existing non-empty display name on re-sync — it may be a
+        manual correction — and only adopt the incoming PCR name when there is no
+        current one. (New rows still get their name from clean_pcr_name on insert.)"""
+        if current and current.strip():
             return current
-        if not current:
-            return incoming
-        if incoming.upper() == incoming and current.upper() != current:
-            return current
-        return incoming
+        return incoming or current
 
     def upsert_candidate(self, data: dict) -> int:
         with self._conn() as conn:
