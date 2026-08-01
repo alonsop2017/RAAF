@@ -662,6 +662,18 @@ class DatabaseManager:
                 """, (req_row["id"],)).fetchall()
             return [dict(r) for r in rows]
 
+    @staticmethod
+    def _prefer_name(current: str, incoming: str) -> str:
+        """Choose the better display name: keep a mixed-case current name over an
+        incoming ALL-CAPS one; prefer a non-empty incoming over an empty current."""
+        if not incoming:
+            return current
+        if not current:
+            return incoming
+        if incoming.upper() == incoming and current.upper() != current:
+            return current
+        return incoming
+
     def upsert_candidate(self, data: dict) -> int:
         with self._conn() as conn:
             req_row = conn.execute(
@@ -669,6 +681,48 @@ class DatabaseManager:
             ).fetchone()
             if not req_row:
                 raise ValueError(f"Requisition '{data['req_id']}' not found.")
+            req_id_int = req_row["id"]
+
+            # Identity by PCR CandidateId: if a row for this PCR candidate already
+            # exists, update it IN PLACE and keep its existing name_normalized, so
+            # filenames and assessment links stay stable even when the derived name
+            # differs between sync / download / a prior manual correction. This is
+            # what prevents phantom duplicate rows.
+            pcr_id = data.get("pcr_candidate_id")
+            if pcr_id:
+                existing = conn.execute(
+                    "SELECT id, name FROM candidates "
+                    "WHERE requisition_id = ? AND pcr_candidate_id = ?",
+                    (req_id_int, str(pcr_id)),
+                ).fetchone()
+                if existing:
+                    conn.execute("""
+                        UPDATE candidates SET
+                            name                  = ?,
+                            email                 = COALESCE(?, email),
+                            phone                 = COALESCE(?, phone),
+                            source_platform       = COALESCE(?, source_platform),
+                            batch                 = COALESCE(?, batch),
+                            resume_original_path  = COALESCE(?, resume_original_path),
+                            resume_extracted_path = COALESCE(?, resume_extracted_path),
+                            pipeline_status       = COALESCE(?, pipeline_status),
+                            status                = ?,
+                            updated_at            = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    """, (
+                        self._prefer_name(existing["name"], data.get("name")),
+                        data.get("email"),
+                        data.get("phone"),
+                        data.get("source_platform"),
+                        data.get("batch"),
+                        data.get("resume_original_path"),
+                        data.get("resume_extracted_path"),
+                        data.get("pipeline_status"),
+                        data.get("status", "pending"),
+                        existing["id"],
+                    ))
+                    return existing["id"]
+
             cursor = conn.execute("""
                 INSERT INTO candidates
                     (requisition_id, name, name_normalized, email, phone,
@@ -783,18 +837,29 @@ class DatabaseManager:
                 raise ValueError(f"Requisition '{data['req_id']}' not found.")
             req_id_int = req_row["id"]
 
-            # Ensure the candidate row exists
-            cand_row = conn.execute("""
-                SELECT id FROM candidates
-                WHERE requisition_id = ? AND name_normalized = ?
-            """, (req_id_int, data["name_normalized"])).fetchone()
+            # Ensure the candidate row exists. Resolve by PCR CandidateId first
+            # (stable identity) so the assessment attaches to the existing row even
+            # if its name_normalized differs from the file's; fall back to name.
+            cand_row = None
+            pcr_id = data.get("pcr_candidate_id")
+            if pcr_id:
+                cand_row = conn.execute(
+                    "SELECT id FROM candidates "
+                    "WHERE requisition_id = ? AND pcr_candidate_id = ?",
+                    (req_id_int, str(pcr_id)),
+                ).fetchone()
+            if not cand_row:
+                cand_row = conn.execute("""
+                    SELECT id FROM candidates
+                    WHERE requisition_id = ? AND name_normalized = ?
+                """, (req_id_int, data["name_normalized"])).fetchone()
 
             if not cand_row:
                 conn.execute("""
                     INSERT INTO candidates
                         (requisition_id, name, name_normalized, source_platform,
-                         batch, resume_extracted_path, status)
-                    VALUES (?, ?, ?, ?, ?, ?, 'assessed')
+                         batch, resume_extracted_path, pcr_candidate_id, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'assessed')
                 """, (
                     req_id_int,
                     data.get("name",
@@ -803,6 +868,7 @@ class DatabaseManager:
                     data.get("source_platform", "Unknown"),
                     data.get("batch"),
                     data.get("resume_extracted_path"),
+                    str(pcr_id) if pcr_id else None,
                 ))
                 cand_id = conn.execute(
                     "SELECT last_insert_rowid()"

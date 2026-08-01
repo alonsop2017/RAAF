@@ -777,10 +777,24 @@ def _save_to_db(assessment: dict, name_norm: str, resume_file: Path, use_ai: boo
         from scripts.utils.database import get_db, _use_database
         if _use_database():
             candidate_info = assessment.get("candidate", {})
+            # Recover the stable PCR CandidateId from the extracted-resume header so
+            # save_assessment attaches to the existing candidate row by identity,
+            # not by a (possibly divergent) name_normalized — prevents phantom rows.
+            pcr_candidate_id = candidate_info.get("pcr_candidate_id")
+            if not pcr_candidate_id:
+                try:
+                    import re as _re
+                    head = resume_file.read_text(errors="replace")[:600]
+                    m = _re.search(r"# Candidate ID:\s*(\S+)", head)
+                    if m:
+                        pcr_candidate_id = m.group(1).strip()
+                except Exception:
+                    pcr_candidate_id = None
             get_db().save_assessment({
                 "req_id": assessment.get("metadata", {}).get("requisition_id", ""),
                 "name_normalized": name_norm,
                 "name": candidate_info.get("name", name_norm.replace("_", " ").title()),
+                "pcr_candidate_id": pcr_candidate_id,
                 "batch": candidate_info.get("batch"),
                 "source_platform": candidate_info.get("source_platform", "Unknown"),
                 "resume_extracted_path": str(resume_file),

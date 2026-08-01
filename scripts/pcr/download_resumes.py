@@ -28,22 +28,6 @@ from utils.client_utils import (
     list_all_extracted_resumes,
 )
 
-def _extract_name_from_text(text: str) -> str | None:
-    """Try to extract candidate name from first lines of resume text."""
-    name_re = re.compile(r"^[A-Za-z][A-Za-z'\-\.]+(?:\s+[A-Za-z'\-\.]+){1,3}$")
-    skip = {"resume", "cv", "profile", "summary", "experience", "skills",
-            "education", "contact", "objective", "professional", "source:",
-            "candidate id:", "pmo", "director", "executive", "leadership",
-            "planning", "strategy", "it strategy"}
-    for line in text.strip().splitlines()[:15]:
-        line = line.strip()
-        if not line or line.startswith("#"): continue
-        if any(s in line.lower() for s in skip): continue
-        if name_re.match(line) and len(line.split()) >= 2:
-            return line
-    return None
-
-
 def download_resumes(
     client_code: str,
     req_id: str,
@@ -158,15 +142,35 @@ def download_resumes(
     client = PCRClient()
     client.ensure_authenticated()
 
+    # Canonical norm per PCR CandidateId, taken from the existing DB row when present.
+    # Using the DB row's name_normalized keeps the downloaded filename in lockstep with
+    # the candidate record (and any prior manual correction), so assessment attaches to
+    # the same row and no phantom duplicate is created.
+    canonical_by_cid = {}
+    try:
+        from utils.database import get_db, _use_database
+        if _use_database():
+            for row in get_db().list_candidates(req_id):
+                if row.get("pcr_candidate_id"):
+                    canonical_by_cid[str(row["pcr_candidate_id"])] = (
+                        row.get("name") or "", row["name_normalized"]
+                    )
+    except Exception:
+        pass
+
     for candidate in candidates:
         cid = candidate.get("CandidateId")
         first = (candidate.get("FirstName") or "").strip()
         last  = (candidate.get("LastName")  or "").strip()
-        name, normalized_name = clean_pcr_name(first, last)
-        if not name:
-            raw = f"{first} {last}".strip()
-            name = raw.title() if raw else "Unknown"
-            normalized_name = normalize_candidate_name(name)
+        canon = canonical_by_cid.get(str(cid))
+        if canon and canon[1]:
+            name, normalized_name = (canon[0] or canon[1].replace("_", " ").title()), canon[1]
+        else:
+            name, normalized_name = clean_pcr_name(first, last)
+            if not name:
+                raw = f"{first} {last}".strip()
+                name = raw.title() if raw else "Unknown"
+                normalized_name = normalize_candidate_name(name)
 
         print(f"  Processing: {name} ({cid})...")
 
@@ -227,27 +231,11 @@ def download_resumes(
                 else:
                     text = content.decode('utf-8', errors='ignore')
 
-                # Try to get real name from resume text; prefer it over PCR data
-                # which is often ALL-CAPS, mis-ordered, or contains company tokens.
-                real_name = _extract_name_from_text(text) if text else None
-                if real_name and len(real_name.split()) >= 2:
-                    better_disp, better_norm = clean_pcr_name(
-                        real_name.split()[0], " ".join(real_name.split()[1:])
-                    )
-                    if not better_norm:
-                        better_disp = real_name.title()
-                        better_norm = normalize_candidate_name(real_name)
-                    if better_norm and better_norm != normalized_name:
-                        print(f"    Name from resume: {name!r} -> {better_disp!r}")
-                        # Rename files to match the corrected norm
-                        better_pdf  = originals_dir / f"{better_norm}{ext}"
-                        better_txt  = extracted_dir / f"{better_norm}_resume.txt"
-                        output_path.rename(better_pdf)
-                        output_path      = better_pdf
-                        output_filename  = better_pdf.name
-                        extracted_path   = better_txt
-                        normalized_name  = better_norm
-                        name             = better_disp
+                # NOTE: the filename / name_normalized is deliberately NOT changed
+                # from the canonical (DB / clean_pcr_name) key here. Renaming to a
+                # resume-text-derived norm previously caused the file, DB row, and
+                # assessment to diverge into phantom duplicate rows. Display-name
+                # correction is a separate, DB-level concern keyed on CandidateId.
                 header = f"""# Extracted Resume
 # Source: {filename} (PCR download)
 # Candidate ID: {cid}
