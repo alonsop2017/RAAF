@@ -37,6 +37,20 @@ _DB_PATH = Path(__file__).parent.parent.parent / "data" / "raaf.db"
 _CLIENTS_PATH = Path(__file__).parent.parent.parent / "clients"
 _BACKUP_LOG_PATH = Path(__file__).parent.parent.parent / "logs" / "backup.log"
 _INGESTION_LOG_PATH = Path(__file__).parent.parent.parent / "logs" / "email_ingestion.log"
+_CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
+
+# Config files that must never be 0 bytes — a truncated one (usually from a
+# disk-full event, see the 2026-07-30 incident) silently breaks PCR/Claude sync.
+_CRITICAL_CONFIG_FILES = ["pcr_credentials.yaml", "claude_credentials.yaml"]
+
+
+def _check_config_health() -> list[str]:
+    alerts = []
+    for name in _CRITICAL_CONFIG_FILES:
+        path = _CONFIG_DIR / name
+        if path.exists() and path.stat().st_size == 0:
+            alerts.append(f"config/{name} is 0 bytes — likely truncated by a disk-full event")
+    return alerts
 
 
 def _load_settings() -> dict:
@@ -126,6 +140,7 @@ async def admin_dashboard(request: Request, _admin=Depends(require_admin)):
             ingestion_log = None
 
     fs_stats = _collect_fs_stats()
+    config_alerts = _check_config_health()
 
     return templates.TemplateResponse("admin/dashboard.html", {
         "request": request,
@@ -139,6 +154,7 @@ async def admin_dashboard(request: Request, _admin=Depends(require_admin)):
         "ingestion_log": ingestion_log,
         "ingestion_log_mtime": ingestion_log_mtime,
         "fs_stats": fs_stats,
+        "config_alerts": config_alerts,
     })
 
 

@@ -6,6 +6,15 @@
     <h1>Admin — System Status</h1>
 </div>
 
+{% if config_alerts %}
+<div class="card" style="margin-bottom:1.5rem;">
+    <h2 class="card-title">System Health</h2>
+    {% for alert in config_alerts %}
+    <div class="alert alert-danger">{{ alert }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+
 {% if integrity_result is defined %}
 <div class="card" style="margin-bottom:1.5rem;">
     <h2 class="card-title">DB Integrity Check</h2>

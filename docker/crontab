@@ -12,3 +12,6 @@
 
 # Daily OneDrive backup at 1:00 AM UTC
 0 1 * * * PYTHONPATH=/app /app/backup.sh --target onedrive --remote "onedrive:PeopleFind/RAAF-backups" --quiet >> /app/logs/backup.log 2>&1
+
+# Disk-space and config-integrity health check, hourly
+0 * * * * PYTHONPATH=/app python /app/scripts/utils/check_disk_health.py >> /app/logs/health_check.log 2>&1
