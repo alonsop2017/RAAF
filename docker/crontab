@@ -21,3 +21,6 @@
 
 # Purge unmatched email submissions older than 180 days, weekly (Sunday 2:30 AM UTC)
 30 2 * * 0 PYTHONPATH=/app python /app/scripts/utils/cleanup_unmatched_submissions.py >> /app/logs/cleanup_unmatched.log 2>&1
+
+# Weekly disk usage report email, Monday 8:00 AM UTC
+0 8 * * 1 PYTHONPATH=/app python /app/scripts/utils/weekly_disk_report.py >> /app/logs/weekly_disk_report.log 2>&1
