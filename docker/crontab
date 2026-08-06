@@ -15,3 +15,9 @@
 
 # Disk-space and config-integrity health check, hourly
 0 * * * * PYTHONPATH=/app python /app/scripts/utils/check_disk_health.py >> /app/logs/health_check.log 2>&1
+
+# Rotate unbounded cron logs + trim activity events feed, daily at 2:00 AM UTC
+0 2 * * * PYTHONPATH=/app python /app/scripts/utils/rotate_logs.py >> /app/logs/rotate_logs.log 2>&1
+
+# Purge unmatched email submissions older than 180 days, weekly (Sunday 2:30 AM UTC)
+30 2 * * 0 PYTHONPATH=/app python /app/scripts/utils/cleanup_unmatched_submissions.py >> /app/logs/cleanup_unmatched.log 2>&1
