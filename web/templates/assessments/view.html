@@ -25,6 +25,11 @@
         </div>
         <div class="action-buttons">
             <a href="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/edit" class="btn btn-primary">Edit Assessment</a>
+            <form action="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/run"
+                  method="POST" style="display: inline;"
+                  onsubmit="return confirm('Reassess {{ assessment.candidate.name }}? This will overwrite the current score and recommendation.');">
+                <button type="submit" class="btn btn-outline" title="Re-run assessment against the current framework">Reassess</button>
+            </form>
             <a href="/candidates/{{ client_code }}/{{ req_id }}/{{ name_normalized }}" class="btn btn-outline">View Resume</a>
             <a href="/assessments/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/json" class="btn btn-outline" target="_blank">Export JSON</a>
         </div>
