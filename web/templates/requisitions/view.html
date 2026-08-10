@@ -193,6 +193,13 @@
                                 <div style="display:flex;gap:0.3rem;flex-wrap:wrap;">
                                     <a href="/candidates/{{ client_code }}/{{ req_id }}/{{ candidate.name_normalized }}"
                                        class="btn btn-sm btn-outline">View</a>
+                                    {% if candidate.assessed and candidate.lifecycle != 'out_of_consideration' %}
+                                    <form action="/assessments/{{ client_code }}/{{ req_id }}/{{ candidate.name_normalized }}/run"
+                                          method="POST" style="display: inline;"
+                                          onsubmit="return confirm('Reassess {{ candidate.name }}? This will overwrite the current score and recommendation.');">
+                                        <button type="submit" class="btn btn-sm btn-outline" title="Re-run assessment against the current framework">Reassess</button>
+                                    </form>
+                                    {% endif %}
                                     {% if candidate.lifecycle == 'out_of_consideration' %}
                                     <form action="/assessments/{{ client_code }}/{{ req_id }}/{{ candidate.name_normalized }}/lifecycle"
                                           method="POST" style="display:inline;">
