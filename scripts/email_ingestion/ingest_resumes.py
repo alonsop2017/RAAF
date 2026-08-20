@@ -71,10 +71,14 @@ _FILENAME_JOB_TITLE_TOKENS: frozenset[str] = frozenset({
     "mechanical", "electrical", "chemical", "industrial", "manufacturing",
     "technology", "tech", "techleader", "digital", "data", "cloud", "cyber",
     "infrastructure", "network", "security", "software", "hardware",
+    "buyer", "commodity", "resins", "plastics", "sourcing", "procurement",
+    "purchasing", "supply", "logistics",
     # Company / institution words that leak into names
     "litcom", "canada", "linkedin", "open", "summary",
     # Document artifact tokens
-    "resume", "cv", "application", "profile", "bio",
+    "resume", "cv", "application", "profile", "bio", "cover", "letter",
+    # Formatting/version descriptors that trail long recruiter filenames
+    "heading", "spaced", "double", "single", "aligned",
 })
 
 # Emails whose subjects indicate internal job-posting / ad-distribution messages
