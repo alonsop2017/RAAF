@@ -332,21 +332,35 @@ def _store_in_batch(
         _log(f"  WARN: could not copy to batch folder: {e}")
 
 
+def _name_token_set(name_normalized: str) -> frozenset[str]:
+    """Token set for a normalized name, order-independent.
+
+    Different ingestion paths (filename heuristic vs. resume-text extraction
+    vs. PCR sync) can format the same person as "amanda_jordan" or
+    "jordan_amanda" — an exact-string dedup check misses that collision.
+    """
+    return frozenset(t for t in name_normalized.split("_") if t)
+
+
 def _candidate_exists_in_db(req_id: str, name_normalized: str) -> bool:
-    """Return True if this candidate is already recorded for this requisition."""
+    """Return True if this candidate (by name, regardless of token order) is
+    already recorded for this requisition."""
     try:
         from scripts.utils.database import get_db, _use_database
         if not _use_database():
             return False
         db = get_db()
+        target = _name_token_set(name_normalized)
+        if not target:
+            return False
         with db._conn() as conn:
-            row = conn.execute(
-                """SELECT c.id FROM candidates c
+            rows = conn.execute(
+                """SELECT c.name_normalized FROM candidates c
                    JOIN requisitions r ON r.id=c.requisition_id
-                   WHERE r.req_id=? AND c.name_normalized=?""",
-                (req_id, name_normalized),
-            ).fetchone()
-            return row is not None
+                   WHERE r.req_id=?""",
+                (req_id,),
+            ).fetchall()
+            return any(_name_token_set(row[0]) == target for row in rows)
     except Exception:
         return False
 
