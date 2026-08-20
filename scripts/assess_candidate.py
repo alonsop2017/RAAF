@@ -145,7 +145,12 @@ def extract_candidate_info(resume_text: str, filename: str) -> dict:
         parts = base_name.split("_")
         if len(parts) >= 2:
             info["name"] = f"{parts[1].title()} {parts[0].title()}"
-            info["name_normalized"] = base_name
+            # Derive the key from the same two tokens as the display name
+            # (not the raw base_name) so a filename with a trailing middle
+            # initial/name ("fuldner_robert_a") still keys to the same
+            # candidate as the plain one ("fuldner_robert") instead of
+            # silently creating a duplicate.
+            info["name_normalized"] = normalize_candidate_name(info["name"])
     else:
         # Use filename as-is for name
         info["name"] = base_name.title()
