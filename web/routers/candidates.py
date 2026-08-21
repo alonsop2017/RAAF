@@ -64,6 +64,30 @@ def normalize_filename(name: str) -> str:
     return name
 
 
+def _get_db_resume_paths(req_id: str, name_normalized: str) -> tuple:
+    """Look up (resume_original_path, resume_extracted_path) from the DB as
+    Path objects (or None). Used as a last-resort fallback for candidates
+    whose files live outside the standard batch-folder layout, e.g.
+    Direct_Submissions/ resumes ingested by email."""
+    if not _use_database():
+        return None, None
+    try:
+        with get_db()._conn() as conn:
+            row = conn.execute(
+                "SELECT c.resume_original_path, c.resume_extracted_path FROM candidates c "
+                "JOIN requisitions r ON c.requisition_id = r.id "
+                "WHERE r.req_id = ? AND c.name_normalized = ?",
+                (req_id, name_normalized)
+            ).fetchone()
+    except Exception:
+        return None, None
+    if not row:
+        return None, None
+    original = Path(row[0]) if row[0] else None
+    extracted = Path(row[1]) if row[1] else None
+    return original, extracted
+
+
 @router.get("/api/search")
 async def search_candidates_api(q: str = Query("", min_length=1)):
     """
@@ -692,19 +716,9 @@ async def view_candidate(request: Request, client_code: str, req_id: str, name_n
 
     # Also check the DB-stored path directly
     if not resume_file:
-        try:
-            if _use_database():
-                with get_db()._conn() as conn:
-                    row = conn.execute(
-                        "SELECT c.resume_extracted_path FROM candidates c "
-                        "JOIN requisitions r ON c.requisition_id = r.id "
-                        "WHERE r.req_id = ? AND c.name_normalized = ?",
-                        (req_id, name_normalized)
-                    ).fetchone()
-                if row and row[0] and Path(row[0]).exists():
-                    resume_file = Path(row[0])
-        except Exception:
-            pass
+        _, db_extracted = _get_db_resume_paths(req_id, name_normalized)
+        if db_extracted and db_extracted.exists():
+            resume_file = db_extracted
 
     # Read resume text — graceful if file is missing
     if resume_file and Path(resume_file).exists():
@@ -816,6 +830,14 @@ async def download_resume(client_code: str, req_id: str, name_normalized: str):
     if processed_file.exists():
         return FileResponse(processed_file, filename=f"{name_normalized}_resume.txt")
 
+    # Fall back to the DB-stored paths directly (e.g. Direct_Submissions/
+    # candidates ingested by email, whose files never land in a batch folder)
+    db_original, db_extracted = _get_db_resume_paths(req_id, name_normalized)
+    if db_original and db_original.exists():
+        return FileResponse(db_original, filename=db_original.name)
+    if db_extracted and db_extracted.exists():
+        return FileResponse(db_extracted, filename=db_extracted.name)
+
     raise HTTPException(status_code=404, detail="Resume file not found")
 
 
@@ -835,6 +857,18 @@ async def view_resume_inline(client_code: str, req_id: str, name_normalized: str
     if extracted:
         content = extracted.read_text(encoding="utf-8", errors="replace")
         return Response(content=content, media_type="text/plain")
+
+    # Fall back to the DB-stored paths directly (see download_resume)
+    db_original, db_extracted = _get_db_resume_paths(req_id, name_normalized)
+    if db_original and db_original.exists() and db_original.suffix.lower() == ".pdf":
+        return Response(
+            content=db_original.read_bytes(),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"inline; filename=\"{db_original.name}\""}
+        )
+    if db_extracted and db_extracted.exists():
+        return Response(content=db_extracted.read_text(encoding="utf-8", errors="replace"), media_type="text/plain")
+
     raise HTTPException(status_code=404, detail="Resume file not found")
 
 
