@@ -693,16 +693,16 @@ async def view_candidate(request: Request, client_code: str, req_id: str, name_n
     # Also check the DB-stored path directly
     if not resume_file:
         try:
-            from scripts.utils.database import get_db, _use_database
             if _use_database():
-                rows = get_db()._conn().__enter__().execute(
-                    "SELECT c.resume_extracted_path FROM candidates c "
-                    "JOIN requisitions r ON c.requisition_id = r.id "
-                    "WHERE r.req_id = ? AND c.name_normalized = ?",
-                    (req_id, name_normalized)
-                ).fetchone()
-                if rows and rows[0] and Path(rows[0]).exists():
-                    resume_file = Path(rows[0])
+                with get_db()._conn() as conn:
+                    row = conn.execute(
+                        "SELECT c.resume_extracted_path FROM candidates c "
+                        "JOIN requisitions r ON c.requisition_id = r.id "
+                        "WHERE r.req_id = ? AND c.name_normalized = ?",
+                        (req_id, name_normalized)
+                    ).fetchone()
+                if row and row[0] and Path(row[0]).exists():
+                    resume_file = Path(row[0])
         except Exception:
             pass
 
@@ -713,16 +713,41 @@ async def view_candidate(request: Request, client_code: str, req_id: str, name_n
     else:
         resume_text = None
 
-    # Only 404 if there's also no assessment to show
+    # Check for assessment: legacy JSON file first, then fall back to the DB
+    # (candidates assessed while RAAF_DB_MODE=db never get a JSON file written).
     assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
-    if resume_text is None and not assessment_file.exists():
-        raise HTTPException(status_code=404, detail="Candidate not found")
-
-    # Check for assessment
     assessment = None
     if assessment_file.exists():
         with open(assessment_file, 'r') as f:
             assessment = json.load(f)
+    elif _use_database():
+        try:
+            db_rec = get_db().get_assessment_by_name(req_id, name_normalized)
+        except Exception:
+            db_rec = None
+        if db_rec:
+            db_scores = db_rec.get("scores", {}) or {}
+            assessment = {
+                "candidate": {
+                    "name": db_rec.get("name"),
+                    "name_normalized": db_rec.get("name_normalized"),
+                    "batch": db_rec.get("batch"),
+                    "source_platform": db_rec.get("source_platform"),
+                },
+                "metadata": {"assessed_at": db_rec.get("assessed_at")},
+                "scores": db_scores,
+                "total_score": db_rec.get("total_score"),
+                "max_score": sum(cat.get("max", 0) for cat in db_scores.values()) or 100,
+                "percentage": db_rec.get("percentage"),
+                "recommendation": db_rec.get("recommendation"),
+                "summary": db_rec.get("summary"),
+                "key_strengths": db_rec.get("key_strengths", []),
+                "areas_of_concern": db_rec.get("areas_of_concern", []),
+                "interview_focus_areas": db_rec.get("interview_focus", []),
+            }
+
+    if resume_text is None and assessment is None:
+        raise HTTPException(status_code=404, detail="Candidate not found")
 
     # Load lifecycle status if present
     lifecycle = ""
