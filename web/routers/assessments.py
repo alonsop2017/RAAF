@@ -363,20 +363,65 @@ async def get_assessment_status(client_code: str, req_id: str):
     return JSONResponse(content={"assessed": assessed, "pending": pending, "total": assessed + pending})
 
 
+def _db_record_to_assessment(db_rec: dict, req_config: dict) -> dict:
+    """Reshape a flat get_assessment_by_name() row into the same nested shape
+    the legacy JSON file uses, so templates/routes need no special-casing."""
+    scores = db_rec.get("scores", {}) or {}
+    max_score = sum(cat.get("max", 0) for cat in scores.values()) or \
+        req_config.get("assessment", {}).get("max_score", 100)
+    return {
+        "metadata": {"assessed_at": db_rec.get("assessed_at")},
+        "candidate": {
+            "name": db_rec.get("name"),
+            "name_normalized": db_rec.get("name_normalized"),
+            "batch": db_rec.get("batch"),
+            "source_platform": db_rec.get("source_platform"),
+        },
+        "scores": scores,
+        "total_score": db_rec.get("total_score"),
+        "max_score": max_score,
+        "percentage": db_rec.get("percentage"),
+        "recommendation": db_rec.get("recommendation"),
+        "summary": db_rec.get("summary"),
+        "key_strengths": db_rec.get("key_strengths", []),
+        "areas_of_concern": db_rec.get("areas_of_concern", []),
+        "interview_focus_areas": db_rec.get("interview_focus", []),
+    }
+
+
+def _load_assessment(req_id: str, name_normalized: str, assessment_file: Path,
+                      req_config: dict):
+    """Load an assessment dict from its legacy JSON file, falling back to the
+    DB for candidates assessed under RAAF_DB_MODE=db (which never get a JSON
+    file written). Returns None if neither has a record."""
+    if assessment_file.exists():
+        with open(assessment_file, 'r') as f:
+            return json.load(f)
+    if _use_database():
+        try:
+            db_rec = get_db().get_assessment_by_name(req_id, name_normalized)
+        except Exception:
+            db_rec = None
+        if db_rec:
+            return _db_record_to_assessment(db_rec, req_config)
+    return None
+
+
 @router.get("/{client_code}/{req_id}/{name_normalized}", response_class=HTMLResponse)
 async def view_assessment(request: Request, client_code: str, req_id: str, name_normalized: str):
     """View detailed assessment for a candidate."""
     req_root = get_requisition_root(client_code, req_id)
     assessment_file = req_root / "assessments" / "individual" / f"{name_normalized}_assessment.json"
+    req_config = get_requisition_config(client_code, req_id)
 
-    if not assessment_file.exists():
+    assessment = _load_assessment(req_id, name_normalized, assessment_file, req_config)
+    if assessment is None:
         raise HTTPException(status_code=404, detail="Assessment not found")
 
-    with open(assessment_file, 'r') as f:
-        assessment = json.load(f)
-
-    # Reconcile DB with JSON when scores diverge (JSON is authoritative)
-    if _use_database():
+    # Reconcile DB with JSON when scores diverge (JSON is authoritative).
+    # Only meaningful when we actually loaded from the file — a DB-sourced
+    # assessment has nothing to reconcile against.
+    if assessment_file.exists() and _use_database():
         try:
             db_rec = get_db().get_assessment_by_name(req_id, name_normalized)
             json_pct = assessment.get("percentage")
@@ -402,7 +447,6 @@ async def view_assessment(request: Request, client_code: str, req_id: str, name_
         except Exception:
             pass  # never let reconciliation break the view
 
-    req_config = get_requisition_config(client_code, req_id)
     client_config = get_client_config(client_code)
 
     lifecycle_file = req_root / "assessments" / "individual" / f"{name_normalized}_lifecycle.json"
@@ -429,14 +473,11 @@ async def edit_assessment_form(request: Request, client_code: str, req_id: str, 
     """Edit assessment scores and notes."""
     req_root = get_requisition_root(client_code, req_id)
     assessment_file = req_root / "assessments" / "individual" / f"{name_normalized}_assessment.json"
-
-    if not assessment_file.exists():
-        raise HTTPException(status_code=404, detail="Assessment not found")
-
-    with open(assessment_file, 'r') as f:
-        assessment = json.load(f)
-
     req_config = get_requisition_config(client_code, req_id)
+
+    assessment = _load_assessment(req_id, name_normalized, assessment_file, req_config)
+    if assessment is None:
+        raise HTTPException(status_code=404, detail="Assessment not found")
 
     return templates.TemplateResponse("assessments/edit.html", {
         "request": request,
@@ -468,12 +509,14 @@ async def update_assessment(
     """Update assessment with form data."""
     req_root = get_requisition_root(client_code, req_id)
     assessment_file = req_root / "assessments" / "individual" / f"{name_normalized}_assessment.json"
+    req_config = get_requisition_config(client_code, req_id)
 
-    if not assessment_file.exists():
+    # Materialize the JSON file from the DB record on first edit — candidates
+    # assessed under RAAF_DB_MODE=db never get one written automatically, but
+    # this route edits the file in place, so it needs one to exist.
+    assessment = _load_assessment(req_id, name_normalized, assessment_file, req_config)
+    if assessment is None:
         raise HTTPException(status_code=404, detail="Assessment not found")
-
-    with open(assessment_file, 'r') as f:
-        assessment = json.load(f)
 
     # Get form data
     form_data = await request.form()
@@ -503,7 +546,6 @@ async def update_assessment(
     assessment['percentage'] = round((total / assessment['max_score']) * 100, 1) if assessment['max_score'] > 0 else 0
 
     # Update recommendation
-    req_config = get_requisition_config(client_code, req_id)
     thresholds = req_config.get('assessment', {}).get('thresholds', {
         'strong_recommend': 85,
         'recommend': 70,
@@ -580,11 +622,10 @@ async def get_assessment_json(client_code: str, req_id: str, name_normalized: st
     """Get assessment as JSON."""
     req_root = get_requisition_root(client_code, req_id)
     assessment_file = req_root / "assessments" / "individual" / f"{name_normalized}_assessment.json"
+    req_config = get_requisition_config(client_code, req_id)
 
-    if not assessment_file.exists():
+    assessment = _load_assessment(req_id, name_normalized, assessment_file, req_config)
+    if assessment is None:
         raise HTTPException(status_code=404, detail="Assessment not found")
-
-    with open(assessment_file, 'r') as f:
-        assessment = json.load(f)
 
     return JSONResponse(content=assessment)
