@@ -133,6 +133,16 @@ def _load_sourced_candidates(client_code: str, req_id: str) -> list[dict]:
         return sourced
 
     assessments_dir = req_root / "assessments" / "individual"
+
+    # DB fallback set for assessments never written as a JSON file
+    # (RAAF_DB_MODE=db) — same gap as the JSON-only file check below.
+    db_assessed_names: set = set()
+    if _use_database():
+        try:
+            db_assessed_names = {row["name_normalized"] for row in get_db().list_assessments(req_id)}
+        except Exception:
+            pass
+
     for txt_file in sorted(batches_dir.glob("*_resume.txt")):
         name_normalized = txt_file.stem.replace("_resume", "")
         display_name = name_normalized.replace("_", " ").title()
@@ -156,7 +166,8 @@ def _load_sourced_candidates(client_code: str, req_id: str) -> list[dict]:
         except Exception:
             pass
 
-        assessed = (assessments_dir / f"{name_normalized}_assessment.json").exists()
+        assessed = (assessments_dir / f"{name_normalized}_assessment.json").exists() \
+            or name_normalized in db_assessed_names
 
         sourced.append({
             "name_normalized": name_normalized,

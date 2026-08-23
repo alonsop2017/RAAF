@@ -532,6 +532,18 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
     batches = []
     assessments_dir = req_root / "assessments" / "individual"
     batches_dir = req_root / "resumes" / "batches"
+
+    # DB fallback map for candidates whose assessment never got a JSON file
+    # written (RAAF_DB_MODE=db) — same gap as the JSON-only file checks below.
+    db_assessment_map: dict = {}
+    if _use_database():
+        try:
+            db_assessment_map = {
+                row["name_normalized"]: row for row in get_db().list_assessments(req_id)
+            }
+        except Exception:
+            pass
+
     if batches_dir.exists():
         for batch_dir in sorted(batches_dir.iterdir(), reverse=True):
             if batch_dir.is_dir():
@@ -556,6 +568,13 @@ async def view_requisition(request: Request, client_code: str, req_id: str):
                             entry["recommendation"] = a.get("recommendation")
                         except Exception:
                             pass
+                    elif name_norm in db_assessment_map:
+                        row = db_assessment_map[name_norm]
+                        entry["assessed"] = True
+                        entry["display_name"] = row.get("name", entry["display_name"])
+                        entry["score"] = row.get("total_score")
+                        entry["percentage"] = row.get("percentage")
+                        entry["recommendation"] = row.get("recommendation")
                     candidates_in_batch.append(entry)
                 assessed_count = sum(1 for c in candidates_in_batch if c["assessed"])
                 batches.append({

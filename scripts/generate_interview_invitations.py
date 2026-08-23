@@ -25,6 +25,7 @@ from utils.client_utils import (
     get_correspondence_path,
     get_settings,
     load_context,
+    sync_assessment_json_files,
 )
 
 # Recommendation tier ordering (lower number = stronger recommendation)
@@ -40,6 +41,13 @@ TIER_BY_NAME = {v: k for k, v in TIER_NAMES.items()}
 
 def load_assessments(client_code: str, req_id: str) -> list[dict]:
     """Load all individual assessment JSON files for a requisition, excluding OOC candidates."""
+    # Backfill any DB-only assessments to disk first — otherwise those
+    # candidates would silently never be considered for an invitation.
+    try:
+        sync_assessment_json_files(client_code, req_id)
+    except Exception as e:
+        print(f"  WARN: sync_assessment_json_files failed: {e}", file=sys.stderr)
+
     assessments_dir = get_assessments_path(client_code, req_id, "individual")
     if not assessments_dir.exists():
         return []

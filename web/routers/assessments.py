@@ -339,6 +339,15 @@ async def get_assessment_status(client_code: str, req_id: str):
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+    if _use_database():
+        try:
+            db = get_db()
+            assessed = len(db.list_assessments(req_id))
+            pending = len(db.list_candidates(req_id, status="pending"))
+            return JSONResponse(content={"assessed": assessed, "pending": pending, "total": assessed + pending})
+        except Exception:
+            pass  # fall through to file-scan below
+
     assessments_dir = req_root / "assessments" / "individual"
     assessed = 0
     pending = 0

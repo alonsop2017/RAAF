@@ -128,7 +128,9 @@ async def search_candidates_api(q: str = Query("", min_length=1)):
 
 @router.get("/{client_code}/{req_id}", response_class=HTMLResponse)
 async def list_candidates(request: Request, client_code: str, req_id: str):
-    """List all candidates for a requisition, scanning all batch folders."""
+    """List all candidates for a requisition — DB fast path when enabled,
+    falling back to scanning batch folders (which can't see candidates whose
+    files live outside the standard batch layout, e.g. Direct_Submissions/)."""
     try:
         req_config = get_requisition_config(client_code, req_id)
         client_config = get_client_config(client_code)
@@ -139,85 +141,85 @@ async def list_candidates(request: Request, client_code: str, req_id: str):
     assessments_dir = req_root / "assessments" / "individual"
 
     candidates = []
-    seen = set()
+    db_candidates_loaded = False
 
-    # Build a name_normalized → source_platform lookup from DB (single query)
-    db_source_map: dict = {}
     if _use_database():
         try:
-            rows = get_db().list_candidates(req_id)
-            db_source_map = {r["name_normalized"]: r.get("source_platform", "") for r in rows}
+            db = get_db()
+            seen_norms = set()
+            for row in db.list_assessments(req_id):
+                seen_norms.add(row["name_normalized"])
+                assessed_at = row.get("assessed_at") or ""
+                scores = row.get("scores") or {}
+                candidates.append({
+                    "name_normalized": row["name_normalized"],
+                    "resume_file": f"{row['name_normalized']}_resume.txt",
+                    "batch": row.get("batch", "") or "",
+                    "assessed": True,
+                    "score": row.get("total_score", 0) or 0,
+                    "max_score": 100,
+                    "percentage": row.get("percentage", 0) or 0,
+                    "recommendation": row.get("recommendation", "PENDING"),
+                    "name": row.get("name", row["name_normalized"]),
+                    "stability": (
+                        scores.get("job_stability", {}).get("tenure_analysis", {}).get("risk_level", "N/A")
+                        if isinstance(scores, dict) else "N/A"
+                    ),
+                    "assessed_at": assessed_at[:10] if assessed_at else "",
+                    "source_platform": row.get("source_platform", ""),
+                    "lifecycle": row.get("pipeline_status", "") or "",
+                })
+            for cand in db.list_candidates(req_id, status="pending"):
+                if cand["name_normalized"] not in seen_norms:
+                    candidates.append({
+                        "name_normalized": cand["name_normalized"],
+                        "resume_file": f"{cand['name_normalized']}_resume.txt",
+                        "assessed": False,
+                        "name": cand.get("name", cand["name_normalized"].replace("_", " ").title()),
+                        "source_platform": cand.get("source_platform", ""),
+                        "lifecycle": cand.get("pipeline_status", "") or "",
+                    })
+            db_candidates_loaded = True
         except Exception:
-            pass
+            candidates = []
 
-    def _resolve_source(name_norm: str, assessment_json: dict | None) -> str:
-        """Return source_platform: JSON candidate block > DB > empty."""
-        if assessment_json:
-            src = assessment_json.get("candidate", {}).get("source_platform", "")
-            if src and src not in ("Unknown", ""):
-                return src
-        return db_source_map.get(name_norm, "")
+    if not db_candidates_loaded:
+        candidates, seen = [], set()
 
-    # Scan all batch extracted folders
-    for resume_file in list_all_extracted_resumes(client_code, req_id):
-        name_normalized = resume_file.stem.replace("_resume", "")
-        if name_normalized in seen:
-            continue
-        seen.add(name_normalized)
-
-        batch_name = resume_file.parent.parent.name  # extracted/ -> batch_dir
-        assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
-
-        candidate_data = {
-            'name_normalized': name_normalized,
-            'resume_file': resume_file.name,
-            'batch': batch_name,
-            'assessed': assessment_file.exists()
-        }
-
-        if assessment_file.exists():
-            with open(assessment_file, 'r') as f:
-                assessment = json.load(f)
-            candidate_data['score'] = assessment.get('total_score', 0)
-            candidate_data['max_score'] = assessment.get('max_score', 100)
-            candidate_data['percentage'] = assessment.get('percentage', 0)
-            candidate_data['recommendation'] = assessment.get('recommendation', 'PENDING')
-            candidate_data['name'] = assessment.get('candidate', {}).get('name', name_normalized)
-            candidate_data['stability'] = assessment.get('scores', {}).get('job_stability', {}).get('tenure_analysis', {}).get('risk_level', 'N/A')
-            raw_at = assessment.get('metadata', {}).get('assessed_at', '')
-            candidate_data['assessed_at'] = raw_at[:10] if raw_at else ''
-            candidate_data['source_platform'] = _resolve_source(name_normalized, assessment)
-        else:
-            candidate_data['name'] = name_normalized.replace("_", " ").title()
-            candidate_data['source_platform'] = _resolve_source(name_normalized, None)
-
-        lifecycle_file = assessments_dir / f"{name_normalized}_lifecycle.json"
-        candidate_data['lifecycle'] = ''
-        if lifecycle_file.exists():
+        # Build a name_normalized → source_platform lookup from DB (single query)
+        db_source_map: dict = {}
+        if _use_database():
             try:
-                with open(lifecycle_file) as lf:
-                    candidate_data['lifecycle'] = json.load(lf).get('status', '')
+                rows = get_db().list_candidates(req_id)
+                db_source_map = {r["name_normalized"]: r.get("source_platform", "") for r in rows}
             except Exception:
                 pass
 
-        candidates.append(candidate_data)
+        def _resolve_source(name_norm: str, assessment_json: dict | None) -> str:
+            """Return source_platform: JSON candidate block > DB > empty."""
+            if assessment_json:
+                src = assessment_json.get("candidate", {}).get("source_platform", "")
+                if src and src not in ("Unknown", ""):
+                    return src
+            return db_source_map.get(name_norm, "")
 
-    # Also check legacy processed/ folder for backwards compatibility
-    legacy_dir = req_root / "resumes" / "processed"
-    if legacy_dir.exists():
-        for resume_file in sorted(legacy_dir.glob("*.txt")):
+        # Scan all batch extracted folders
+        for resume_file in list_all_extracted_resumes(client_code, req_id):
             name_normalized = resume_file.stem.replace("_resume", "")
             if name_normalized in seen:
                 continue
             seen.add(name_normalized)
 
+            batch_name = resume_file.parent.parent.name  # extracted/ -> batch_dir
             assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
+
             candidate_data = {
                 'name_normalized': name_normalized,
                 'resume_file': resume_file.name,
-                'batch': 'legacy',
+                'batch': batch_name,
                 'assessed': assessment_file.exists()
             }
+
             if assessment_file.exists():
                 with open(assessment_file, 'r') as f:
                     assessment = json.load(f)
@@ -244,6 +246,49 @@ async def list_candidates(request: Request, client_code: str, req_id: str):
                     pass
 
             candidates.append(candidate_data)
+
+        # Also check legacy processed/ folder for backwards compatibility
+        legacy_dir = req_root / "resumes" / "processed"
+        if legacy_dir.exists():
+            for resume_file in sorted(legacy_dir.glob("*.txt")):
+                name_normalized = resume_file.stem.replace("_resume", "")
+                if name_normalized in seen:
+                    continue
+                seen.add(name_normalized)
+
+                assessment_file = assessments_dir / f"{name_normalized}_assessment.json"
+                candidate_data = {
+                    'name_normalized': name_normalized,
+                    'resume_file': resume_file.name,
+                    'batch': 'legacy',
+                    'assessed': assessment_file.exists()
+                }
+                if assessment_file.exists():
+                    with open(assessment_file, 'r') as f:
+                        assessment = json.load(f)
+                    candidate_data['score'] = assessment.get('total_score', 0)
+                    candidate_data['max_score'] = assessment.get('max_score', 100)
+                    candidate_data['percentage'] = assessment.get('percentage', 0)
+                    candidate_data['recommendation'] = assessment.get('recommendation', 'PENDING')
+                    candidate_data['name'] = assessment.get('candidate', {}).get('name', name_normalized)
+                    candidate_data['stability'] = assessment.get('scores', {}).get('job_stability', {}).get('tenure_analysis', {}).get('risk_level', 'N/A')
+                    raw_at = assessment.get('metadata', {}).get('assessed_at', '')
+                    candidate_data['assessed_at'] = raw_at[:10] if raw_at else ''
+                    candidate_data['source_platform'] = _resolve_source(name_normalized, assessment)
+                else:
+                    candidate_data['name'] = name_normalized.replace("_", " ").title()
+                    candidate_data['source_platform'] = _resolve_source(name_normalized, None)
+
+                lifecycle_file = assessments_dir / f"{name_normalized}_lifecycle.json"
+                candidate_data['lifecycle'] = ''
+                if lifecycle_file.exists():
+                    try:
+                        with open(lifecycle_file) as lf:
+                            candidate_data['lifecycle'] = json.load(lf).get('status', '')
+                    except Exception:
+                        pass
+
+                candidates.append(candidate_data)
 
     # Sort: active assessed (by score desc) → active pending → OOC last
     candidates.sort(
@@ -892,10 +937,26 @@ async def delete_candidate(client_code: str, req_id: str, name_normalized: str):
     if legacy_processed.exists():
         legacy_processed.unlink()
 
+    # Delete DB-stored files not reachable via find_resume_in_batches (e.g.
+    # Direct_Submissions/ resumes ingested by email)
+    db_original, db_extracted = _get_db_resume_paths(req_id, name_normalized)
+    for path in (db_original, db_extracted):
+        if path and path.exists():
+            path.unlink()
+
     # Delete assessment
     assessment_file = req_root / "assessments" / "individual" / f"{name_normalized}_assessment.json"
     if assessment_file.exists():
         assessment_file.unlink()
+
+    # Delete the DB rows themselves — without this, the candidate keeps
+    # showing up everywhere the DB is queried (dashboard, list, search)
+    # even though its files are gone.
+    if _use_database():
+        try:
+            get_db().delete_candidate(req_id, name_normalized)
+        except Exception:
+            pass
 
     return RedirectResponse(url=f"/candidates/{client_code}/{req_id}", status_code=303)
 

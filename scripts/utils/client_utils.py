@@ -4,6 +4,7 @@ Client and requisition path utilities.
 Provides helper functions for navigating the project directory structure.
 """
 
+import json
 import os
 from pathlib import Path
 from typing import Optional
@@ -91,6 +92,78 @@ def get_assessments_path(client_code: str, req_id: str, folder: str = "individua
         folder: One of 'individual' or 'consolidated'
     """
     return get_requisition_root(client_code, req_id) / "assessments" / folder
+
+
+_TIER_BY_RECOMMENDATION = {
+    "STRONG RECOMMEND": 1, "RECOMMEND": 2, "CONDITIONAL": 3, "DO NOT RECOMMEND": 4,
+}
+
+
+def sync_assessment_json_files(client_code: str, req_id: str) -> int:
+    """Write out a legacy-shaped JSON file for every DB assessment that
+    doesn't have one on disk yet.
+
+    Several consumers (the DOCX/PDF report generator, the PCR score-push
+    script, interview-invitation generation) only know how to read
+    assessments/individual/*.json off disk — they predate the DB migration
+    and were never given a DB read path. Rather than teach each of them
+    (one of which is a separate Node.js codebase with no DB access) to query
+    SQLite, call this once before they run so any candidate assessed under
+    RAAF_DB_MODE=db (which never gets a JSON file written automatically) is
+    materialized first. Idempotent — never overwrites an existing file, so a
+    prior manual edit to a JSON file is never clobbered.
+
+    Returns the number of files written.
+    """
+    try:
+        from scripts.utils.database import get_db, _use_database
+    except ImportError:
+        return 0
+    if not _use_database():
+        return 0
+
+    assessments_dir = get_assessments_path(client_code, req_id, "individual")
+    assessments_dir.mkdir(parents=True, exist_ok=True)
+
+    written = 0
+    for row in get_db().list_assessments(req_id):
+        name_normalized = row["name_normalized"]
+        out_path = assessments_dir / f"{name_normalized}_assessment.json"
+        if out_path.exists():
+            continue
+
+        scores = row.get("scores") or {}
+        max_score = sum(cat.get("max", 0) for cat in scores.values()) if scores else 100
+        recommendation = row.get("recommendation", "")
+        doc = {
+            "metadata": {
+                "client_code": client_code,
+                "requisition_id": req_id,
+                "assessed_at": row.get("assessed_at"),
+                "assessor": row.get("ai_model") or "Claude/Automated",
+            },
+            "candidate": {
+                "name": row.get("name", name_normalized),
+                "name_normalized": name_normalized,
+                "batch": row.get("batch"),
+                "source_platform": row.get("source_platform", ""),
+            },
+            "scores": scores,
+            "total_score": row.get("total_score"),
+            "max_score": max_score or 100,
+            "percentage": row.get("percentage"),
+            "recommendation": recommendation,
+            "recommendation_tier": _TIER_BY_RECOMMENDATION.get(recommendation, 4),
+            "summary": row.get("summary", ""),
+            "key_strengths": row.get("key_strengths", []) or [],
+            "areas_of_concern": row.get("areas_of_concern", []) or [],
+            "interview_focus_areas": row.get("interview_focus", []) or [],
+        }
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(doc, f, indent=2)
+        written += 1
+
+    return written
 
 
 def get_reports_path(client_code: str, req_id: str, folder: str = "final") -> Path:

@@ -776,6 +776,21 @@ class DatabaseManager:
             """, (pipeline_status, candidate_id))
             return True
 
+    def delete_candidate(self, req_id: str, name_normalized: str) -> bool:
+        """Delete a candidate and its assessment(s) by requisition + normalized
+        name. Returns True if a candidate row was found and removed."""
+        with self._conn() as conn:
+            row = conn.execute("""
+                SELECT c.id FROM candidates c
+                JOIN requisitions r ON r.id = c.requisition_id
+                WHERE r.req_id = ? AND c.name_normalized = ?
+            """, (req_id, name_normalized)).fetchone()
+            if not row:
+                return False
+            conn.execute("DELETE FROM assessments WHERE candidate_id = ?", (row["id"],))
+            conn.execute("DELETE FROM candidates WHERE id = ?", (row["id"],))
+            return True
+
     # -----------------------------------------------------------------------
     # Assessments
     # -----------------------------------------------------------------------

@@ -15,7 +15,8 @@ from utils.pcr_client import PCRClient, PCRClientError
 from utils.client_utils import (
     get_requisition_config,
     get_assessments_path,
-    get_resumes_path
+    get_resumes_path,
+    sync_assessment_json_files,
 )
 
 
@@ -62,6 +63,14 @@ def push_scores(
         if len(parts) >= 2:
             alt_name = f"{parts[-1]}_{parts[0]}"
             candidate_map[alt_name] = entry
+
+    # Backfill JSON files for any assessment that only lives in the DB
+    # (RAAF_DB_MODE=db) before scanning — otherwise those candidates'
+    # scores would silently never get pushed to PCR.
+    try:
+        sync_assessment_json_files(client_code, req_id)
+    except Exception as e:
+        print(f"  WARN: sync_assessment_json_files failed: {e}")
 
     # Load assessments
     assessments_path = get_assessments_path(client_code, req_id, "individual")

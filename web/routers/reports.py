@@ -2,6 +2,7 @@
 Report generation routes for RAAF Web Application.
 """
 
+import logging
 import sys
 from pathlib import Path
 from datetime import datetime
@@ -15,18 +16,27 @@ from fastapi.templating import Jinja2Templates
 
 from scripts.utils.client_utils import (
     get_requisition_root, get_requisition_config, get_client_info,
-    get_project_root
+    get_project_root, sync_assessment_json_files,
 )
 
 # Alias for consistency
 get_client_config = get_client_info
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
 
 
 def generate_report(client_code: str, req_id: str, output_type: str = "final", top_candidates: int = 6):
     """Run report generation script."""
+    # generate_report.js only reads assessments/individual/*.json — it has no
+    # DB access (separate Node.js codebase) — so backfill any DB-only
+    # assessments to disk first or they'd silently be missing from the report.
+    try:
+        sync_assessment_json_files(client_code, req_id)
+    except Exception:
+        logger.warning("sync_assessment_json_files failed for %s/%s", client_code, req_id, exc_info=True)
+
     script_path = get_project_root() / "scripts" / "generate_report.js"
 
     cmd = [
