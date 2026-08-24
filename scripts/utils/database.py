@@ -631,6 +631,18 @@ class DatabaseManager:
     # Candidates
     # -----------------------------------------------------------------------
 
+    def get_candidate_by_req_id(self, req_id: str,
+                                name_normalized: str) -> Optional[dict]:
+        """Look up a candidate by req_id string + name_normalized (vs.
+        get_candidate(), which needs the internal integer requisition_id)."""
+        with self._conn() as conn:
+            row = conn.execute("""
+                SELECT c.* FROM candidates c
+                JOIN requisitions r ON r.id = c.requisition_id
+                WHERE r.req_id = ? AND c.name_normalized = ?
+            """, (req_id, name_normalized)).fetchone()
+            return dict(row) if row else None
+
     def get_candidate(self, requisition_id: int,
                       name_normalized: str) -> Optional[dict]:
         with self._conn() as conn:

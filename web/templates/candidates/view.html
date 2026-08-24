@@ -42,9 +42,47 @@
             {% endif %}
             <a href="/candidates/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/resume"
                class="btn btn-outline">Download Resume</a>
+            {% if other_requisitions %}
+            <button type="button" class="btn btn-outline" onclick="openTransferModal()">Transfer to Requisition</button>
+            {% endif %}
         </div>
     </div>
 </div>
+
+{% if request.query_params.get('transferred') %}
+<div class="alert alert-success" style="margin-bottom:1rem;">
+    Transferred — the candidate has been copied into the target requisition and is being assessed against its framework now. Refresh in a moment for the score.
+</div>
+{% endif %}
+
+{% if other_requisitions %}
+<div id="transferModal" role="dialog" aria-modal="true" aria-label="Transfer to Requisition">
+    <div class="transfer-modal-box">
+        <div class="transfer-modal-header">
+            <h3 style="margin:0;">Transfer {{ name }} to Another Requisition</h3>
+            <button type="button" class="transfer-modal-close" onclick="closeTransferModal()" aria-label="Close">&times;</button>
+        </div>
+        <form action="/candidates/{{ client_code }}/{{ req_id }}/{{ name_normalized }}/transfer" method="POST">
+            <div class="transfer-modal-body">
+                <p style="color:var(--text-secondary); font-size:0.9rem; margin-top:0;">
+                    Copies this candidate's resume into the selected requisition and runs a fresh AI assessment
+                    against its framework. {{ name }}'s record here in {{ req_title }} is left untouched.
+                </p>
+                <label for="target_req_id" style="font-weight:600; display:block; margin-bottom:0.4rem;">Target requisition</label>
+                <select id="target_req_id" name="target_req_id" class="form-select" required>
+                    {% for r in other_requisitions %}
+                    <option value="{{ r.req_id }}">{{ r.title }} ({{ r.req_id }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="transfer-modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeTransferModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Transfer &amp; Assess</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
 
 <div class="two-column">
     <div>
@@ -246,4 +284,65 @@
         {% endif %}
     </div>
 </div>
+
+<style>
+#transferModal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+#transferModal.open { display: flex; }
+.transfer-modal-box {
+    background: #fff;
+    border-radius: 10px;
+    width: 480px;
+    max-width: 92vw;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+}
+.transfer-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.transfer-modal-close {
+    background: none;
+    border: none;
+    font-size: 1.25rem;
+    cursor: pointer;
+    color: var(--text-secondary);
+    line-height: 1;
+}
+.transfer-modal-body { padding: 1.25rem; }
+.transfer-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 1rem 1.25rem;
+    border-top: 1px solid var(--border-color);
+}
+</style>
+
+<script>
+function openTransferModal() {
+    var m = document.getElementById('transferModal');
+    if (m) m.classList.add('open');
+}
+function closeTransferModal() {
+    var m = document.getElementById('transferModal');
+    if (m) m.classList.remove('open');
+}
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeTransferModal();
+});
+document.addEventListener('DOMContentLoaded', function () {
+    var m = document.getElementById('transferModal');
+    if (m) m.addEventListener('click', function (e) { if (e.target === m) closeTransferModal(); });
+});
+</script>
 {% endblock %}

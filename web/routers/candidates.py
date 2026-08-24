@@ -17,6 +17,7 @@ from scripts.utils.client_utils import (
     get_requisition_root, get_requisition_config, get_client_info,
     get_resumes_path, create_batch_folder, get_next_batch_name,
     list_all_extracted_resumes, find_resume_in_batches, get_batch_for_resume,
+    list_requisitions,
 )
 import yaml
 
@@ -832,6 +833,18 @@ async def view_candidate(request: Request, client_code: str, req_id: str, name_n
         except Exception:
             pass
 
+    # Other requisitions for this same client, for the "Transfer to..." picker.
+    # Same-client only — never offer cross-client transfer.
+    other_requisitions = []
+    for other_req_id in list_requisitions(client_code):
+        if other_req_id == req_id:
+            continue
+        try:
+            other_title = get_requisition_config(client_code, other_req_id).get('job', {}).get('title', other_req_id)
+        except Exception:
+            continue
+        other_requisitions.append({"req_id": other_req_id, "title": other_title})
+
     return templates.TemplateResponse("candidates/view.html", {
         "request": request,
         "user": getattr(request.state, 'user', None),
@@ -845,7 +858,90 @@ async def view_candidate(request: Request, client_code: str, req_id: str, name_n
         "assessment": assessment,
         "lifecycle": lifecycle,
         "source_platform": source_platform,
+        "other_requisitions": other_requisitions,
     })
+
+
+@router.post("/{client_code}/{req_id}/{name_normalized}/transfer")
+async def transfer_candidate(
+    client_code: str,
+    req_id: str,
+    name_normalized: str,
+    target_req_id: str = Form(...),
+):
+    """Copy a candidate into another requisition (same client only) and
+    kick off a fresh AI assessment against the target requisition's
+    framework. The original candidate, assessment, and pipeline status are
+    left untouched — this adds a new candidate record, it doesn't move one."""
+    if target_req_id == req_id:
+        raise HTTPException(status_code=400, detail="Target requisition must be different from the current one")
+
+    # Validate the target requisition exists for this same client — never
+    # trust a client-supplied req_id without checking it's real and in-bounds.
+    try:
+        get_requisition_config(client_code, target_req_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Target requisition not found: {target_req_id}")
+
+    # Resolve the source candidate's extracted resume text (required) and
+    # original file (optional) — same resolution order used by download_resume.
+    extracted = find_resume_in_batches(client_code, req_id, name_normalized, "extracted")
+    original = find_resume_in_batches(client_code, req_id, name_normalized, "originals")
+    if not extracted or not original:
+        db_original, db_extracted = _get_db_resume_paths(req_id, name_normalized)
+        if not extracted and db_extracted and db_extracted.exists():
+            extracted = db_extracted
+        if not original and db_original and db_original.exists():
+            original = db_original
+
+    if not extracted or not Path(extracted).exists():
+        raise HTTPException(status_code=404, detail="No resume text found for this candidate — nothing to transfer")
+
+    # Look up the candidate's real display name so the copy keeps it, rather
+    # than letting assess_candidate.py re-derive one from a filename.
+    display_name = name_normalized.replace("_", " ").title()
+    if _use_database():
+        try:
+            db_rec = get_db().get_candidate_by_req_id(req_id, name_normalized)
+            if db_rec and db_rec.get("name"):
+                display_name = db_rec["name"]
+        except Exception:
+            pass
+
+    # Create a new batch folder in the target requisition and copy the files in.
+    batch_dir = create_batch_folder(client_code, target_req_id)
+    extracted_dest = batch_dir / "extracted" / f"{name_normalized}_resume.txt"
+    extracted_dest.write_bytes(Path(extracted).read_bytes())
+
+    if original and Path(original).exists():
+        ext = Path(original).suffix
+        original_dest = batch_dir / "originals" / f"{name_normalized}{ext}"
+        original_dest.write_bytes(Path(original).read_bytes())
+
+    # Register the copy in the target requisition immediately (status: pending)
+    # so it shows up right away; the async assessment below fills in the score.
+    if _use_database():
+        try:
+            get_db().upsert_candidate({
+                "req_id": target_req_id,
+                "name": display_name,
+                "name_normalized": name_normalized,
+                "batch": batch_dir.name,
+                "resume_original_path": str(original_dest) if (original and Path(original).exists()) else None,
+                "resume_extracted_path": str(extracted_dest),
+                "source_platform": "Transferred",
+                "status": "pending",
+            })
+        except Exception:
+            pass
+
+    from web.routers.assessments import run_assessment_async
+    run_assessment_async(client_code, target_req_id, candidate_name=name_normalized, use_ai=True)
+
+    return RedirectResponse(
+        url=f"/candidates/{client_code}/{target_req_id}/{name_normalized}?transferred=1",
+        status_code=303,
+    )
 
 
 @router.get("/{client_code}/{req_id}/{name_normalized}/resume")
