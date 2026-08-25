@@ -123,60 +123,86 @@ async def dashboard(request: Request):
     from scripts.utils.client_utils import list_clients, list_requisitions, get_client_info, get_requisition_config
     get_client_config = get_client_info  # Alias
 
-    # Gather dashboard data
+    # Gather dashboard data — DB fast path (same v_requisition_dashboard view
+    # used by the Requisitions list page) so counts agree everywhere; falls
+    # back to the file scan only when DB read fails or is disabled.
     dashboard_data = []
     total_candidates = 0
     total_assessed = 0
+    db_loaded = False
 
-    for client_code in list_clients():
-        try:
-            client_config = get_client_config(client_code)
-            client_name = client_config.get('company_name', client_code)
-
-            client_reqs = []
-            for req_id in list_requisitions(client_code):
-                try:
-                    req_config = get_requisition_config(client_code, req_id)
-
-                    # Count candidates and assessments
-                    from scripts.utils.client_utils import get_requisition_root
-                    req_root = get_requisition_root(client_code, req_id)
-
-                    # Count resumes (extracted text files across all batches)
-                    batches_dir = req_root / "resumes" / "batches"
-                    candidate_count = 0
-                    if batches_dir.exists():
-                        for batch in batches_dir.iterdir():
-                            extracted = batch / "extracted"
-                            if extracted.exists():
-                                candidate_count += len(list(extracted.glob("*.txt")))
-
-                    # Count assessments
-                    assessments_dir = req_root / "assessments" / "individual"
-                    assessed_count = len(list(assessments_dir.glob("*.json"))) if assessments_dir.exists() else 0
-
-                    total_candidates += candidate_count
-                    total_assessed += assessed_count
-
-                    client_reqs.append({
-                        'req_id': req_id,
-                        'title': req_config.get('job', {}).get('title', req_id),
-                        'status': req_config.get('status', 'unknown'),
-                        'candidate_count': candidate_count,
-                        'assessed_count': assessed_count
-                    })
-                except Exception:
-                    continue
-
-            if client_reqs:
-                dashboard_data.append({
-                    'client_code': client_code,
-                    'client_name': client_name,
-                    'requisitions': client_reqs,
-                    'status': client_config.get('status', 'active')
+    try:
+        from scripts.utils.database import get_db, _use_database
+        if _use_database():
+            by_client: dict = {}
+            for row in get_db().get_dashboard_data():
+                candidate_count = row.get('candidate_count', 0) or 0
+                assessed_count = row.get('assessed_count', 0) or 0
+                total_candidates += candidate_count
+                total_assessed += assessed_count
+                entry = by_client.setdefault(row['client_code'], {
+                    'client_code': row['client_code'],
+                    'client_name': row.get('company_name') or row['client_code'],
+                    'requisitions': [],
+                    'status': row.get('client_status') or 'active',
                 })
-        except Exception:
-            continue
+                entry['requisitions'].append({
+                    'req_id': row['req_id'],
+                    'title': row.get('job_title') or row['req_id'],
+                    'status': row.get('req_status') or 'unknown',
+                    'candidate_count': candidate_count,
+                    'assessed_count': assessed_count,
+                })
+            dashboard_data = list(by_client.values())
+            db_loaded = True
+    except Exception:
+        dashboard_data = []
+        total_candidates = 0
+        total_assessed = 0
+
+    if not db_loaded:
+        for client_code in list_clients():
+            try:
+                client_config = get_client_config(client_code)
+                client_name = client_config.get('company_name', client_code)
+
+                client_reqs = []
+                for req_id in list_requisitions(client_code):
+                    try:
+                        req_config = get_requisition_config(client_code, req_id)
+
+                        # Count candidates and assessments
+                        from scripts.utils.client_utils import get_requisition_root, count_unique_candidates
+                        req_root = get_requisition_root(client_code, req_id)
+
+                        candidate_count = count_unique_candidates(client_code, req_id)
+
+                        # Count assessments
+                        assessments_dir = req_root / "assessments" / "individual"
+                        assessed_count = len([f for f in assessments_dir.glob("*.json") if not f.stem.endswith("_lifecycle")]) if assessments_dir.exists() else 0
+
+                        total_candidates += candidate_count
+                        total_assessed += assessed_count
+
+                        client_reqs.append({
+                            'req_id': req_id,
+                            'title': req_config.get('job', {}).get('title', req_id),
+                            'status': req_config.get('status', 'unknown'),
+                            'candidate_count': candidate_count,
+                            'assessed_count': assessed_count
+                        })
+                    except Exception:
+                        continue
+
+                if client_reqs:
+                    dashboard_data.append({
+                        'client_code': client_code,
+                        'client_name': client_name,
+                        'requisitions': client_reqs,
+                        'status': client_config.get('status', 'active')
+                    })
+            except Exception:
+                continue
 
     # MOTD: yesterday's git commits
     motd_commits = []

@@ -136,32 +136,50 @@ async def view_client(request: Request, client_code: str):
     except Exception:
         raise HTTPException(status_code=404, detail=f"Client '{client_code}' not found")
 
-    # Get requisitions with details
+    # Get requisitions with details — DB fast path (same v_requisition_dashboard
+    # view used by the Dashboard and Requisitions list pages) so counts agree
+    # everywhere; falls back to the file scan only when DB read fails.
     reqs_data = []
-    for req_id in list_requisitions(client_code):
-        try:
-            req_config = get_requisition_config(client_code, req_id)
-            from scripts.utils.client_utils import get_requisition_root
-            req_root = get_requisition_root(client_code, req_id)
+    db_loaded = False
+    try:
+        if _use_database():
+            for row in get_db().get_dashboard_data():
+                if row['client_code'] != client_code:
+                    continue
+                reqs_data.append({
+                    'req_id': row['req_id'],
+                    'title': row.get('job_title') or row['req_id'],
+                    'status': row.get('req_status') or 'active',
+                    'location': row.get('location') or 'N/A',
+                    'candidate_count': row.get('candidate_count', 0) or 0,
+                    'assessed_count': row.get('assessed_count', 0) or 0,
+                })
+            db_loaded = True
+    except Exception:
+        reqs_data = []
 
-            # Count candidates
-            resumes_dir = req_root / "resumes" / "processed"
-            candidate_count = len(list(resumes_dir.glob("*.txt"))) if resumes_dir.exists() else 0
+    if not db_loaded:
+        from scripts.utils.client_utils import get_requisition_root, count_unique_candidates
+        for req_id in list_requisitions(client_code):
+            try:
+                req_config = get_requisition_config(client_code, req_id)
+                req_root = get_requisition_root(client_code, req_id)
 
-            # Count assessments
-            assessments_dir = req_root / "assessments" / "individual"
-            assessed_count = len(list(assessments_dir.glob("*.json"))) if assessments_dir.exists() else 0
+                candidate_count = count_unique_candidates(client_code, req_id)
 
-            reqs_data.append({
-                'req_id': req_id,
-                'title': req_config.get('job', {}).get('title', req_id),
-                'status': req_config.get('status', 'active'),
-                'location': req_config.get('job', {}).get('location', 'N/A'),
-                'candidate_count': candidate_count,
-                'assessed_count': assessed_count
-            })
-        except Exception:
-            continue
+                assessments_dir = req_root / "assessments" / "individual"
+                assessed_count = len([f for f in assessments_dir.glob("*.json") if not f.stem.endswith("_lifecycle")]) if assessments_dir.exists() else 0
+
+                reqs_data.append({
+                    'req_id': req_id,
+                    'title': req_config.get('job', {}).get('title', req_id),
+                    'status': req_config.get('status', 'active'),
+                    'location': req_config.get('job', {}).get('location', 'N/A'),
+                    'candidate_count': candidate_count,
+                    'assessed_count': assessed_count
+                })
+            except Exception:
+                continue
 
     return templates.TemplateResponse("clients/view.html", {
         "request": request,

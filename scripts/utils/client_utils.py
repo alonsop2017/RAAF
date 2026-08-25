@@ -285,6 +285,27 @@ def list_all_extracted_resumes(client_code: str, req_id: str) -> list[Path]:
     return results
 
 
+def count_unique_candidates(client_code: str, req_id: str) -> int:
+    """Count distinct candidates for a requisition (files-mode fallback path).
+
+    Naively summing files under resumes/batches/*/extracted/ double-counts a
+    candidate who was reassessed into a second batch, and never sees
+    candidates whose resume lives outside the batch layout (e.g.
+    Direct_Submissions/). Dedupe by name_normalized across both, matching
+    the logic list_candidates() already uses for the same reason.
+    """
+    seen: set = set()
+    for resume_file in list_all_extracted_resumes(client_code, req_id):
+        seen.add(resume_file.stem.replace("_resume", ""))
+
+    legacy_dir = get_requisition_root(client_code, req_id) / "resumes" / "processed"
+    if legacy_dir.exists():
+        for resume_file in legacy_dir.glob("*.txt"):
+            seen.add(resume_file.stem.replace("_resume", ""))
+
+    return len(seen)
+
+
 def find_resume_in_batches(
     client_code: str, req_id: str, name_normalized: str, subfolder: str = "extracted"
 ) -> Optional[Path]:
