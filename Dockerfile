@@ -16,6 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         # OCR fallback for image-based PDF resumes
         tesseract-ocr \
         tesseract-ocr-eng \
+        # Legacy .doc (Word 97-2003 binary format) text extraction
+        antiword \
         # Utilities
         rsync \
         sqlite3 \

@@ -357,6 +357,9 @@ async def upload_resumes(
                 elif file.filename.lower().endswith('.docx'):
                     from scripts.utils.docx_reader import extract_text as extract_docx_text
                     text = extract_docx_text(str(original_path))
+                elif file.filename.lower().endswith('.doc'):
+                    from scripts.utils.doc_reader import extract_text as extract_doc_text
+                    text = extract_doc_text(str(original_path))
                 elif file.filename.lower().endswith('.txt'):
                     text = content.decode('utf-8', errors='ignore')
                 else:
@@ -673,6 +676,9 @@ async def drive_import_files(
             elif extension == ".docx":
                 from scripts.utils.docx_reader import extract_text as extract_docx_text
                 text = extract_docx_text(str(original_path))
+            elif extension == ".doc":
+                from scripts.utils.doc_reader import extract_text as extract_doc_text
+                text = extract_doc_text(str(original_path))
             else:
                 with open(original_path, 'r', errors='ignore') as f:
                     text = f.read()
@@ -1246,6 +1252,9 @@ async def process_batch_file(
         elif filename.lower().endswith('.docx'):
             from scripts.utils.docx_reader import extract_text as extract_docx_text
             text = extract_docx_text(str(file_path))
+        elif filename.lower().endswith('.doc'):
+            from scripts.utils.doc_reader import extract_text as extract_doc_text
+            text = extract_doc_text(str(file_path))
         else:
             with open(file_path, 'rb') as f:
                 text = f.read().decode('utf-8', errors='ignore')
@@ -1303,6 +1312,9 @@ async def process_all_batch_files(client_code: str, req_id: str):
                     elif file_path.name.lower().endswith('.docx'):
                         from scripts.utils.docx_reader import extract_text as extract_docx_text
                         text = extract_docx_text(str(file_path))
+                    elif file_path.name.lower().endswith('.doc'):
+                        from scripts.utils.doc_reader import extract_text as extract_doc_text
+                        text = extract_doc_text(str(file_path))
                     else:
                         with open(file_path, 'rb') as f:
                             text = f.read().decode('utf-8', errors='ignore')

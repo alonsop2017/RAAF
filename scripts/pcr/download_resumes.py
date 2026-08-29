@@ -228,6 +228,9 @@ def download_resumes(
                 elif ext.lower() == ".docx":
                     from utils.docx_reader import extract_text as extract_docx_text
                     text = extract_docx_text(str(output_path))
+                elif ext.lower() == ".doc":
+                    from utils.doc_reader import extract_text as extract_doc_text
+                    text = extract_doc_text(str(output_path))
                 else:
                     text = content.decode('utf-8', errors='ignore')
 

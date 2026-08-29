@@ -18,6 +18,7 @@ from utils.client_utils import (
 )
 from utils.pdf_reader import extract_text as extract_pdf, clean_extracted_text
 from utils.docx_reader import extract_text as extract_docx
+from utils.doc_reader import extract_text as extract_doc
 
 
 def extract_resumes(
@@ -91,8 +92,10 @@ def extract_resumes(
 
             if suffix == ".pdf":
                 text = extract_pdf(resume_file)
-            elif suffix in [".docx", ".doc"]:
+            elif suffix == ".docx":
                 text = extract_docx(resume_file)
+            elif suffix == ".doc":
+                text = extract_doc(resume_file)
             else:
                 print(f"    Unsupported format: {suffix}")
                 stats["errors"] += 1
@@ -174,8 +177,10 @@ def extract_single_resume(resume_path: str | Path) -> str:
 
     if suffix == ".pdf":
         text = extract_pdf(resume_path)
-    elif suffix in [".docx", ".doc"]:
+    elif suffix == ".docx":
         text = extract_docx(resume_path)
+    elif suffix == ".doc":
+        text = extract_doc(resume_path)
     else:
         raise ValueError(f"Unsupported format: {suffix}")
 
