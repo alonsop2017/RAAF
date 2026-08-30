@@ -297,7 +297,6 @@ class ClaudeClient:
                 message = client.messages.create(
                     model=model,
                     max_tokens=self.max_tokens,
-                    temperature=self.temperature,
                     messages=[
                         {
                             "role": "user",
@@ -384,7 +383,6 @@ class ClaudeClient:
         message = client.messages.create(
             model=screening_model,
             max_tokens=512,
-            temperature=0.1,
             messages=[{
                 "role": "user",
                 "content": [

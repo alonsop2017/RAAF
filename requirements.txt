@@ -25,7 +25,9 @@ pandas>=2.0.0
 requests>=2.31.0
 
 # Claude API (for AI-powered assessments)
-anthropic>=0.40.0
+# Pinned to <2.0.0: an unpinned rebuild silently picked up 1.2.0, which
+# dropped `temperature` from Messages.create() and broke every assessment.
+anthropic>=1.2.0,<2.0.0
 
 # Web Application
 fastapi>=0.109.0,<0.116.0
